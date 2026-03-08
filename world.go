@@ -19,7 +19,7 @@ const (
 // а из набора чанков, которые лежат в chunks.
 //
 // width и height пока оставляем как общий размер мира в клетках.
-// Это удобно на переходном этапе, пока мир ещё не бесконечный.грузку областей мира.
+// Это удобно на переходном этапе, пока мир ещё не бесконечный.
 type World struct {
 	// width — полная ширина мира в клетках.
 	width int
@@ -211,6 +211,88 @@ func (w *World) PreloadChunksAround(worldX, worldY, radius int) {
 
 			w.getOrCreateChunk(coord)
 		}
+	}
+}
+
+// ChunkCoordAt возвращает координаты чанка,
+// в котором находится мировая клетка worldX/worldY.
+//
+// Это удобно для debug-отображения и любых систем,
+// которым нужно быстро понять, в каком чанке сейчас находится игрок
+// или любой другой объект мира.
+func (w *World) ChunkCoordAt(worldX, worldY int) ChunkCoord {
+	coord, _, _ := worldToChunkLocal(worldX, worldY)
+	return coord
+}
+
+// LoadedChunkCount возвращает текущее количество чанков,
+// которые уже были созданы и находятся в памяти.
+//
+// Это полезно для отладки:
+// можно сразу видеть, как работает ленивое создание чанков
+// и не растёт ли их число слишком быстро.
+func (w *World) LoadedChunkCount() int {
+	return len(w.chunks)
+}
+
+// DrawChunkDebugOverlay рисует поверх мира отладочную сетку чанков.
+//
+// На этом этапе overlay показывает:
+//   - границы чанков более толстыми линиями;
+//   - только ту часть, которая попадает в видимую область камеры.
+//
+// Это помогает визуально увидеть:
+//   - где проходят границы чанков;
+//   - когда игрок пересекает чанк;
+//   - как работает предзагрузка соседних чанков.
+func (w *World) DrawChunkDebugOverlay(screen *ebiten.Image, cameraX, cameraY int) {
+	// Цвет линий чанков делаем заметным,
+	// чтобы они отличались и от обычной сетки, и от тайлов мира.
+	chunkLineColor := color.RGBA{R: 220, G: 180, B: 40, A: 255}
+
+	// Определяем видимую область мира.
+	endX := cameraX + visibleTilesX
+	endY := cameraY + visibleTilesY
+
+	if endX > w.width {
+		endX = w.width
+	}
+	if endY > w.height {
+		endY = w.height
+	}
+
+	// Находим диапазон чанков, которые видны на экране.
+	startChunkX := cameraX / chunkSize
+	startChunkY := cameraY / chunkSize
+	endChunkX := (endX - 1) / chunkSize
+	endChunkY := (endY - 1) / chunkSize
+
+	// Рисуем вертикальные границы чанков.
+	for chunkX := startChunkX; chunkX <= endChunkX+1; chunkX++ {
+		worldX := chunkX * chunkSize
+
+		// Граница может оказаться за пределами мира,
+		// поэтому ограничиваем её.
+		if worldX < cameraX || worldX > endX {
+			continue
+		}
+
+		screenX := float32((worldX - cameraX) * tileSize)
+		vector.StrokeLine(screen, screenX, 0, screenX, float32(screenHeight), 2, chunkLineColor, false)
+	}
+
+	// Рисуем горизонтальные границы чанков.
+	for chunkY := startChunkY; chunkY <= endChunkY+1; chunkY++ {
+		worldY := chunkY * chunkSize
+
+		// Граница может оказаться за пределами мира,
+		// поэтому ограничиваем её.
+		if worldY < cameraY || worldY > endY {
+			continue
+		}
+
+		screenY := float32((worldY - cameraY) * tileSize)
+		vector.StrokeLine(screen, 0, screenY, float32(screenWidth), screenY, 2, chunkLineColor, false)
 	}
 }
 

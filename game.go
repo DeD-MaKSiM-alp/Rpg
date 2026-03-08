@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
@@ -35,6 +37,10 @@ const (
 	// чтобы "добрать" вторую клавишу и превратить одиночное нажатие в диагональное движение.
 	// При 60 FPS значение 6 даёт примерно 100 мс "окно" для набора диагонали.
 	inputBufferTicks = 6
+
+	// debugShowChunkOverlay — включает отладочную отрисовку чанков:
+	// границы чанков и текстовую информацию поверх игрового кадра.
+	debugShowChunkOverlay = true
 )
 
 // Direction представляет намерение игрока двигаться по сетке.
@@ -148,11 +154,53 @@ func (g *Game) Update() error {
 func (g *Game) Draw(screen *ebiten.Image) {
 	// рисуем фон в черном цвете
 	screen.Fill(color.Black)
-	// рисуем тайлы карты
+
+	// Сначала рисуем сам мир.
 	g.world.Draw(screen, g.cameraX, g.cameraY)
+
+	// Затем обычную сетку клеток.
 	g.drawGrid(screen)
-	// рисуем игрока
+
+	// После этого, при включённом debug-режиме,
+	// рисуем границы чанков поверх мира и сетки.
+	if debugShowChunkOverlay {
+		g.world.DrawChunkDebugOverlay(screen, g.cameraX, g.cameraY)
+	}
+
+	// Игрока рисуем уже поверх мира и всех сеток,
+	// чтобы он не терялся за линиями.
 	g.player.Draw(screen, g.cameraX, g.cameraY)
+
+	// В самом конце рисуем текстовую debug-информацию.
+	if debugShowChunkOverlay {
+		g.drawDebugInfo(screen)
+	}
+}
+
+// drawDebugInfo рисует поверх кадра текстовую отладочную информацию.
+//
+// Здесь мы показываем:
+//   - координаты игрока в мире;
+//   - координаты текущего чанка игрока;
+//   - количество чанков, которые уже загружены в память;
+//   - seed мира.
+//
+// Это помогает быстро проверять,
+// как работает перемещение по миру и система чанков.
+func (g *Game) drawDebugInfo(screen *ebiten.Image) {
+	playerChunk := g.world.ChunkCoordAt(g.player.gridX, g.player.gridY)
+
+	debugText := fmt.Sprintf(
+		"Player: (%d, %d)\nChunk: (%d, %d)\nLoaded chunks: %d\nSeed: %d",
+		g.player.gridX,
+		g.player.gridY,
+		playerChunk.x,
+		playerChunk.y,
+		g.world.LoadedChunkCount(),
+		g.world.seed,
+	)
+
+	ebitenutil.DebugPrint(screen, debugText)
 }
 
 // Layout сообщает ebiten, какой логический размер экрана мы хотим использовать.

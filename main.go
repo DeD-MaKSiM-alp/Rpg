@@ -2,6 +2,8 @@ package main
 
 import (
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"log"
 )
 
 // main — точка входа в приложение.
@@ -25,7 +27,9 @@ func main() {
 		player: *NewPlayer(2, 2),
 		world:  NewWorld(mapWidth, mapHeight, worldSeed),
 	}
-	// запускаем основной цикл игры; ebiten дальше сам вызывает
-	// методы Update, Draw и Layout у переданного объекта game
-	ebiten.RunGame(game)
+	// Запускаем основной цикл игры.
+	// Если Ebiten вернёт ошибку, логируем её и завершаем программу.
+	if err := ebiten.RunGame(game); err != nil {
+		log.Fatal(err)
+	}
 }
