@@ -25,10 +25,6 @@ const (
 	// По нему мы переводим координаты в сетке (gridX, gridY) в экранные координаты.
 	tileSize = 48
 
-	// Размер мира в клетках
-	mapWidth  = 50
-	mapHeight = 50
-
 	// Сколько клеток помещается на экране
 	visibleTilesX = screenWidth / tileSize
 	visibleTilesY = screenHeight / tileSize
@@ -80,9 +76,9 @@ type Game struct {
 
 	// world — объект мира.
 	// Game не знает, как именно мир устроен внутри:
-	// одной картой, чанками или позже процедурной генерацией.
+	// одной картой, чанками или позже более сложной генерацией.
 	// Он просто обращается к миру за данными:
-	// можно ли пройти, как рисовать мир и каковы его размеры.
+	// можно ли пройти, как рисовать мир и как работать с чанками.
 	world World
 	// bufferedDirection — текущее "собранное" направление движения игрока.
 	// Например: сначала нажали вправо → {1, 0}, затем успели нажать вниз → станет {1, 1}.
@@ -319,33 +315,15 @@ func (g *Game) TryMovePlayer(dx, dy int) {
 	g.player.Move(dx, dy)
 }
 
+// updateCamera обновляет положение камеры.
+//
+// Теперь мир бесконечный, поэтому камера больше не ограничивается
+// размерами карты справа, снизу, слева или сверху.
+// Она просто старается держать игрока примерно в центре экрана.
+//
+// cameraX и cameraY по-прежнему выражены в клетках мира,
+// а не в пикселях.
 func (g *Game) updateCamera() {
 	g.cameraX = g.player.gridX - visibleTilesX/2
 	g.cameraY = g.player.gridY - visibleTilesY/2
-
-	// Не даём камере уйти влево или вверх за границы карты
-	if g.cameraX < 0 {
-		g.cameraX = 0
-	}
-	if g.cameraY < 0 {
-		g.cameraY = 0
-	}
-
-	// Не даём камере уйти вправо или вниз за границы карты
-	maxCameraX := g.world.Width() - visibleTilesX
-	maxCameraY := g.world.Height() - visibleTilesY
-
-	if maxCameraX < 0 {
-		maxCameraX = 0
-	}
-	if maxCameraY < 0 {
-		maxCameraY = 0
-	}
-
-	if g.cameraX > maxCameraX {
-		g.cameraX = maxCameraX
-	}
-	if g.cameraY > maxCameraY {
-		g.cameraY = maxCameraY
-	}
 }

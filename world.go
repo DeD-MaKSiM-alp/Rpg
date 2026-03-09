@@ -15,17 +15,14 @@ const (
 )
 
 // World хранит мир целиком на уровне логики.
-// Теперь мир состоит не из одной большой карты,
-// а из набора чанков, которые лежат в chunks.
+// Теперь мир состоит из чанков и больше не ограничен
+// фиксированными размерами по ширине и высоте.
 //
-// width и height пока оставляем как общий размер мира в клетках.
-// Это удобно на переходном этапе, пока мир ещё не бесконечный.
+// Это значит:
+//   - чанки могут существовать при любых координатах;
+//   - мир можно бесконечно расширять в любую сторону;
+//   - реальные данные мира создаются лениво по мере необходимости.
 type World struct {
-	// width — полная ширина мира в клетках.
-	width int
-
-	// height — полная высота мира в клетках.
-	height int
 
 	// seed — числовое зерно мира.
 	// Оно влияет на процедурную генерацию:
@@ -60,15 +57,13 @@ type Chunk struct {
 	tiles  [][]TileType
 }
 
-// NewWorld создаёт мир заданного размера в клетках.
+// NewWorld создаёт бесконечный мир.
 //
-// seed определяет конкретный вариант процедурно сгенерированного мира.
-// При одинаковых width, height и seed мир будет одинаковым.
-// При другом seed мир изменится, даже если размеры останутся теми же.
-func NewWorld(width, height, seed int) World {
+// Теперь мир больше не имеет фиксированной ширины и высоты.
+// Мы сохраняем только seed и пустую карту чанков.
+// Сами чанки будут создаваться лениво по мере необходимости.
+func NewWorld(seed int) World {
 	return World{
-		width:  width,
-		height: height,
 		seed:   seed,
 		chunks: make(map[ChunkCoord]*Chunk),
 	}
@@ -92,7 +87,7 @@ func (w *World) getOrCreateChunk(coord ChunkCoord) *Chunk {
 	}
 
 	// Если чанка ещё нет — создаём его.
-	chunk := newChunk(coord.x, coord.y, w.width, w.height, w.seed)
+	chunk := newChunk(coord.x, coord.y, w.seed)
 
 	// Сохраняем новый чанк в world,
 	// чтобы в следующий раз не создавать его повторно.
@@ -103,16 +98,13 @@ func (w *World) getOrCreateChunk(coord ChunkCoord) *Chunk {
 
 // IsWalkable проверяет, можно ли пройти в клетку мира.
 //
-// Теперь проверка выполняется через:
-//  1. проверку границ мира;
-//  2. определение нужного чанка;
-//  3. ленивое создание чанка, если он ещё не существует;
-//  4. чтение локального тайла внутри чанка.
+// Теперь мир бесконечный, поэтому у клетки нет проверки
+// на попадание "внутрь карты".
+// Вместо этого мы всегда:
+//  1. определяем нужный чанк;
+//  2. лениво создаём его, если он ещё не существует;
+//  3. читаем локальный тайл внутри чанка.
 func (w *World) IsWalkable(x, y int) bool {
-	// Если клетка вне мира — пройти туда нельзя.
-	if !w.IsInside(x, y) {
-		return false
-	}
 
 	// Определяем, в каком чанке находится клетка,
 	// и где именно она лежит внутри чанка.
@@ -140,15 +132,10 @@ func (w *World) Draw(screen *ebiten.Image, cameraX, cameraY int) {
 
 	// Вычисляем границы видимой области мира,
 	// которую сейчас показывает камера.
+	// В бесконечном мире этой области достаточно:
+	// обрезать её размерами карты больше не нужно.
 	endX := cameraX + visibleTilesX
 	endY := cameraY + visibleTilesY
-
-	if endX > w.width {
-		endX = w.width
-	}
-	if endY > w.height {
-		endY = w.height
-	}
 
 	// Проходим по всем видимым клеткам мира.
 	for worldY := cameraY; worldY < endY; worldY++ {
@@ -189,10 +176,6 @@ func (w *World) Draw(screen *ebiten.Image, cameraX, cameraY int) {
 //   - radius = 1  -> текущий чанк и все соседи вокруг;
 //   - radius = 2  -> ещё более широкая область.
 func (w *World) PreloadChunksAround(worldX, worldY, radius int) {
-	// Если точка вообще вне мира, ничего не делаем.
-	if !w.IsInside(worldX, worldY) {
-		return
-	}
 
 	// Определяем чанк, в котором находится указанная клетка мира.
 	centerCoord, _, _ := worldToChunkLocal(worldX, worldY)
@@ -202,12 +185,6 @@ func (w *World) PreloadChunksAround(worldX, worldY, radius int) {
 	for chunkY := centerCoord.y - radius; chunkY <= centerCoord.y+radius; chunkY++ {
 		for chunkX := centerCoord.x - radius; chunkX <= centerCoord.x+radius; chunkX++ {
 			coord := ChunkCoord{x: chunkX, y: chunkY}
-
-			// Для конечного мира с координатами от 0 и выше
-			// отрицательные чанки нам не нужны.
-			if coord.x < 0 || coord.y < 0 {
-				continue
-			}
 
 			w.getOrCreateChunk(coord)
 		}
@@ -232,11 +209,6 @@ func (w *World) PreloadChunksAround(worldX, worldY, radius int) {
 // мы работаем именно с координатами чанков,
 // а не с расстоянием в клетках.
 func (w *World) UnloadChunksFarFrom(worldX, worldY, radius int) {
-	// Если точка игрока вне мира, ничего не делаем.
-	// Для текущего конечного мира это безопасная защита.
-	if !w.IsInside(worldX, worldY) {
-		return
-	}
 
 	// Определяем чанк, в котором сейчас находится игрок.
 	centerCoord, _, _ := worldToChunkLocal(worldX, worldY)
@@ -302,18 +274,13 @@ func (w *World) DrawChunkDebugOverlay(screen *ebiten.Image, cameraX, cameraY int
 	endX := cameraX + visibleTilesX
 	endY := cameraY + visibleTilesY
 
-	if endX > w.width {
-		endX = w.width
-	}
-	if endY > w.height {
-		endY = w.height
-	}
-
-	// Находим диапазон чанков, которые видны на экране.
-	startChunkX := cameraX / chunkSize
-	startChunkY := cameraY / chunkSize
-	endChunkX := (endX - 1) / chunkSize
-	endChunkY := (endY - 1) / chunkSize
+	// Определяем диапазон чанков, попадающих в видимую область.
+	// Здесь важно использовать floorDiv(...),
+	// чтобы отрицательные координаты камеры тоже работали корректно.
+	startChunkX := floorDiv(cameraX, chunkSize)
+	startChunkY := floorDiv(cameraY, chunkSize)
+	endChunkX := floorDiv(endX-1, chunkSize)
+	endChunkY := floorDiv(endY-1, chunkSize)
 
 	// Рисуем вертикальные границы чанков.
 	for chunkX := startChunkX; chunkX <= endChunkX+1; chunkX++ {
@@ -344,30 +311,18 @@ func (w *World) DrawChunkDebugOverlay(screen *ebiten.Image, cameraX, cameraY int
 	}
 }
 
-// Width возвращает ширину мира в клетках.
-func (w *World) Width() int {
-	return w.width
-}
-
-// Height возвращает высоту мира в клетках.
-func (w *World) Height() int {
-	return w.height
-}
-
-// newChunk создаёт один чанк мира.
+// newChunk создаёт один чанк бесконечного мира.
 //
-// Теперь чанк больше не копирует старую прямоугольную карту.
-// Вместо этого каждая клетка внутри мира генерируется
-// через отдельную функцию generateTile(...).
+// Теперь у чанка больше нет зависимости от общего размера карты.
+// Любой чанк можно сгенерировать при любых координатах:
+// положительных, нулевых или отрицательных.
 //
-// Что важно на этом этапе:
-//   - генерация детерминированная;
-//   - один и тот же участок мира всегда выглядит одинаково;
-//   - клетки за пределами конечного мира по-прежнему считаются стенами.
-//
-// Позже сюда можно будет добавить seed,
-// более сложные правила генерации, биомы и структуры.
-func newChunk(chunkX, chunkY, worldWidth, worldHeight, seed int) *Chunk {
+// Все клетки чанка генерируются через generateTile(...),
+// а значит содержимое чанка полностью определяется:
+//   - координатами чанка;
+//   - координатами клетки внутри мира;
+//   - seed мира.
+func newChunk(chunkX, chunkY, seed int) *Chunk {
 	chunk := &Chunk{
 		chunkX: chunkX,
 		chunkY: chunkY,
@@ -387,18 +342,9 @@ func newChunk(chunkX, chunkY, worldWidth, worldHeight, seed int) *Chunk {
 			worldX := chunkX*chunkSize + localX
 			worldY := chunkY*chunkSize + localY
 
-			// Если клетка уже вышла за фактический размер мира,
-			// считаем её стеной.
-			// Это нужно для крайних чанков,
-			// которые могут частично выходить за размеры конечного мира.
-			if worldX >= worldWidth || worldY >= worldHeight {
-				chunk.tiles[localY][localX] = TileWall
-				continue
-			}
-
-			// Для всех клеток внутри мира используем отдельную функцию генерации.
-			// Так логика содержимого чанка становится независимой
-			// от самой структуры чанка и её будет проще развивать дальше.
+			// Для бесконечного мира больше нет понятия
+			// "клетка за пределами карты".
+			// Поэтому любую клетку просто генерируем по её мировым координатам.
 			chunk.tiles[localY][localX] = generateTile(worldX, worldY, seed)
 		}
 	}
@@ -406,24 +352,68 @@ func newChunk(chunkX, chunkY, worldWidth, worldHeight, seed int) *Chunk {
 	return chunk
 }
 
+// floorDiv выполняет целочисленное деление с округлением вниз.
+//
+// Это важно для бесконечного мира с отрицательными координатами.
+// Обычное деление в Go для отрицательных чисел округляет к нулю,
+// а нам нужно именно математическое "вниз".
+//
+// Пример:
+//   - floorDiv(37, 16)  = 2
+//   - floorDiv(-1, 16)  = -1
+//   - floorDiv(-17, 16) = -2
+func floorDiv(a, b int) int {
+	result := a / b
+	remainder := a % b
+
+	// Если есть остаток и знак результата должен сместиться вниз,
+	// уменьшаем частное на единицу.
+	if remainder != 0 && ((remainder > 0) != (b > 0)) {
+		result--
+	}
+
+	return result
+}
+
+// positiveMod возвращает неотрицательный остаток от деления.
+//
+// Для бесконечного мира это нужно,
+// чтобы локальные координаты внутри чанка всегда оставались в диапазоне:
+//
+//	0 <= local < chunkSize
+//
+// Пример:
+//   - positiveMod(5, 16)   = 5
+//   - positiveMod(-1, 16)  = 15
+//   - positiveMod(-17, 16) = 15
+func positiveMod(a, b int) int {
+	result := a % b
+	if result < 0 {
+		result += b
+	}
+	return result
+}
+
 // worldToChunkLocal переводит мировые координаты клетки
 // в две части:
 //  1. координаты чанка, в котором находится клетка;
 //  2. локальные координаты клетки внутри этого чанка.
 //
-// Пример:
-// при chunkSize = 16 и worldX = 37:
-//   - chunkX = 2
-//   - localX = 5
+// Эта версия корректно работает и для отрицательных координат мира.
+//
+// Примеры при chunkSize = 16:
+//   - worldX = 37   -> chunkX = 2,  localX = 5
+//   - worldX = -1   -> chunkX = -1, localX = 15
+//   - worldX = -17  -> chunkX = -2, localX = 15
 func worldToChunkLocal(worldX, worldY int) (ChunkCoord, int, int) {
-	// Находим номер чанка,
-	// в который попадает клетка мира.
-	chunkX := worldX / chunkSize
-	chunkY := worldY / chunkSize
+	// Для бесконечного мира с отрицательными координатами
+	// обычных / и % недостаточно:
+	// они дают корректный результат только для worldX/worldY >= 0.
+	chunkX := floorDiv(worldX, chunkSize)
+	chunkY := floorDiv(worldY, chunkSize)
 
-	// Находим локальную позицию клетки внутри чанка.
-	localX := worldX % chunkSize
-	localY := worldY % chunkSize
+	localX := positiveMod(worldX, chunkSize)
+	localY := positiveMod(worldY, chunkSize)
 
 	return ChunkCoord{x: chunkX, y: chunkY}, localX, localY
 }
@@ -463,11 +453,4 @@ func generateTile(worldX, worldY, seed int) TileType {
 	}
 
 	return TileFloor
-}
-
-// IsInside проверяет, лежит ли клетка внутри границ мира.
-// Здесь мы работаем именно с мировыми координатами,
-// а не с координатами экрана и не с координатами внутри чанка.
-func (w *World) IsInside(x, y int) bool {
-	return x >= 0 && x < w.width && y >= 0 && y < w.height
 }
