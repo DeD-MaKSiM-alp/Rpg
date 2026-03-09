@@ -17,16 +17,19 @@ const (
 
 // BattleUnit — runtime-сущность боя (не world entity, не template).
 type BattleUnit struct {
-	ID     UnitID
-	Name   string
-	Team   TeamID
-	Slot   int
-	MaxHP  int
-	HP     int
-	Attack int
-	Defense int
-	Initiative int
-	Alive  bool
+	ID          UnitID
+	Name        string
+	Team        TeamID
+	Slot        int
+	Row         RowType
+	MaxHP       int
+	HP          int
+	Attack      int
+	Defense     int
+	Initiative  int
+	Alive       bool
+	Ranged      bool // юнит-архетип: дальняя атака (переопределяет ability.Range для targeting)
+	Abilities   []AbilityID
 	SourceEnemyID entity.EntityID // только для врагов
 }
 

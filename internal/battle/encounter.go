@@ -39,6 +39,7 @@ type BattleUnitSeed struct {
 	Attack        int
 	Defense       int
 	Initiative    int
+	IsRanged      bool
 	SourceEnemyID entity.EntityID
 }
 
@@ -51,6 +52,7 @@ func BuildBattleUnitSeed(e EncounterEnemy) BattleUnitSeed {
 		Attack:        tpl.Attack,
 		Defense:       tpl.Defense,
 		Initiative:    tpl.Initiative,
+		IsRanged:      tpl.IsRanged,
 		SourceEnemyID: e.WorldEnemyID,
 	}
 }

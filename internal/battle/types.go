@@ -8,9 +8,11 @@ const (
 	PhaseTurnStart
 	PhaseAwaitAction
 	PhaseTurnResolve
+	PhaseActionPause
 	PhaseTurnEnd
 	PhaseRoundEnd
-	PhaseFinished
+	PhaseFinishedWaitInput
+	PhaseFinished // legacy; переход через PhaseFinishedWaitInput
 )
 
 // Result — итог боя.
@@ -32,12 +34,12 @@ const (
 	BattlePhaseFinished
 )
 
-// BattleAction описывает результат одного обновления боя (внешний API для Game).
-type BattleAction int
+// BattleOutcome — результат одного обновления боя (внешний API для Game).
+type BattleOutcome int
 
 const (
-	BattleActionNone BattleAction = iota
-	BattleActionVictory
-	BattleActionDefeat
-	BattleActionRetreat
+	BattleOutcomeNone BattleOutcome = iota
+	BattleOutcomeVictory
+	BattleOutcomeDefeat
+	BattleOutcomeRetreat
 )

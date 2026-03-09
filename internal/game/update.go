@@ -83,34 +83,34 @@ func (g *Game) updateBattleMode() {
 		return
 	}
 
-	action := g.battle.Update()
+	outcome := g.battle.Update()
 
-	switch action {
-	case battlepkg.BattleActionVictory:
-		g.resolveBattleResult(action)
+	switch outcome {
+	case battlepkg.BattleOutcomeVictory:
+		g.resolveBattleResult(outcome)
 		g.endBattle()
 		return
-	case battlepkg.BattleActionDefeat:
-		g.resolveBattleResult(action)
+	case battlepkg.BattleOutcomeDefeat:
+		g.resolveBattleResult(outcome)
 		g.endBattle()
 		return
-	case battlepkg.BattleActionRetreat:
-		g.resolveBattleResult(action)
+	case battlepkg.BattleOutcomeRetreat:
+		g.resolveBattleResult(outcome)
 		g.endBattle()
 		return
-	case battlepkg.BattleActionNone:
+	case battlepkg.BattleOutcomeNone:
 		return
 	}
 }
 
 // resolveBattleResult применяет результат боя к миру (удаление врагов при победе и т.д.).
-func (g *Game) resolveBattleResult(action battlepkg.BattleAction) {
-	switch action {
-	case battlepkg.BattleActionVictory:
+func (g *Game) resolveBattleResult(outcome battlepkg.BattleOutcome) {
+	switch outcome {
+	case battlepkg.BattleOutcomeVictory:
 		for _, e := range g.battle.Encounter.Enemies {
 			g.world.RemoveEnemy(e.WorldEnemyID)
 		}
-	case battlepkg.BattleActionDefeat, battlepkg.BattleActionRetreat:
+	case battlepkg.BattleOutcomeDefeat, battlepkg.BattleOutcomeRetreat:
 		// Пока ничего не делаем; позже: respawn, потеря прогресса и т.д.
 	}
 }

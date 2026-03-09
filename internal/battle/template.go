@@ -12,6 +12,7 @@ type EnemyTemplate struct {
 	Attack     int
 	Defense    int
 	Initiative int
+	IsRanged   bool
 }
 
 // GetEnemyTemplate возвращает шаблон врага по kind.
@@ -25,6 +26,7 @@ func GetEnemyTemplate(kind entity.EnemyKind) EnemyTemplate {
 			Attack:     1,
 			Defense:    0,
 			Initiative: 1,
+			IsRanged:   false,
 		}
 	case entity.EnemyKindWolf:
 		return EnemyTemplate{
@@ -34,6 +36,7 @@ func GetEnemyTemplate(kind entity.EnemyKind) EnemyTemplate {
 			Attack:     2,
 			Defense:    1,
 			Initiative: 2,
+			IsRanged:   true,
 		}
 	case entity.EnemyKindBandit:
 		return EnemyTemplate{
@@ -43,6 +46,7 @@ func GetEnemyTemplate(kind entity.EnemyKind) EnemyTemplate {
 			Attack:     2,
 			Defense:    1,
 			Initiative: 2,
+			IsRanged:   false,
 		}
 	default:
 		return EnemyTemplate{
@@ -52,6 +56,7 @@ func GetEnemyTemplate(kind entity.EnemyKind) EnemyTemplate {
 			Attack:     1,
 			Defense:    0,
 			Initiative: 1,
+			IsRanged:   false,
 		}
 	}
 }

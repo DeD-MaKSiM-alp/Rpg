@@ -1,6 +1,7 @@
 package battle
 
 import (
+	"fmt"
 	"sort"
 
 	"mygame/world"
@@ -16,8 +17,9 @@ type BattleContext struct {
 	TurnIndex int
 	Round     int
 
-	Phase  Phase
-	Result Result
+	Phase      Phase
+	Result     Result
+	PhaseTimer int // кадры до перехода к следующей фазе
 
 	LastLog string
 
@@ -40,38 +42,52 @@ func BuildBattleContextFromEncounter(enc Encounter) *BattleContext {
 		LastLog:   "Бой начался.",
 	}
 
-	// Player team
+	// Player team (player front row)
 	playerUnit := &BattleUnit{
 		ID:         UnitID(1),
 		Name:       "Игрок",
 		Team:       TeamPlayer,
 		Slot:       0,
+		Row:        RowFront,
 		MaxHP:      10,
 		HP:         10,
 		Attack:     2,
 		Defense:    0,
 		Initiative: 2,
 		Alive:      true,
+		Ranged:     false,
+		Abilities:  []AbilityID{AbilityBasicAttack},
 	}
 	ctx.Units[playerUnit.ID] = playerUnit
 	ctx.Teams[TeamPlayer] = &BattleTeam{ID: TeamPlayer, Units: []UnitID{playerUnit.ID}}
 
-	// Enemy team
+	// Enemy team (first MaxFrontRowUnits in front, rest in back)
 	enemyUnits := make([]UnitID, 0, len(enc.Enemies))
 	for i, e := range enc.Enemies {
 		seed := BuildBattleUnitSeed(e)
 		uid := UnitID(2 + i)
+		row := RowFront
+		if i >= MaxFrontRowUnits {
+			row = RowBack
+		}
+		abil := AbilityBasicAttack
+		if seed.IsRanged {
+			abil = AbilityRangedAttack
+		}
 		u := &BattleUnit{
 			ID:             uid,
 			Name:           seed.Name,
 			Team:           TeamEnemy,
 			Slot:           i,
+			Row:            row,
 			MaxHP:          seed.MaxHP,
 			HP:             seed.MaxHP,
 			Attack:         seed.Attack,
 			Defense:        seed.Defense,
 			Initiative:     seed.Initiative,
 			Alive:          true,
+			Ranged:         seed.IsRanged,
+			Abilities:      []AbilityID{abil},
 			SourceEnemyID:  seed.SourceEnemyID,
 		}
 		ctx.Units[uid] = u
@@ -115,9 +131,9 @@ func BuildTurnOrder(ctx *BattleContext) []UnitID {
 	return out
 }
 
-// ActiveUnitID возвращает ID активного юнита.
+// ActiveUnitID возвращает ID активного юнита (в PhaseTurnStart, PhaseAwaitAction, PhaseTurnResolve, PhaseActionPause).
 func (c *BattleContext) ActiveUnitID() UnitID {
-	if c.Phase != PhaseAwaitAction && c.Phase != PhaseTurnResolve {
+	if c.Phase != PhaseTurnStart && c.Phase != PhaseAwaitAction && c.Phase != PhaseTurnResolve && c.Phase != PhaseActionPause {
 		return 0
 	}
 	if c.TurnIndex < 0 || c.TurnIndex >= len(c.TurnOrder) {
@@ -161,16 +177,16 @@ func (c *BattleContext) TeamAlive(team TeamID) bool {
 	return len(c.LivingUnits(team)) > 0
 }
 
-// UpdateResultIfFinished проверяет конец боя и выставляет Result.
+// UpdateResultIfFinished проверяет конец боя и выставляет Result (Phase не меняет).
 func (c *BattleContext) UpdateResultIfFinished() {
 	if !c.TeamAlive(TeamPlayer) {
 		c.Result = ResultDefeat
-		c.Phase = PhaseFinished
+		c.LastLog = "Поражение."
 		return
 	}
 	if !c.TeamAlive(TeamEnemy) {
 		c.Result = ResultVictory
-		c.Phase = PhaseFinished
+		c.LastLog = "Победа!"
 		return
 	}
 }
@@ -199,9 +215,9 @@ func (c *BattleContext) AdvanceTurn() {
 	c.Phase = PhaseTurnStart
 }
 
-// Phase возвращает BattlePhase для UI (ход игрока / ход врага / завершён).
+// DisplayPhase возвращает BattlePhase для UI (ход игрока / ход врага / завершён).
 func (c *BattleContext) DisplayPhase() BattlePhase {
-	if c.Phase == PhaseFinished || c.Result != ResultNone {
+	if c.Phase == PhaseFinished || c.Phase == PhaseFinishedWaitInput || c.Result != ResultNone {
 		return BattlePhaseFinished
 	}
 	u := c.ActiveUnit()
@@ -232,15 +248,121 @@ func (c *BattleContext) EnemyHP() int {
 	return live[0].HP
 }
 
-// ToBattleAction возвращает BattleAction для Game (Result -> внешний API).
-func (c *BattleContext) ToBattleAction() BattleAction {
+// CanPlayerActNow возвращает true, если сейчас ход игрока и можно выполнить действие.
+func (c *BattleContext) CanPlayerActNow() bool {
+	if c.Phase != PhaseAwaitAction || c.Result != ResultNone {
+		return false
+	}
+	u := c.ActiveUnit()
+	return u != nil && u.IsAlive() && u.Team == TeamPlayer
+}
+
+// ActiveUnitName возвращает имя активного юнита для UI.
+func (c *BattleContext) ActiveUnitName() string {
+	u := c.ActiveUnit()
+	if u == nil {
+		return "-"
+	}
+	return u.Name
+}
+
+// ActiveUnitTeamName возвращает "Player" или "Enemy" для активного юнита.
+func (c *BattleContext) ActiveUnitTeamName() string {
+	u := c.ActiveUnit()
+	if u == nil {
+		return "-"
+	}
+	if u.Team == TeamPlayer {
+		return "Player"
+	}
+	return "Enemy"
+}
+
+// PhaseString возвращает строковое представление фазы для debug.
+func (c *BattleContext) PhaseString() string {
+	switch c.Phase {
+	case PhaseStart:
+		return "Start"
+	case PhaseTurnStart:
+		return "TurnStart"
+	case PhaseAwaitAction:
+		return "AwaitAction"
+	case PhaseTurnResolve:
+		return "TurnResolve"
+	case PhaseActionPause:
+		return "ActionPause"
+	case PhaseTurnEnd:
+		return "TurnEnd"
+	case PhaseRoundEnd:
+		return "RoundEnd"
+	case PhaseFinishedWaitInput:
+		return "FinishedWaitInput"
+	case PhaseFinished:
+		return "Finished"
+	}
+	return "?"
+}
+
+// ResultString возвращает строковое представление результата боя.
+func (c *BattleContext) ResultString() string {
 	switch c.Result {
 	case ResultVictory:
-		return BattleActionVictory
+		return "Victory"
 	case ResultDefeat:
-		return BattleActionDefeat
+		return "Defeat"
 	case ResultEscape:
-		return BattleActionRetreat
+		return "Escape"
 	}
-	return BattleActionNone
+	return "-"
+}
+
+// FormationSummary возвращает краткое описание построения для UI.
+func (c *BattleContext) FormationSummary() string {
+	pf := len(c.LivingUnitsInRow(TeamPlayer, RowFront))
+	pb := len(c.LivingUnitsInRow(TeamPlayer, RowBack))
+	ef := len(c.LivingUnitsInRow(TeamEnemy, RowFront))
+	eb := len(c.LivingUnitsInRow(TeamEnemy, RowBack))
+	return fmt.Sprintf("Player: %d front, %d back | Enemy: %d front, %d back", pf, pb, ef, eb)
+}
+
+// ToBattleOutcome возвращает BattleOutcome для Game (Result -> внешний API).
+func (c *BattleContext) ToBattleOutcome() BattleOutcome {
+	switch c.Result {
+	case ResultVictory:
+		return BattleOutcomeVictory
+	case ResultDefeat:
+		return BattleOutcomeDefeat
+	case ResultEscape:
+		return BattleOutcomeRetreat
+	}
+	return BattleOutcomeNone
+}
+
+// ApplyActionResult вызывается после ResolveAbility: логи/анимации и UpdateResultIfFinished.
+func (c *BattleContext) ApplyActionResult(r ActionResult) {
+	if r.Actor == 0 {
+		return
+	}
+	actor := c.Units[r.Actor]
+	if r.Target != 0 {
+		target := c.Units[r.Target]
+		if actor != nil && target != nil && r.Damage > 0 {
+			c.LastLog = logActionResult(actor, target, r)
+		}
+	}
+	c.UpdateResultIfFinished()
+}
+
+func logActionResult(actor, target *BattleUnit, r ActionResult) string {
+	if r.Killed {
+		return actor.Name + " победил " + target.Name + "."
+	}
+	return formatDamageLog(actor.Name, target.Name, r.Damage)
+}
+
+func formatDamageLog(actorName, targetName string, damage int) string {
+	if damage <= 0 {
+		return actorName + " атаковал " + targetName + "."
+	}
+	return fmt.Sprintf("%s атаковал %s на %d урона.", actorName, targetName, damage)
 }

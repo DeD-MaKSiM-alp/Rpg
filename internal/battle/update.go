@@ -1,128 +1,124 @@
 package battle
 
 import (
-	"fmt"
-
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
+const actionPauseFrames = 30
+
 // Update обрабатывает один кадр боевого режима и возвращает итог.
-func (b *BattleContext) Update() BattleAction {
+func (b *BattleContext) Update() BattleOutcome {
 	if b == nil {
-		return BattleActionNone
+		return BattleOutcomeNone
+	}
+
+	// PhaseFinishedWaitInput: ждём подтверждения (SPACE/ENTER) перед закрытием.
+	if b.Phase == PhaseFinishedWaitInput {
+		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			return b.ToBattleOutcome()
+		}
+		return BattleOutcomeNone
+	}
+
+	// Защита: бой завершён (legacy PhaseFinished) — вернуть outcome.
+	if b.Phase == PhaseFinished {
+		return b.ToBattleOutcome()
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		b.Result = ResultEscape
-		b.Phase = PhaseFinished
 		b.LastLog = "Игрок покинул бой."
-		return BattleActionRetreat
+		b.Phase = PhaseFinishedWaitInput
+		return BattleOutcomeNone
 	}
 
 	switch b.Phase {
 	case PhaseStart:
 		b.Phase = PhaseTurnStart
-		return BattleActionNone
+		return BattleOutcomeNone
 
 	case PhaseTurnStart:
 		b.UpdateResultIfFinished()
 		if b.IsFinished() {
-			return b.ToBattleAction()
+			b.Phase = PhaseFinishedWaitInput
+			return BattleOutcomeNone
 		}
-		// Пропуск мёртвых в начале очереди
 		for b.TurnIndex < len(b.TurnOrder) {
 			u := b.ActiveUnit()
 			if u != nil && u.IsAlive() {
 				b.Phase = PhaseAwaitAction
-				return BattleActionNone
+				return BattleOutcomeNone
 			}
 			b.TurnIndex++
 		}
 		b.Phase = PhaseRoundEnd
-		return BattleActionNone
+		return BattleOutcomeNone
 
 	case PhaseAwaitAction:
 		active := b.ActiveUnit()
 		if active == nil || !active.IsAlive() {
 			b.Phase = PhaseTurnEnd
-			return BattleActionNone
+			return BattleOutcomeNone
 		}
 		if active.Team == TeamPlayer {
-			if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-				b.SubmitPlayerAttack()
-				b.Phase = PhaseTurnResolve
+			if b.CanPlayerActNow() && inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+				action, ok := BuildFirstAvailablePlayerAction(b, active)
+				if ok {
+					result := ResolveAbility(b, action)
+					b.ApplyActionResult(result)
+					b.Phase = PhaseTurnResolve
+				}
 			}
 		} else {
-			b.ExecuteEnemyAutoAction()
+			action, ok := BuildEnemyAction(b, active)
+			if ok {
+				result := ResolveAbility(b, action)
+				b.ApplyActionResult(result)
+			}
 			b.Phase = PhaseTurnResolve
 		}
-		return BattleActionNone
+		return BattleOutcomeNone
+
+	case PhaseActionPause:
+		b.PhaseTimer--
+		if b.PhaseTimer <= 0 {
+			if b.IsFinished() {
+				b.Phase = PhaseFinishedWaitInput
+			} else {
+				b.Phase = PhaseTurnEnd
+			}
+		}
+		return BattleOutcomeNone
 
 	case PhaseTurnResolve:
 		b.UpdateResultIfFinished()
-		if b.IsFinished() {
-			return b.ToBattleAction()
-		}
-		b.Phase = PhaseTurnEnd
-		return BattleActionNone
+		b.PhaseTimer = actionPauseFrames
+		b.Phase = PhaseActionPause
+		return BattleOutcomeNone
 
 	case PhaseTurnEnd:
+		b.UpdateResultIfFinished()
 		if b.IsFinished() {
-			return b.ToBattleAction()
+			b.Phase = PhaseFinishedWaitInput
+			return BattleOutcomeNone
 		}
 		b.AdvanceTurn()
+		b.UpdateResultIfFinished()
 		if b.IsFinished() {
-			return b.ToBattleAction()
+			b.Phase = PhaseFinishedWaitInput
+			return BattleOutcomeNone
 		}
 		b.Phase = PhaseTurnStart
-		return BattleActionNone
+		return BattleOutcomeNone
 
 	case PhaseRoundEnd:
 		b.Phase = PhaseTurnStart
-		return BattleActionNone
+		return BattleOutcomeNone
 
 	case PhaseFinished:
-		return b.ToBattleAction()
+		return b.ToBattleOutcome()
 	}
 
-	return BattleActionNone
-}
-
-// SubmitPlayerAttack — базовая атака игрока (Space).
-func (b *BattleContext) SubmitPlayerAttack() {
-	attacker := b.ActiveUnit()
-	if attacker == nil || attacker.Team != TeamPlayer {
-		return
-	}
-	targets := b.LivingUnits(TeamEnemy)
-	if len(targets) == 0 {
-		return
-	}
-	target := targets[0]
-	damage := attacker.Attack - target.Defense
-	if damage < 1 {
-		damage = 1
-	}
-	target.ApplyDamage(attacker.Attack)
-	b.LastLog = fmt.Sprintf("Игрок атаковал %s на %d урона.", target.Name, damage)
-}
-
-// ExecuteEnemyAutoAction — враг атакует первую живую цель игрока.
-func (b *BattleContext) ExecuteEnemyAutoAction() {
-	attacker := b.ActiveUnit()
-	if attacker == nil || attacker.Team != TeamEnemy {
-		return
-	}
-	targets := b.LivingUnits(TeamPlayer)
-	if len(targets) == 0 {
-		return
-	}
-	target := targets[0]
-	damage := attacker.Attack - target.Defense
-	if damage < 1 {
-		damage = 1
-	}
-	target.ApplyDamage(attacker.Attack)
-	b.LastLog = fmt.Sprintf("%s атаковал игрока на %d урона.", attacker.Name, damage)
+	return BattleOutcomeNone
 }
