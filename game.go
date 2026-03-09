@@ -65,8 +65,18 @@ type Direction struct {
 	dy int // изменение координаты игрока по Y в клетках
 }
 
+/*
+GameMode представляет состояние игры:
+- ModeExplore — исследовательский режим, где игрок может двигаться и собирать предметы;
+- ModeBattle — боевой режим, где игрок может сражаться с врагом.
+*/
 type GameMode int
 
+/*
+Константы для GameMode:
+- ModeExplore — исследовательский режим, где игрок может двигаться и собирать предметы;
+- ModeBattle — боевой режим, где игрок может сражаться с врагом.
+*/
 const (
 	ModeExplore GameMode = iota
 	ModeBattle
@@ -120,6 +130,11 @@ type Game struct {
 	battle *BattleContext
 }
 
+/*
+Update обрабатывает один кадр игры:
+- Если режим — боевой, обновляет бой;
+- Иначе обновляет исследовательский режим.
+*/
 func (g *Game) Update() error {
 	if g.mode == ModeBattle {
 		g.updateBattleMode()
@@ -226,6 +241,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 }
 
+/*
+drawBattleOverlay рисует поверх кадра HUD для боевого режима.
+- Затемняет фон;
+- Рисует центральную панель;
+- Показывает ID активного врага;
+- Показывает кнопки для победы и отступления.
+*/
 func (g *Game) drawBattleOverlay(screen *ebiten.Image) {
 	overlayColor := color.RGBA{R: 0, G: 0, B: 0, A: 180}
 	panelColor := color.RGBA{R: 40, G: 40, B: 40, A: 255}
@@ -269,7 +291,7 @@ func (g *Game) drawBattleOverlay(screen *ebiten.Image) {
 
 	text.Draw(
 		screen,
-		"B - win test battle and remove enemy",
+		"B - test victory",
 		g.hudFace,
 		bodyOp,
 	)
@@ -280,7 +302,7 @@ func (g *Game) drawBattleOverlay(screen *ebiten.Image) {
 
 	text.Draw(
 		screen,
-		"Esc - leave battle mode without removing enemy",
+		"Esc - retreat from battle",
 		g.hudFace,
 		bodyOp2,
 	)
@@ -392,6 +414,12 @@ func mergeDirections(a, b Direction) Direction {
 	return result
 }
 
+/*
+startBattle начинает новый боевой режим с указанным врагом.
+- Устанавливает режим игры в ModeBattle;
+- Создаёт новый контекст боя;
+- Сбрасывает буфер ввода движения, чтобы после выхода из боя старый ввод не сработал неожиданно.
+*/
 func (g *Game) startBattle(enemyID world.EntityID) {
 	g.mode = ModeBattle
 
@@ -409,6 +437,9 @@ func (g *Game) startBattle(enemyID world.EntityID) {
 	g.bufferedDirection = Direction{}
 }
 
+/*
+endBattle завершает боевой режим и возвращает игру в режим исследования мира.
+*/
 func (g *Game) endBattle() {
 	g.mode = ModeExplore
 
@@ -417,6 +448,13 @@ func (g *Game) endBattle() {
 	g.battle = nil
 }
 
+/*
+updateBattleMode обрабатывает один кадр боевого режима:
+- читает ввод игрока;
+- обновляет контекст боя;
+- обрабатывает результаты боя;
+- вызывает методы Game для обновления состояния игры.
+*/
 func (g *Game) updateBattleMode() {
 	// Страховка:
 	// если по какой-то причине игра находится в ModeBattle,
@@ -426,20 +464,39 @@ func (g *Game) updateBattleMode() {
 		return
 	}
 
-	// B = тестовая победа над врагом.
-	if inpututil.IsKeyJustPressed(ebiten.KeyB) {
+	// Делегируем обновление самому боевому контексту.
+	// Game не должен знать детали боевых кнопок и правил.
+	action := g.battle.Update()
+
+	switch action {
+	case BattleActionVictory:
+		// Пока победа тестовая:
+		// просто удаляем врага из мира и выходим из боя.
 		g.world.RemoveEnemy(g.battle.EnemyID)
 		g.endBattle()
 		return
-	}
 
-	// Escape = выйти из battle mode без победы.
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	case BattleActionRetreat:
+		// Пока "отступление" просто закрывает боевой режим
+		// без изменения врага в мире.
 		g.endBattle()
+		return
+
+	case BattleActionNone:
+		// Ничего не произошло — остаёмся в бою.
 		return
 	}
 }
 
+/*
+TryMovePlayer пытается переместить игрока на одну клетку в заданном направлении.
+- Проверяет, не находится ли игрок на клетке с врагом;
+- Проверяет, можно ли двигаться на эту клетку;
+- Перемещает игрока;
+- Собирает pickup, если есть;
+- Продвигает мир на один ход, чтобы враги могли двигаться.
+- Если на клетке с врагом, начинает бой.
+*/
 func (g *Game) TryMovePlayer(dx, dy int) {
 	nextX := g.player.gridX + dx
 	nextY := g.player.gridY + dy
