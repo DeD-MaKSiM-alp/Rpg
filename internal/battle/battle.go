@@ -1,4 +1,4 @@
-package main
+package battle
 
 import (
 	"mygame/world"
@@ -42,4 +42,3 @@ func NewBattleContext(enemyID world.EntityID) *BattleContext {
 		LastLog:  "Бой начался. Ход игрока.",
 	}
 }
-

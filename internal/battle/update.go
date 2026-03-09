@@ -1,4 +1,4 @@
-package main
+package battle
 
 import (
 	"github.com/hajimehoshi/ebiten/v2"

@@ -1,4 +1,4 @@
-package main
+package ui
 
 import (
 	"bytes"
@@ -15,11 +15,11 @@ import (
 //go:embed assets/fonts/*.ttf
 var hudFontFS embed.FS
 
-// loadHUDFace создаёт шрифт для HUD и боевого overlay.
+// LoadHUDFace создаёт шрифт для HUD и боевого overlay.
 //
 // Размер 14 лучше подходит для плотного интерфейса:
 // текст остаётся читаемым, но не выглядит слишком громоздким.
-func loadHUDFace() *text.GoTextFace {
+func LoadHUDFace() *text.GoTextFace {
 	hudFontBytes, err := hudFontFS.ReadFile("assets/fonts/JetBrainsMono-Regular.ttf")
 	if err != nil {
 		log.Fatalf("failed to read HUD font: %v", err)

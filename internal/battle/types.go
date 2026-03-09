@@ -1,4 +1,4 @@
-package main
+package battle
 
 // BattlePhase описывает текущую фазу боя.
 //
