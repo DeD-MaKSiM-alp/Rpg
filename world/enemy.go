@@ -156,7 +156,7 @@ func manhattanDistance(ax, ay, bx, by int) int {
 	return dx + dy
 }
 
-func (w *World) AdvanceTurn(playerX, playerY int) {
+func (w *World) AdvanceTurn(playerX, playerY int) (EntityID, bool) {
 	// Чтобы поведение не зависело от случайного порядка обхода map,
 	// сначала собираем врагов в срез.
 	enemies := make([]*Entity, 0, len(w.entities))
@@ -194,26 +194,54 @@ func (w *World) AdvanceTurn(playerX, playerY int) {
 			dy = -1
 		}
 
-		// Сначала пытаемся идти по диагонали,
-		// если игрок смещён и по X, и по Y.
+		// 1) Сначала пробуем диагональ.
 		if dx != 0 && dy != 0 {
-			if w.tryMoveEnemy(enemy, enemy.X+dx, enemy.Y+dy, playerX, playerY) {
+			nextX := enemy.X + dx
+			nextY := enemy.Y + dy
+
+			// Если диагональная цель — клетка игрока,
+			// значит враг дошёл до игрока и начинается бой.
+			if isPlayerTile(nextX, nextY, playerX, playerY) {
+				return enemy.ID, true
+			}
+
+			if w.tryMoveEnemy(enemy, nextX, nextY, playerX, playerY) {
 				continue
 			}
 		}
 
-		// Если диагональ не получилась — пробуем по X.
+		// 2) Если диагональ не получилась — пробуем по X.
 		if dx != 0 {
-			if w.tryMoveEnemy(enemy, enemy.X+dx, enemy.Y, playerX, playerY) {
+			nextX := enemy.X + dx
+			nextY := enemy.Y
+
+			if isPlayerTile(nextX, nextY, playerX, playerY) {
+				return enemy.ID, true
+			}
+
+			if w.tryMoveEnemy(enemy, nextX, nextY, playerX, playerY) {
 				continue
 			}
 		}
 
-		// Если по X тоже не получилось — пробуем по Y.
+		// 3) Если по X не получилось — пробуем по Y.
 		if dy != 0 {
-			if w.tryMoveEnemy(enemy, enemy.X, enemy.Y+dy, playerX, playerY) {
+			nextX := enemy.X
+			nextY := enemy.Y + dy
+
+			if isPlayerTile(nextX, nextY, playerX, playerY) {
+				return enemy.ID, true
+			}
+
+			if w.tryMoveEnemy(enemy, nextX, nextY, playerX, playerY) {
 				continue
 			}
 		}
 	}
+
+	return 0, false
+}
+
+func isPlayerTile(nextX, nextY, playerX, playerY int) bool {
+	return nextX == playerX && nextY == playerY
 }

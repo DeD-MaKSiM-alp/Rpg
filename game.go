@@ -450,7 +450,10 @@ func (g *Game) TryMovePlayer(dx, dy int) {
 		g.pickupCount++
 	}
 
-	g.world.AdvanceTurn(g.player.gridX, g.player.gridY)
+	enemyID, startedBattle := g.world.AdvanceTurn(g.player.gridX, g.player.gridY)
+	if startedBattle {
+		g.startBattle(enemyID)
+	}
 }
 
 // updateCamera обновляет положение камеры.
