@@ -38,6 +38,8 @@ func newChunk(chunkX, chunkY, seed int) *Chunk {
 		}
 	}
 
+	chunk.pickups = generatePickupsForChunk(chunkX, chunkY, seed, chunk.tiles)
+
 	return chunk
 }
 

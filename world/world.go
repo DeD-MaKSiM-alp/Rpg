@@ -38,9 +38,10 @@ type ChunkCoord struct {
 // chunkX/chunkY — это не координаты клетки игрока,
 // а позиция чанка среди других чанков мира.
 type Chunk struct {
-	chunkX int
-	chunkY int
-	tiles  [][]TileType
+	chunkX  int
+	chunkY  int
+	tiles   [][]TileType
+	pickups []Pickup
 }
 
 // NewWorld создаёт новый бесконечный мир с указанным seed.

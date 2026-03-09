@@ -65,6 +65,26 @@ func (w *World) Draw(screen *ebiten.Image, cameraX, cameraY, visibleTilesX, visi
 			vector.FillRect(screen, screenX, screenY, float32(tileSize), float32(tileSize), tileColor, false)
 		}
 	}
+
+	pickupColor := color.RGBA{R: 240, G: 220, B: 60, A: 255}
+	pickupSize := float32(tileSize / 2)
+
+	for _, chunk := range w.chunks {
+		for _, pickup := range chunk.pickups {
+			if pickup.Collected {
+				continue
+			}
+
+			if pickup.X < cameraX || pickup.X >= endX || pickup.Y < cameraY || pickup.Y >= endY {
+				continue
+			}
+
+			screenX := float32((pickup.X-cameraX)*tileSize) + float32(tileSize)/4
+			screenY := float32((pickup.Y-cameraY)*tileSize) + float32(tileSize)/4
+
+			vector.FillRect(screen, screenX, screenY, pickupSize, pickupSize, pickupColor, false)
+		}
+	}
 }
 
 // DrawChunkDebugOverlay рисует поверх мира отладочную сетку чанков.

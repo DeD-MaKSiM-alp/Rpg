@@ -7,6 +7,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	text "github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"mygame/world"
@@ -38,7 +39,7 @@ const (
 
 	// debugShowChunkOverlay — включает отладочную отрисовку чанков:
 	// границы чанков и текстовую информацию поверх игрового кадра.
-	debugShowChunkOverlay = true
+	debugShowChunkOverlay = false
 
 	// chunkPreloadRadius — радиус предзагрузки чанков вокруг игрока.
 	// Эти чанки создаются заранее, чтобы при движении по миру
@@ -100,6 +101,10 @@ type Game struct {
 	// размером visibleTilesX на visibleTilesY клеток.
 	cameraX int
 	cameraY int
+
+	pickupCount int
+
+	hudFace *text.GoXFace
 }
 
 // Update — главный "тик" логики игры.
@@ -194,6 +199,17 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	if debugShowChunkOverlay {
 		g.drawDebugInfo(screen)
 	}
+
+	op := &text.DrawOptions{}
+	op.GeoM.Translate(10, 20)
+	op.ColorScale.ScaleWithColor(color.White)
+
+	text.Draw(
+		screen,
+		fmt.Sprintf("Pickups: %d", g.pickupCount),
+		g.hudFace,
+		op,
+	)
 }
 
 // drawDebugInfo рисует поверх кадра текстовую отладочную информацию.
@@ -302,19 +318,19 @@ func mergeDirections(a, b Direction) Direction {
 	return result
 }
 
-// функция проверяет правила мира и возвращает значение перемещения
 func (g *Game) TryMovePlayer(dx, dy int) {
-	//Считает, куда игрок хочет пойти
 	nextX := g.player.gridX + dx
 	nextY := g.player.gridY + dy
-
-	//Проверяет клетку на ходибельность
 
 	if !g.world.IsWalkable(nextX, nextY) {
 		return
 	}
-	//Если всё нормально — двигает игрока
+
 	g.player.Move(dx, dy)
+
+	if g.world.CollectPickupAt(g.player.gridX, g.player.gridY) {
+		g.pickupCount++
+	}
 }
 
 // updateCamera обновляет положение камеры.
