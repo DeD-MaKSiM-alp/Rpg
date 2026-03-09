@@ -120,8 +120,12 @@ func (g *Game) drawGrid(screen *ebiten.Image) {
 }
 
 func (g *Game) startBattle(enemyID world.EntityID) {
+	enc, ok := battlepkg.BuildEncounterFromWorld(g.world, enemyID)
+	if !ok {
+		return
+	}
 	g.mode = ModeBattle
-	g.battle = battlepkg.NewBattleContext(enemyID)
+	g.battle = battlepkg.BuildBattleContextFromEncounter(enc)
 }
 
 func (g *Game) endBattle() {

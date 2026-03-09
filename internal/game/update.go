@@ -50,6 +50,8 @@ func (g *Game) updateExploreMode() error {
 	action := g.readPlayerAction()
 
 	if action.Type == ActionNone {
+		g.updateCamera()
+		g.updateStreamingWorld()
 		return nil
 	}
 
@@ -85,16 +87,30 @@ func (g *Game) updateBattleMode() {
 
 	switch action {
 	case battlepkg.BattleActionVictory:
-		g.world.RemoveEnemy(g.battle.EnemyID)
+		g.resolveBattleResult(action)
 		g.endBattle()
 		return
 	case battlepkg.BattleActionDefeat:
+		g.resolveBattleResult(action)
 		g.endBattle()
 		return
 	case battlepkg.BattleActionRetreat:
+		g.resolveBattleResult(action)
 		g.endBattle()
 		return
 	case battlepkg.BattleActionNone:
 		return
+	}
+}
+
+// resolveBattleResult применяет результат боя к миру (удаление врагов при победе и т.д.).
+func (g *Game) resolveBattleResult(action battlepkg.BattleAction) {
+	switch action {
+	case battlepkg.BattleActionVictory:
+		for _, e := range g.battle.Encounter.Enemies {
+			g.world.RemoveEnemy(e.WorldEnemyID)
+		}
+	case battlepkg.BattleActionDefeat, battlepkg.BattleActionRetreat:
+		// Пока ничего не делаем; позже: respawn, потеря прогресса и т.д.
 	}
 }

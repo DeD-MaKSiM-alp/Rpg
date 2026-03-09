@@ -12,14 +12,20 @@ import (
 
 // Реэкспорт типов и констант для внешних пакетов (internal/game, internal/player, internal/battle).
 type (
-	Entity        = entity.Entity
-	EntityID      = entity.EntityID
-	EntityType    = entity.EntityType
+	Entity         = entity.Entity
+	EntityID       = entity.EntityID
+	EntityType     = entity.EntityType
 	EntitySpawnKey = entity.EntitySpawnKey
-	ChunkCoord    = mapdata.ChunkCoord
+	ChunkCoord     = mapdata.ChunkCoord
+	EnemyKind      = entity.EnemyKind
 )
 
-const EntityEnemy = entity.EntityEnemy
+const (
+	EntityEnemy     = entity.EntityEnemy
+	EnemyKindSlime  = entity.EnemyKindSlime
+	EnemyKindWolf   = entity.EnemyKindWolf
+	EnemyKindBandit = entity.EnemyKindBandit
+)
 
 // World хранит бесконечный мир: чанки, пикапы, сущности.
 type World struct {
@@ -197,6 +203,11 @@ func (w *World) GetEnemyAt(worldX, worldY int) *Entity {
 	return entity.GetEnemyAt(w.entities, worldX, worldY)
 }
 
+// GetEntityByID возвращает сущность по ID или nil.
+func (w *World) GetEntityByID(id EntityID) *Entity {
+	return w.entities[id]
+}
+
 func (w *World) isEnemyBlockingTile(worldX, worldY int, ignoreID entity.EntityID) bool {
 	return entity.IsEnemyBlockingTile(w.entities, worldX, worldY, ignoreID)
 }
@@ -206,8 +217,8 @@ func (w *World) RemoveEnemy(id EntityID) {
 	entity.RemoveEnemy(w.entities, w.defeatedEnemySpawns, id)
 }
 
-func (w *World) addEntity(entityType entity.EntityType, worldX, worldY int) *entity.Entity {
-	return entity.AddEntity(w.entities, &w.nextEntityID, entityType, worldX, worldY)
+func (w *World) addEntity(entityType entity.EntityType, kind entity.EnemyKind, worldX, worldY int) *entity.Entity {
+	return entity.AddEntity(w.entities, &w.nextEntityID, entityType, kind, worldX, worldY)
 }
 
 func (w *World) generateEnemiesForChunk(chunkX, chunkY, seed int, tiles [][]mapdata.TileType) {
@@ -236,7 +247,7 @@ func (w *World) generateEnemiesForChunk(chunkX, chunkY, seed int, tiles [][]mapd
 		if entity.GetEnemyAt(w.entities, worldX, worldY) != nil {
 			return
 		}
-		w.addEntity(entity.EntityEnemy, worldX, worldY)
+		w.addEntity(entity.EntityEnemy, entity.EnemyKindSlime, worldX, worldY)
 		return
 	}
 }
