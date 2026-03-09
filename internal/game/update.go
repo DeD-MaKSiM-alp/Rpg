@@ -2,7 +2,7 @@ package game
 
 import (
 	battlepkg "mygame/internal/battle"
-	inputpkg "mygame/internal/input"
+	playerpkg "mygame/internal/player"
 )
 
 // Update обрабатывает один кадр игры.
@@ -14,17 +14,64 @@ func (g *Game) Update() error {
 	return g.updateExploreMode()
 }
 
-func (g *Game) updateExploreMode() error {
-	newDirection := inputpkg.ReadDirectionInput()
-
-	if g.hasBufferedInput {
-		inputpkg.UpdateBufferedInput(newDirection, &g.bufferedDirection, &g.bufferTicksLeft, &g.hasBufferedInput, g.TryMovePlayer)
-	} else {
-		inputpkg.StartInputBufferIfNeeded(newDirection, &g.bufferedDirection, &g.bufferTicksLeft, &g.hasBufferedInput, inputBufferTicks)
+func (g *Game) readPlayerAction() PlayerAction {
+	dir, ok := g.input.ConsumeDirection()
+	if ok {
+		return PlayerAction{
+			Type: ActionMove,
+			DX:   dir.Dx,
+			DY:   dir.Dy,
+		}
 	}
 
+	if g.input.WaitPressed() {
+		return PlayerAction{
+			Type: ActionWait,
+		}
+	}
+
+	return PlayerAction{Type: ActionNone}
+}
+
+func (g *Game) processWorldTurn() {
+	px, py := g.player.Position()
+	enemyID, startedBattle := g.world.AdvanceTurn(px, py)
+	if startedBattle && enemyID != 0 {
+		g.startBattle(enemyID)
+		return
+	}
 	g.updateCamera()
 	g.updateStreamingWorld()
+}
+
+func (g *Game) updateExploreMode() error {
+	action := g.readPlayerAction()
+
+	if action.Type == ActionNone {
+		g.updateCamera()
+		g.updateStreamingWorld()
+		return nil
+	}
+
+	switch action.Type {
+	case ActionMove:
+		moved, enemyID, pickedUp := playerpkg.TryMovePlayer(&g.player, g.world, action.DX, action.DY)
+		if pickedUp {
+			g.pickupCount++
+		}
+		if !moved {
+			return nil
+		}
+		if enemyID != 0 {
+			g.startBattle(enemyID)
+			return nil
+		}
+		g.processWorldTurn()
+
+	case ActionWait:
+		g.processWorldTurn()
+	}
+
 	return nil
 }
 

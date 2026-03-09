@@ -35,6 +35,11 @@ func (p *Player) Draw(screen *ebiten.Image, cameraX, cameraY, tileSize int) {
 	vector.FillRect(screen, screenX, screenY, float32(p.size), float32(p.size), color.White, false)
 }
 
+// Position возвращает текущие координаты игрока на сетке (GridX, GridY).
+func (p *Player) Position() (x, y int) {
+	return p.GridX, p.GridY
+}
+
 // Move сдвигает игрока на (dx, dy) клеток.
 func (p *Player) Move(dx, dy int) {
 	p.GridX += dx

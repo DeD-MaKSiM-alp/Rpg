@@ -29,7 +29,6 @@ const (
 	tileSize             = 48
 	visibleTilesX        = ScreenWidth / tileSize
 	visibleTilesY        = ScreenHeight / tileSize
-	inputBufferTicks     = 6
 	debugShowChunkOverlay = false
 	chunkPreloadRadius   = 1
 	chunkUnloadRadius    = 2
@@ -45,27 +44,26 @@ const (
 
 // Game — основная структура, описывающая состояние всей игры.
 type Game struct {
-	player            playerpkg.Player
-	world             *world.World
-	bufferedDirection inputpkg.Direction
-	bufferTicksLeft   int
-	hasBufferedInput  bool
-	cameraX           int
-	cameraY           int
-	pickupCount       int
-	hudFace           *text.GoTextFace
-	mode              GameMode
-	battle            *battlepkg.BattleContext
+	player      playerpkg.Player
+	world       *world.World
+	input       *inputpkg.Input
+	cameraX     int
+	cameraY     int
+	pickupCount int
+	hudFace     *text.GoTextFace
+	mode        GameMode
+	battle      *battlepkg.BattleContext
 }
 
 // NewGame создаёт новый экземпляр игры (мир, игрок, UI-шрифт и т.д.).
 func NewGame(worldSeed, playerGridX, playerGridY int) *Game {
 	return &Game{
-		player:   *playerpkg.NewPlayer(playerGridX, playerGridY),
-		world:    world.NewWorld(worldSeed),
-		hudFace:  ui.LoadHUDFace(),
-		mode:     ModeExplore,
-		battle:   nil,
+		player:  *playerpkg.NewPlayer(playerGridX, playerGridY),
+		world:   world.NewWorld(worldSeed),
+		input:   inputpkg.New(),
+		hudFace: ui.LoadHUDFace(),
+		mode:    ModeExplore,
+		battle:  nil,
 	}
 }
 
@@ -124,9 +122,6 @@ func (g *Game) drawGrid(screen *ebiten.Image) {
 func (g *Game) startBattle(enemyID world.EntityID) {
 	g.mode = ModeBattle
 	g.battle = battlepkg.NewBattleContext(enemyID)
-	g.hasBufferedInput = false
-	g.bufferTicksLeft = 0
-	g.bufferedDirection = inputpkg.Direction{}
 }
 
 func (g *Game) endBattle() {
@@ -137,9 +132,4 @@ func (g *Game) endBattle() {
 func (g *Game) updateCamera() {
 	g.cameraX = g.player.GridX - visibleTilesX/2
 	g.cameraY = g.player.GridY - visibleTilesY/2
-}
-
-// TryMovePlayer пытается переместить игрока на одну клетку в заданном направлении.
-func (g *Game) TryMovePlayer(dx, dy int) {
-	playerpkg.TryMovePlayer(&g.player, g.world, &g.pickupCount, g.startBattle, dx, dy)
 }

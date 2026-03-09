@@ -9,32 +9,26 @@ type WorldForMove interface {
 	GetEnemyAt(x, y int) *world.Entity
 	IsWalkable(x, y int) bool
 	CollectPickupAt(x, y int) bool
-	AdvanceTurn(px, py int) (world.EntityID, bool)
 }
 
 // TryMovePlayer пытается переместить игрока на одну клетку в заданном направлении.
-func TryMovePlayer(pl *Player, w WorldForMove, pickupCount *int, startBattle func(world.EntityID), dx, dy int) {
+// Возвращает: удалось ли выполнить действие (в т.ч. вступление в бой), ID врага при контакте, был ли подобран предмет.
+func TryMovePlayer(pl *Player, w WorldForMove, dx, dy int) (moved bool, enemyID world.EntityID, pickedUp bool) {
 	nextX := pl.GridX + dx
 	nextY := pl.GridY + dy
 
 	enemy := w.GetEnemyAt(nextX, nextY)
 	if enemy != nil {
-		startBattle(enemy.ID)
-		return
+		return true, enemy.ID, false
 	}
 
 	if !w.IsWalkable(nextX, nextY) {
-		return
+		return false, 0, false
 	}
 
 	pl.Move(dx, dy)
-
 	if w.CollectPickupAt(pl.GridX, pl.GridY) {
-		*pickupCount++
+		pickedUp = true
 	}
-
-	enemyID, startedBattle := w.AdvanceTurn(pl.GridX, pl.GridY)
-	if startedBattle {
-		startBattle(enemyID)
-	}
+	return true, 0, pickedUp
 }
