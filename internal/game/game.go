@@ -29,7 +29,8 @@ const (
 	tileSize             = 48
 	visibleTilesX        = ScreenWidth / tileSize
 	visibleTilesY        = ScreenHeight / tileSize
-	debugShowChunkOverlay = false
+	debugShowChunkOverlay   = false
+	debugShowInputDirection = true // TODO: временный debug для проверки диагонали; удалить после проверки
 	chunkPreloadRadius   = 1
 	chunkUnloadRadius    = 2
 )
@@ -53,6 +54,9 @@ type Game struct {
 	hudFace     *text.GoTextFace
 	mode        GameMode
 	battle      *battlepkg.BattleContext
+
+	// Временный debug: последнее направление, возвращённое ReadExploreInput (только для отрисовки).
+	debugInputDX, debugInputDY int
 }
 
 // NewGame создаёт новый экземпляр игры (мир, игрок, UI-шрифт и т.д.).

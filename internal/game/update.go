@@ -14,13 +14,15 @@ func (g *Game) Update() error {
 	return g.updateExploreMode()
 }
 
+// readPlayerAction — единственное место чтения explore input; контракт: Input.ReadExploreInput().
 func (g *Game) readPlayerAction() PlayerAction {
 	dx, dy, wait := g.input.ReadExploreInput()
-	if dx != 0 || dy != 0 {
-		return PlayerAction{Type: ActionMove, DX: dx, DY: dy}
-	}
+	g.debugInputDX, g.debugInputDY = dx, dy // временный debug: для отрисовки "Input: dx= dy="
 	if wait {
 		return PlayerAction{Type: ActionWait}
+	}
+	if dx != 0 || dy != 0 {
+		return PlayerAction{Type: ActionMove, DX: dx, DY: dy}
 	}
 	return PlayerAction{Type: ActionNone}
 }
