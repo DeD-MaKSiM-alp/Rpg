@@ -499,17 +499,54 @@ func valueNoise2D(x, y float64, seed int) float64 {
 	return lerp(ix0, ix1, uy)
 }
 
+// fractalNoise2D суммирует несколько октав value noise
+// и возвращает итоговое значение в диапазоне 0..1.
+//
+// octaves     — сколько слоёв шума суммировать;
+// persistence — насколько быстро уменьшается вклад каждой следующей октавы;
+// lacunarity  — насколько быстро растёт частота каждой следующей октавы.
+//
+// Идея такая:
+//   - первая октава задаёт крупную форму;
+//   - следующие добавляют всё более мелкие детали.
+func fractalNoise2D(x, y float64, seed, octaves int, persistence, lacunarity float64) float64 {
+	total := 0.0
+	amplitude := 1.0
+	frequency := 1.0
+	maxAmplitude := 0.0
+
+	for i := 0; i < octaves; i++ {
+		n := valueNoise2D(x*frequency, y*frequency, seed+i*101)
+
+		total += n * amplitude
+		maxAmplitude += amplitude
+
+		amplitude *= persistence
+		frequency *= lacunarity
+	}
+
+	if maxAmplitude == 0 {
+		return 0
+	}
+
+	return total / maxAmplitude
+}
+
 // terrainValue возвращает базовое значение местности в диапазоне 0..99.
 //
-// Это главный noise для формы мира.
-// Он должен меняться плавно и создавать крупные области.
+// Для формы мира используем многослойный noise:
+// крупная октава задаёт большие области,
+// дополнительные октавы делают края и переходы менее примитивными.
 func terrainValue(worldX, worldY, seed int) int {
-	scale := 18.0
+	scale := 24.0
 
-	n := valueNoise2D(
+	n := fractalNoise2D(
 		float64(worldX)/scale,
 		float64(worldY)/scale,
 		seed,
+		4,   // octaves
+		0.5, // persistence
+		2.0, // lacunarity
 	)
 
 	return int(n * 100)
@@ -517,15 +554,18 @@ func terrainValue(worldX, worldY, seed int) int {
 
 // detailValue возвращает дополнительное значение в диапазоне 0..99.
 //
-// Этот noise более "частый", чем terrainValue,
-// и нужен для вариаций внутри уже выбранного слоя поверхности.
+// Этот noise используется для вариаций внутри уже выбранного слоя:
+// например, где будет обычный пол, а где трава.
 func detailValue(worldX, worldY, seed int) int {
-	scale := 8.0
+	scale := 10.0
 
-	n := valueNoise2D(
+	n := fractalNoise2D(
 		float64(worldX)/scale,
 		float64(worldY)/scale,
 		seed+1337,
+		3,    // octaves
+		0.55, // persistence
+		2.0,  // lacunarity
 	)
 
 	return int(n * 100)
@@ -538,7 +578,7 @@ func detailValue(worldX, worldY, seed int) int {
 // Здесь мы сознательно делаем широкую "сушу" посередине
 // и только по краям диапазона получаем препятствия.
 func isBlockedTile(terrain int) bool {
-	return terrain < 7 || terrain > 96
+	return terrain < 26 || terrain > 75
 }
 
 // blockedTileType выбирает тип непроходимого тайла.
@@ -546,7 +586,7 @@ func isBlockedTile(terrain int) bool {
 // Низкие значения terrain превращаем в воду,
 // высокие — в стены.
 func blockedTileType(terrain int) TileType {
-	if terrain < 7 {
+	if terrain < 26 {
 		return TileWater
 	}
 
