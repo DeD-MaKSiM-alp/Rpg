@@ -96,26 +96,29 @@ func (w *World) getOrCreateChunk(coord ChunkCoord) *Chunk {
 	return chunk
 }
 
-// IsWalkable проверяет, можно ли пройти в клетку мира.
-//
-// Теперь мир бесконечный, поэтому у клетки нет проверки
-// на попадание "внутрь карты".
-// Вместо этого мы всегда:
-//  1. определяем нужный чанк;
-//  2. лениво создаём его, если он ещё не существует;
-//  3. читаем локальный тайл внутри чанка.
 func (w *World) IsWalkable(x, y int) bool {
-
-	// Определяем, в каком чанке находится клетка,
-	// и где именно она лежит внутри чанка.
 	coord, localX, localY := worldToChunkLocal(x, y)
-
-	// Получаем чанк по координатам.
-	// Если он ещё не был создан раньше,
-	// world создаст его автоматически.
 	chunk := w.getOrCreateChunk(coord)
 
-	return chunk.tiles[localY][localX] == TileFloor
+	tile := chunk.tiles[localY][localX]
+	return isTileWalkable(tile)
+}
+
+// isTileWalkable определяет, можно ли пройти по конкретному типу тайла.
+//
+// Это важный шаг для расширения мира:
+// теперь игровая логика не зависит от проверки "tile == TileFloor".
+// Мы можем добавлять новые типы клеток и отдельно решать,
+// какие из них проходимы, а какие нет.
+func isTileWalkable(tile TileType) bool {
+	switch tile {
+	case TileFloor, TileGrass:
+		return true
+	case TileWall, TileWater:
+		return false
+	default:
+		return false
+	}
 }
 
 // Draw рисует только видимую часть мира.
@@ -129,6 +132,8 @@ func (w *World) IsWalkable(x, y int) bool {
 func (w *World) Draw(screen *ebiten.Image, cameraX, cameraY int) {
 	floorColor := color.RGBA{R: 30, G: 30, B: 30, A: 255}
 	wallColor := color.RGBA{R: 90, G: 90, B: 90, A: 255}
+	grassColor := color.RGBA{R: 40, G: 110, B: 40, A: 255}
+	waterColor := color.RGBA{R: 40, G: 80, B: 170, A: 255}
 
 	// Вычисляем границы видимой области мира,
 	// которую сейчас показывает камера.
@@ -149,9 +154,21 @@ func (w *World) Draw(screen *ebiten.Image, cameraX, cameraY int) {
 			// он будет создан прямо сейчас.
 			chunk := w.getOrCreateChunk(coord)
 
-			tileColor := floorColor
-			if chunk.tiles[localY][localX] == TileWall {
+			tile := chunk.tiles[localY][localX]
+
+			var tileColor color.RGBA
+
+			switch tile {
+			case TileFloor:
+				tileColor = floorColor
+			case TileWall:
 				tileColor = wallColor
+			case TileGrass:
+				tileColor = grassColor
+			case TileWater:
+				tileColor = waterColor
+			default:
+				tileColor = floorColor
 			}
 
 			// Переводим мировые координаты клетки в экранные,
@@ -444,12 +461,16 @@ func generateTile(worldX, worldY, seed int) TileType {
 	// но при смене seed распределение препятствий менялось.
 	value := (worldX*37 + worldY*57 + worldX*worldY*13 + seed*71 + (worldX+seed)*(worldY+11)) % 100
 
-	// Небольшой процент клеток делаем стенами.
-	// Это значение можно регулировать:
-	// меньше — мир свободнее,
-	// больше — мир плотнее и сложнее для перемещения.
-	if value < 18 {
+	if value < 12 {
 		return TileWall
+	}
+
+	if value < 22 {
+		return TileWater
+	}
+
+	if value < 40 {
+		return TileGrass
 	}
 
 	return TileFloor

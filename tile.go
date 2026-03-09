@@ -6,9 +6,15 @@ package main
 type TileType int
 
 const (
-	// TileFloor — проходимая клетка.
+	// TileFloor — обычный проходимый пол.
 	TileFloor TileType = iota
 
-	// TileWall — непроходимая клетка.
+	// TileWall — стена, непроходимая клетка.
 	TileWall
+
+	// TileGrass — трава, тоже проходимая клетка.
+	TileGrass
+
+	// TileWater — вода, непроходимая клетка.
+	TileWater
 )
