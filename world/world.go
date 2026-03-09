@@ -20,6 +20,11 @@ type World struct {
 	chunks map[ChunkCoord]*Chunk
 
 	collectedPickups map[PickupKey]bool
+
+	entities     map[EntityID]*Entity
+	nextEntityID EntityID
+
+	defeatedEnemySpawns map[EntitySpawnKey]bool
 }
 
 type PickupKey struct {
@@ -56,9 +61,11 @@ type Chunk struct {
 // Возвращается указатель, так как мир изменяется по ходу игры.
 func NewWorld(seed int) *World {
 	return &World{
-		seed:             seed,
-		chunks:           make(map[ChunkCoord]*Chunk),
-		collectedPickups: make(map[PickupKey]bool),
+		seed:                seed,
+		chunks:              make(map[ChunkCoord]*Chunk),
+		collectedPickups:    make(map[PickupKey]bool),
+		entities:            make(map[EntityID]*Entity),
+		defeatedEnemySpawns: make(map[EntitySpawnKey]bool),
 	}
 }
 

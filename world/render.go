@@ -15,6 +15,9 @@ import (
 //  3. получаем локальный тайл внутри чанка;
 //  4. выбираем цвет;
 //  5. рисуем тайл относительно камеры.
+//
+// Затем, поверх тайлов, рисуем все несобранные pickup'ы,
+// которые попадают в видимую область.
 func (w *World) Draw(screen *ebiten.Image, cameraX, cameraY, visibleTilesX, visibleTilesY, tileSize int) {
 	floorColor := color.RGBA{R: 30, G: 30, B: 30, A: 255}
 	wallColor := color.RGBA{R: 90, G: 90, B: 90, A: 255}
@@ -84,6 +87,28 @@ func (w *World) Draw(screen *ebiten.Image, cameraX, cameraY, visibleTilesX, visi
 
 			vector.FillRect(screen, screenX, screenY, pickupSize, pickupSize, pickupColor, false)
 		}
+	}
+
+	enemyColor := color.RGBA{R: 200, G: 60, B: 60, A: 255}
+	enemySize := float32(tileSize / 2)
+
+	for _, entity := range w.entities {
+		if !entity.Alive {
+			continue
+		}
+
+		if entity.Type != EntityEnemy {
+			continue
+		}
+
+		if entity.X < cameraX || entity.X >= endX || entity.Y < cameraY || entity.Y >= endY {
+			continue
+		}
+
+		screenX := float32((entity.X-cameraX)*tileSize) + float32(tileSize)/4
+		screenY := float32((entity.Y-cameraY)*tileSize) + float32(tileSize)/4
+
+		vector.FillRect(screen, screenX, screenY, enemySize, enemySize, enemyColor, false)
 	}
 }
 

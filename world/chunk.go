@@ -39,6 +39,7 @@ func (w *World) newChunk(chunkX, chunkY, seed int) *Chunk {
 	}
 
 	chunk.pickups = generatePickupsForChunk(w, chunkX, chunkY, seed, chunk.tiles)
+	w.generateEnemiesForChunk(chunkX, chunkY, seed, chunk.tiles)
 	return chunk
 }
 
