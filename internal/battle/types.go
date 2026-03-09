@@ -1,17 +1,29 @@
 package battle
 
-// BattlePhase описывает текущую фазу боя.
-//
-// Пока нам нужны только три состояния:
-// - ход игрока;
-// - ход врага;
-// - бой завершён.
-//
-// Позже сюда удобно добавлять более детальные фазы:
-// - выбор действия;
-// - выбор цели;
-// - анимацию применения удара;
-// - показ результата раунда.
+// Phase — стадия battle loop.
+type Phase int
+
+const (
+	PhaseStart Phase = iota
+	PhaseTurnStart
+	PhaseAwaitAction
+	PhaseTurnResolve
+	PhaseTurnEnd
+	PhaseRoundEnd
+	PhaseFinished
+)
+
+// Result — итог боя.
+type Result int
+
+const (
+	ResultNone Result = iota
+	ResultVictory
+	ResultDefeat
+	ResultEscape
+)
+
+// BattlePhase — упрощённая фаза для UI (ход игрока / ход врага / завершён).
 type BattlePhase int
 
 const (
@@ -20,14 +32,7 @@ const (
 	BattlePhaseFinished
 )
 
-// BattleAction описывает результат одного обновления боя.
-//
-// Game не должен знать внутренние детали боевой логики,
-// поэтому BattleContext возвращает наружу только итог:
-// - ничего не произошло;
-// - игрок победил;
-// - игрок проиграл;
-// - игрок вышел из боя вручную.
+// BattleAction описывает результат одного обновления боя (внешний API для Game).
 type BattleAction int
 
 const (

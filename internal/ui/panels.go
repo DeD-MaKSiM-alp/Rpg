@@ -51,18 +51,23 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	bodyOp1 := &text.DrawOptions{}
 	bodyOp1.GeoM.Translate(float64(panelX)+20, float64(panelY)+80)
 	bodyOp1.ColorScale.ScaleWithColor(color.White)
-	text.Draw(screen, fmt.Sprintf("Player HP: %d", battle.PlayerHP), hudFace, bodyOp1)
+	text.Draw(screen, fmt.Sprintf("Player HP: %d", battle.PlayerHP()), hudFace, bodyOp1)
 
 	bodyOp2 := &text.DrawOptions{}
 	bodyOp2.GeoM.Translate(float64(panelX)+20, float64(panelY)+110)
 	bodyOp2.ColorScale.ScaleWithColor(color.White)
-	text.Draw(screen, fmt.Sprintf("Enemy HP: %d", battle.EnemyHP), hudFace, bodyOp2)
+	text.Draw(screen, fmt.Sprintf("Enemy HP: %d", battle.EnemyHP()), hudFace, bodyOp2)
 
 	bodyOp3 := &text.DrawOptions{}
-	bodyOp3.GeoM.Translate(float64(panelX)+20, float64(panelY)+145)
+	bodyOp3.GeoM.Translate(float64(panelX)+20, float64(panelY)+125)
 	bodyOp3.ColorScale.ScaleWithColor(color.White)
+	text.Draw(screen, fmt.Sprintf("Раунд: %d", battle.Round), hudFace, bodyOp3)
+
+	bodyOp3b := &text.DrawOptions{}
+	bodyOp3b.GeoM.Translate(float64(panelX)+20, float64(panelY)+155)
+	bodyOp3b.ColorScale.ScaleWithColor(color.White)
 	phaseText := "Фаза: неизвестно"
-	switch battle.Phase {
+	switch battle.DisplayPhase() {
 	case battlepkg.BattlePhasePlayerTurn:
 		phaseText = "Фаза: ход игрока"
 	case battlepkg.BattlePhaseEnemyTurn:
@@ -70,20 +75,20 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	case battlepkg.BattlePhaseFinished:
 		phaseText = "Фаза: бой завершён"
 	}
-	text.Draw(screen, phaseText, hudFace, bodyOp3)
+	text.Draw(screen, phaseText, hudFace, bodyOp3b)
 
 	bodyOp4 := &text.DrawOptions{}
-	bodyOp4.GeoM.Translate(float64(panelX)+20, float64(panelY)+180)
+	bodyOp4.GeoM.Translate(float64(panelX)+20, float64(panelY)+190)
 	bodyOp4.ColorScale.ScaleWithColor(color.White)
 	text.Draw(screen, "Space - attack", hudFace, bodyOp4)
 
 	bodyOp5 := &text.DrawOptions{}
-	bodyOp5.GeoM.Translate(float64(panelX)+20, float64(panelY)+210)
+	bodyOp5.GeoM.Translate(float64(panelX)+20, float64(panelY)+220)
 	bodyOp5.ColorScale.ScaleWithColor(color.White)
 	text.Draw(screen, "Esc - retreat", hudFace, bodyOp5)
 
 	bodyOp6 := &text.DrawOptions{}
-	bodyOp6.GeoM.Translate(float64(panelX)+20, float64(panelY)+240)
+	bodyOp6.GeoM.Translate(float64(panelX)+20, float64(panelY)+250)
 	bodyOp6.ColorScale.ScaleWithColor(color.White)
 	text.Draw(screen, battle.LastLog, hudFace, bodyOp6)
 }

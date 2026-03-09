@@ -1,95 +1,128 @@
 package battle
 
 import (
+	"fmt"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
-// Update обрабатывает один кадр боевого режима
-// и возвращает итог этого кадра.
-//
-// Важно:
-// здесь живёт именно боевая логика.
-// Game снаружи должен только вызвать Update()
-// и обработать результат боя.
+// Update обрабатывает один кадр боевого режима и возвращает итог.
 func (b *BattleContext) Update() BattleAction {
-	// Защита от некорректного вызова.
 	if b == nil {
 		return BattleActionNone
 	}
 
-	// Escape позволяет выйти из тестового боя вручную.
-	// Это полезно оставить даже после появления базовой боёвки.
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		b.Phase = BattlePhaseFinished
+		b.Result = ResultEscape
+		b.Phase = PhaseFinished
 		b.LastLog = "Игрок покинул бой."
 		return BattleActionRetreat
 	}
 
 	switch b.Phase {
-	case BattlePhasePlayerTurn:
-		return b.updatePlayerTurn()
-
-	case BattlePhaseEnemyTurn:
-		return b.updateEnemyTurn()
-
-	case BattlePhaseFinished:
+	case PhaseStart:
+		b.Phase = PhaseTurnStart
 		return BattleActionNone
-	}
 
-	return BattleActionNone
-}
-
-// updatePlayerTurn обрабатывает ход игрока.
-//
-// Пока у игрока только одно действие:
-// Space = обычная тестовая атака.
-// Позже здесь появятся выбор действия, способности, защита и цели.
-func (b *BattleContext) updatePlayerTurn() BattleAction {
-	// Space = базовая тестовая атака игрока.
-	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-		damage := 2
-		b.EnemyHP -= damage
-
-		// Если враг побеждён — завершаем бой победой.
-		if b.EnemyHP <= 0 {
-			b.EnemyHP = 0
-			b.Phase = BattlePhaseFinished
-			b.LastLog = "Игрок атаковал и победил врага."
-			return BattleActionVictory
+	case PhaseTurnStart:
+		b.UpdateResultIfFinished()
+		if b.IsFinished() {
+			return b.ToBattleAction()
 		}
+		// Пропуск мёртвых в начале очереди
+		for b.TurnIndex < len(b.TurnOrder) {
+			u := b.ActiveUnit()
+			if u != nil && u.IsAlive() {
+				b.Phase = PhaseAwaitAction
+				return BattleActionNone
+			}
+			b.TurnIndex++
+		}
+		b.Phase = PhaseRoundEnd
+		return BattleActionNone
 
-		// Иначе передаём ход врагу.
-		b.Phase = BattlePhaseEnemyTurn
-		b.LastLog = "Игрок атаковал. Ход врага."
+	case PhaseAwaitAction:
+		active := b.ActiveUnit()
+		if active == nil || !active.IsAlive() {
+			b.Phase = PhaseTurnEnd
+			return BattleActionNone
+		}
+		if active.Team == TeamPlayer {
+			if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+				b.SubmitPlayerAttack()
+				b.Phase = PhaseTurnResolve
+			}
+		} else {
+			b.ExecuteEnemyAutoAction()
+			b.Phase = PhaseTurnResolve
+		}
+		return BattleActionNone
+
+	case PhaseTurnResolve:
+		b.UpdateResultIfFinished()
+		if b.IsFinished() {
+			return b.ToBattleAction()
+		}
+		b.Phase = PhaseTurnEnd
+		return BattleActionNone
+
+	case PhaseTurnEnd:
+		if b.IsFinished() {
+			return b.ToBattleAction()
+		}
+		b.AdvanceTurn()
+		if b.IsFinished() {
+			return b.ToBattleAction()
+		}
+		b.Phase = PhaseTurnStart
+		return BattleActionNone
+
+	case PhaseRoundEnd:
+		b.Phase = PhaseTurnStart
+		return BattleActionNone
+
+	case PhaseFinished:
+		return b.ToBattleAction()
 	}
 
 	return BattleActionNone
 }
 
-// updateEnemyTurn обрабатывает ход врага.
-//
-// Пока враг действует автоматически без ввода:
-// наносит фиксированный тестовый урон и либо побеждает,
-// либо передаёт ход обратно игроку.
-//
-// Важно:
-// здесь нет проверки на клавиши.
-// Враг должен ходить как часть внутренней логики боя.
-func (b *BattleContext) updateEnemyTurn() BattleAction {
-	damage := 1
-	b.PlayerHP -= damage
-
-	// Если игрок побеждён — завершаем бой поражением.
-	if b.PlayerHP <= 0 {
-		b.PlayerHP = 0
-		b.Phase = BattlePhaseFinished
-		b.LastLog = "Враг атаковал и победил игрока."
-		return BattleActionDefeat
+// SubmitPlayerAttack — базовая атака игрока (Space).
+func (b *BattleContext) SubmitPlayerAttack() {
+	attacker := b.ActiveUnit()
+	if attacker == nil || attacker.Team != TeamPlayer {
+		return
 	}
+	targets := b.LivingUnits(TeamEnemy)
+	if len(targets) == 0 {
+		return
+	}
+	target := targets[0]
+	damage := attacker.Attack - target.Defense
+	if damage < 1 {
+		damage = 1
+	}
+	target.ApplyDamage(attacker.Attack)
+	b.LastLog = fmt.Sprintf("Игрок атаковал %s на %d урона.", target.Name, damage)
+}
 
-	// Иначе возвращаем ход игроку.
-	b.Phase = BattlePhasePlayerTurn
-	b.LastLog = "Враг атаковал. Ход игрока."
-	return BattleActionNone
+// ExecuteEnemyAutoAction — враг атакует первую живую цель игрока.
+func (b *BattleContext) ExecuteEnemyAutoAction() {
+	attacker := b.ActiveUnit()
+	if attacker == nil || attacker.Team != TeamEnemy {
+		return
+	}
+	targets := b.LivingUnits(TeamPlayer)
+	if len(targets) == 0 {
+		return
+	}
+	target := targets[0]
+	damage := attacker.Attack - target.Defense
+	if damage < 1 {
+		damage = 1
+	}
+	target.ApplyDamage(attacker.Attack)
+	b.LastLog = fmt.Sprintf("%s атаковал игрока на %d урона.", attacker.Name, damage)
 }
