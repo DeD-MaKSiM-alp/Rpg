@@ -19,28 +19,23 @@ import (
 // Затем, поверх тайлов, рисуем все несобранные pickup'ы,
 // которые попадают в видимую область.
 func (w *World) Draw(screen *ebiten.Image, cameraX, cameraY, visibleTilesX, visibleTilesY, tileSize int) {
+	endX := cameraX + visibleTilesX
+	endY := cameraY + visibleTilesY
+
+	w.drawTiles(screen, cameraX, cameraY, endX, endY, tileSize)
+	w.drawPickups(screen, cameraX, cameraY, endX, endY, tileSize)
+	w.drawEnemies(screen, cameraX, cameraY, endX, endY, tileSize)
+}
+
+func (w *World) drawTiles(screen *ebiten.Image, cameraX, cameraY, endX, endY, tileSize int) {
 	floorColor := color.RGBA{R: 30, G: 30, B: 30, A: 255}
 	wallColor := color.RGBA{R: 90, G: 90, B: 90, A: 255}
 	grassColor := color.RGBA{R: 40, G: 110, B: 40, A: 255}
 	waterColor := color.RGBA{R: 40, G: 80, B: 170, A: 255}
 
-	// Вычисляем границы видимой области мира,
-	// которую сейчас показывает камера.
-	// В бесконечном мире этой области достаточно:
-	// обрезать её размерами карты больше не нужно.
-	endX := cameraX + visibleTilesX
-	endY := cameraY + visibleTilesY
-
-	// Проходим по всем видимым клеткам мира.
 	for worldY := cameraY; worldY < endY; worldY++ {
 		for worldX := cameraX; worldX < endX; worldX++ {
-			// Определяем, в каком чанке находится текущая клетка,
-			// и где она лежит внутри чанка.
 			coord, localX, localY := worldToChunkLocal(worldX, worldY)
-
-			// Получаем чанк для текущей клетки.
-			// Если этого чанка ещё нет в памяти,
-			// он будет создан прямо сейчас.
 			chunk := w.getOrCreateChunk(coord)
 
 			tile := chunk.tiles[localY][localX]
@@ -60,15 +55,15 @@ func (w *World) Draw(screen *ebiten.Image, cameraX, cameraY, visibleTilesX, visi
 				tileColor = floorColor
 			}
 
-			// Переводим мировые координаты клетки в экранные,
-			// вычитая смещение камеры.
 			screenX := float32((worldX - cameraX) * tileSize)
 			screenY := float32((worldY - cameraY) * tileSize)
 
 			vector.FillRect(screen, screenX, screenY, float32(tileSize), float32(tileSize), tileColor, false)
 		}
 	}
+}
 
+func (w *World) drawPickups(screen *ebiten.Image, cameraX, cameraY, endX, endY, tileSize int) {
 	pickupColor := color.RGBA{R: 240, G: 220, B: 60, A: 255}
 	pickupSize := float32(tileSize / 2)
 
@@ -88,7 +83,9 @@ func (w *World) Draw(screen *ebiten.Image, cameraX, cameraY, visibleTilesX, visi
 			vector.FillRect(screen, screenX, screenY, pickupSize, pickupSize, pickupColor, false)
 		}
 	}
+}
 
+func (w *World) drawEnemies(screen *ebiten.Image, cameraX, cameraY, endX, endY, tileSize int) {
 	enemyColor := color.RGBA{R: 200, G: 60, B: 60, A: 255}
 	enemySize := float32(tileSize / 2)
 

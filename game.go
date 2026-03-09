@@ -120,74 +120,64 @@ type Game struct {
 	battle *BattleContext
 }
 
-// Update — главный "тик" логики игры.
-// Ebiten вызывает этот метод каждый кадр:
-// здесь мы читаем состояние клавиш, обновляем буфер направления
-// и при необходимости двигаем игрока по сетке.
 func (g *Game) Update() error {
 	if g.mode == ModeBattle {
 		g.updateBattleMode()
 		return nil
 	}
 
-	/*Сначала читаем новый ввод
-	Например:
-	нажали вправо → {1, 0}
-	ничего не нажали → {0, 0}
-	*/
+	return g.updateExploreMode()
+}
+
+// updateExploreMode обрабатывает один кадр в режиме исследования мира:
+// читает ввод, обновляет буфер направления, двигает игрока и поддерживает мир вокруг.
+func (g *Game) updateExploreMode() error {
 	newDirection := g.readDirectionInput()
 
-	/*Если буфер уже активен
-	это означает:
-	мы уже ждём, не добавится ли вторая клавиша для диагонали
-	*/
 	if g.hasBufferedInput {
-		//Если во время ожидания пришёл ещё ввод
-		if newDirection.dx != 0 || newDirection.dy != 0 {
-			g.bufferedDirection = mergeDirections(g.bufferedDirection, newDirection)
-		}
-		//Каждый тик уменьшаем таймер
-		g.bufferTicksLeft--
-
-		//Когда время вышло — двигаем игрока
-		if g.bufferTicksLeft <= 0 {
-			g.TryMovePlayer(g.bufferedDirection.dx, g.bufferedDirection.dy)
-			g.hasBufferedInput = false
-		}
-
-		g.updateCamera()
-		// Заранее создаём чанки вокруг игрока,
-		// чтобы соседние области мира уже были готовы,
-		// когда игрок приблизится к их границе.
-		g.world.PreloadChunksAround(g.player.gridX, g.player.gridY, chunkPreloadRadius)
-		// После предзагрузки очищаем слишком дальние чанки,
-		// чтобы память не росла бесконечно.
-		// Это первый шаг к поддержке очень большого мира.
-		g.world.UnloadChunksFarFrom(g.player.gridX, g.player.gridY, chunkUnloadRadius)
-		return nil
+		g.updateBufferedInput(newDirection)
+	} else {
+		g.startInputBufferIfNeeded(newDirection)
 	}
 
-	/*Если буфера ещё нет
-	Это означает:
-	увидели первое направление
-	сохранили его
-	начали короткое ожидание
-	*/
-	if newDirection.dx != 0 || newDirection.dy != 0 {
-		g.bufferedDirection = newDirection
-		g.bufferTicksLeft = inputBufferTicks
-		g.hasBufferedInput = true
-	}
 	g.updateCamera()
-	// Заранее создаём чанки вокруг игрока,
-	// чтобы соседние области мира уже были готовы,
-	// когда игрок приблизится к их границе.
-	g.world.PreloadChunksAround(g.player.gridX, g.player.gridY, chunkPreloadRadius)
-	// После предзагрузки очищаем слишком дальние чанки,
-	// чтобы память не росла бесконечно.
-	// Это первый шаг к поддержке очень большого мира.
-	g.world.UnloadChunksFarFrom(g.player.gridX, g.player.gridY, chunkUnloadRadius)
+	g.updateStreamingWorld()
+
 	return nil
+}
+
+// updateBufferedInput обновляет уже активный буфер направления
+// и при необходимости двигает игрока.
+func (g *Game) updateBufferedInput(newDirection Direction) {
+	if newDirection.dx != 0 || newDirection.dy != 0 {
+		g.bufferedDirection = mergeDirections(g.bufferedDirection, newDirection)
+	}
+
+	g.bufferTicksLeft--
+
+	if g.bufferTicksLeft <= 0 {
+		g.TryMovePlayer(g.bufferedDirection.dx, g.bufferedDirection.dy)
+		g.hasBufferedInput = false
+	}
+}
+
+// startInputBufferIfNeeded запускает новый буфер направления,
+// если игрок только что нажал кнопку движения.
+func (g *Game) startInputBufferIfNeeded(newDirection Direction) {
+	if newDirection.dx == 0 && newDirection.dy == 0 {
+		return
+	}
+
+	g.bufferedDirection = newDirection
+	g.bufferTicksLeft = inputBufferTicks
+	g.hasBufferedInput = true
+}
+
+// updateStreamingWorld поддерживает "ленивый" мир вокруг игрока:
+// подгружает ближайшие чанки и выгружает слишком дальние.
+func (g *Game) updateStreamingWorld() {
+	g.world.PreloadChunksAround(g.player.gridX, g.player.gridY, chunkPreloadRadius)
+	g.world.UnloadChunksFarFrom(g.player.gridX, g.player.gridY, chunkUnloadRadius)
 }
 
 // Draw — метод, который отвечает за отрисовку одного кадра игры.
