@@ -2,6 +2,7 @@ package main
 
 import (
 	"image/color"
+	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -435,44 +436,99 @@ func worldToChunkLocal(worldX, worldY int) (ChunkCoord, int, int) {
 	return ChunkCoord{x: chunkX, y: chunkY}, localX, localY
 }
 
-// terrainValue возвращает базовое значение местности в диапазоне 0..99.
-//
-// Это главное значение для формы мира.
-// Оно должно меняться достаточно плавно,
-// чтобы рядом лежащие клетки чаще были похожи друг на друга.
-func terrainValue(worldX, worldY, seed int) int {
-	value := (worldX*7 +
-		worldY*11 +
-		floorDiv(worldX, 4)*13 +
-		floorDiv(worldY, 4)*17 +
-		floorDiv(worldX, 8)*19 +
-		floorDiv(worldY, 8)*23 +
-		seed*29) % 100
+// fade сглаживает t в диапазоне 0..1.
+// Используется для плавной интерполяции между значениями шума.
+func fade(t float64) float64 {
+	return t * t * (3 - 2*t)
+}
 
-	if value < 0 {
-		value += 100
+// lerp выполняет линейную интерполяцию между a и b.
+func lerp(a, b, t float64) float64 {
+	return a + (b-a)*t
+}
+
+// hash2D детерминированно превращает целочисленные координаты и seed
+// в псевдослучайное число.
+func hash2D(x, y, seed int) int {
+	h := x*374761393 + y*668265263 + seed*69069
+	h = (h ^ (h >> 13)) * 1274126177
+	h ^= h >> 16
+
+	if h < 0 {
+		h = -h
 	}
 
-	return value
+	return h
+}
+
+// randomValue2D возвращает детерминированное значение в диапазоне 0..1
+// для узла сетки (x, y).
+func randomValue2D(x, y, seed int) float64 {
+	return float64(hash2D(x, y, seed)%10000) / 10000.0
+}
+
+// valueNoise2D возвращает сглаженное noise-значение в диапазоне 0..1
+// для вещественных координат x/y.
+//
+// Идея такая:
+//  1. берём 4 соседних узла сетки;
+//  2. у каждого есть фиксированное псевдослучайное значение;
+//  3. плавно интерполируем между ними.
+//
+// Это даёт связные области вместо "шахматного" шума.
+func valueNoise2D(x, y float64, seed int) float64 {
+	x0 := int(math.Floor(x))
+	y0 := int(math.Floor(y))
+	x1 := x0 + 1
+	y1 := y0 + 1
+
+	sx := x - float64(x0)
+	sy := y - float64(y0)
+
+	n00 := randomValue2D(x0, y0, seed)
+	n10 := randomValue2D(x1, y0, seed)
+	n01 := randomValue2D(x0, y1, seed)
+	n11 := randomValue2D(x1, y1, seed)
+
+	ux := fade(sx)
+	uy := fade(sy)
+
+	ix0 := lerp(n00, n10, ux)
+	ix1 := lerp(n01, n11, ux)
+
+	return lerp(ix0, ix1, uy)
+}
+
+// terrainValue возвращает базовое значение местности в диапазоне 0..99.
+//
+// Это главный noise для формы мира.
+// Он должен меняться плавно и создавать крупные области.
+func terrainValue(worldX, worldY, seed int) int {
+	scale := 18.0
+
+	n := valueNoise2D(
+		float64(worldX)/scale,
+		float64(worldY)/scale,
+		seed,
+	)
+
+	return int(n * 100)
 }
 
 // detailValue возвращает дополнительное значение в диапазоне 0..99.
 //
-// Оно используется не для формы мира,
-// а для выбора конкретного типа поверхности внутри уже выбранного слоя:
-// например, TileFloor или TileGrass, TileWall или TileWater.
+// Этот noise более "частый", чем terrainValue,
+// и нужен для вариаций внутри уже выбранного слоя поверхности.
 func detailValue(worldX, worldY, seed int) int {
-	value := (worldX*17 +
-		worldY*31 +
-		floorDiv(worldX, 2)*7 +
-		floorDiv(worldY, 2)*9 +
-		seed*37) % 100
+	scale := 8.0
 
-	if value < 0 {
-		value += 100
-	}
+	n := valueNoise2D(
+		float64(worldX)/scale,
+		float64(worldY)/scale,
+		seed+1337,
+	)
 
-	return value
+	return int(n * 100)
 }
 
 // isBlockedTile решает, должна ли клетка быть непроходимой.
@@ -482,7 +538,7 @@ func detailValue(worldX, worldY, seed int) int {
 // Здесь мы сознательно делаем широкую "сушу" посередине
 // и только по краям диапазона получаем препятствия.
 func isBlockedTile(terrain int) bool {
-	return terrain < 10 || terrain > 92
+	return terrain < 7 || terrain > 96
 }
 
 // blockedTileType выбирает тип непроходимого тайла.
@@ -490,7 +546,7 @@ func isBlockedTile(terrain int) bool {
 // Низкие значения terrain превращаем в воду,
 // высокие — в стены.
 func blockedTileType(terrain int) TileType {
-	if terrain < 10 {
+	if terrain < 7 {
 		return TileWater
 	}
 
@@ -502,7 +558,7 @@ func blockedTileType(terrain int) TileType {
 // Основная масса — обычный пол,
 // часть клеток — трава как проходимая вариация поверхности.
 func walkableTileType(detail int) TileType {
-	if detail > 72 {
+	if detail > 68 {
 		return TileGrass
 	}
 
