@@ -194,14 +194,22 @@ func (w *World) AdvanceTurn(playerX, playerY int) {
 			dy = -1
 		}
 
-		// Сначала пытаемся идти по оси X.
+		// Сначала пытаемся идти по диагонали,
+		// если игрок смещён и по X, и по Y.
+		if dx != 0 && dy != 0 {
+			if w.tryMoveEnemy(enemy, enemy.X+dx, enemy.Y+dy, playerX, playerY) {
+				continue
+			}
+		}
+
+		// Если диагональ не получилась — пробуем по X.
 		if dx != 0 {
 			if w.tryMoveEnemy(enemy, enemy.X+dx, enemy.Y, playerX, playerY) {
 				continue
 			}
 		}
 
-		// Если по X не получилось — пробуем по Y.
+		// Если по X тоже не получилось — пробуем по Y.
 		if dy != 0 {
 			if w.tryMoveEnemy(enemy, enemy.X, enemy.Y+dy, playerX, playerY) {
 				continue
