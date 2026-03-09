@@ -11,7 +11,7 @@ package world
 //   - координатами чанка;
 //   - координатами клетки внутри мира;
 //   - seed мира.
-func newChunk(chunkX, chunkY, seed int) *Chunk {
+func (w *World) newChunk(chunkX, chunkY, seed int) *Chunk {
 	chunk := &Chunk{
 		chunkX: chunkX,
 		chunkY: chunkY,
@@ -38,8 +38,7 @@ func newChunk(chunkX, chunkY, seed int) *Chunk {
 		}
 	}
 
-	chunk.pickups = generatePickupsForChunk(chunkX, chunkY, seed, chunk.tiles)
-
+	chunk.pickups = generatePickupsForChunk(w, chunkX, chunkY, seed, chunk.tiles)
 	return chunk
 }
 
@@ -61,7 +60,7 @@ func (w *World) getOrCreateChunk(coord ChunkCoord) *Chunk {
 	}
 
 	// Если чанка ещё нет — создаём его.
-	chunk := newChunk(coord.X, coord.Y, w.seed)
+	chunk := w.newChunk(coord.X, coord.Y, w.seed)
 
 	// Сохраняем новый чанк в world,
 	// чтобы в следующий раз не создавать его повторно.

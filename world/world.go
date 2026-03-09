@@ -18,6 +18,13 @@ type World struct {
 	// chunks — все чанки мира, доступные по их координатам.
 	// Ключом является ChunkCoord, значением — указатель на Chunk.
 	chunks map[ChunkCoord]*Chunk
+
+	collectedPickups map[PickupKey]bool
+}
+
+type PickupKey struct {
+	X int
+	Y int
 }
 
 // ChunkCoord — координаты чанка в мире.
@@ -44,13 +51,14 @@ type Chunk struct {
 	pickups []Pickup
 }
 
-// NewWorld создаёт новый бесконечный мир с указанным seed.
-// Чанки при этом не создаются сразу — они будут появляться лениво,
-// по мере обращения к ним из игрового кода.
+// NewWorld создаёт новый бесконечный мир с указанным seed
+// и инициализирует структуры для чанков и собранных предметов.
+// Возвращается указатель, так как мир изменяется по ходу игры.
 func NewWorld(seed int) *World {
 	return &World{
-		seed:   seed,
-		chunks: make(map[ChunkCoord]*Chunk),
+		seed:             seed,
+		chunks:           make(map[ChunkCoord]*Chunk),
+		collectedPickups: make(map[PickupKey]bool),
 	}
 }
 

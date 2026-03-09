@@ -126,6 +126,13 @@ func (w *World) IsWalkable(x, y int) bool {
 	return isTileWalkable(tile)
 }
 
+func pickupKey(worldX, worldY int) PickupKey {
+	return PickupKey{
+		X: worldX,
+		Y: worldY,
+	}
+}
+
 func (w *World) CollectPickupAt(worldX, worldY int) bool {
 	coord, _, _ := worldToChunkLocal(worldX, worldY)
 	chunk := w.getOrCreateChunk(coord)
@@ -139,6 +146,7 @@ func (w *World) CollectPickupAt(worldX, worldY int) bool {
 
 		if pickup.X == worldX && pickup.Y == worldY {
 			pickup.Collected = true
+			w.collectedPickups[pickupKey(worldX, worldY)] = true
 			return true
 		}
 	}
@@ -146,7 +154,7 @@ func (w *World) CollectPickupAt(worldX, worldY int) bool {
 	return false
 }
 
-func generatePickupsForChunk(chunkX, chunkY, seed int, tiles [][]TileType) []Pickup {
+func generatePickupsForChunk(w *World, chunkX, chunkY, seed int, tiles [][]TileType) []Pickup {
 	// Не спавним pickup в стартовом чанке, чтобы стартовая зона
 	// пока оставалась максимально чистой и предсказуемой.
 	if chunkX == 0 && chunkY == 0 {
@@ -176,6 +184,10 @@ func generatePickupsForChunk(chunkX, chunkY, seed int, tiles [][]TileType) []Pic
 		// Не кладём pickup слишком близко к старту.
 		if worldX >= 0 && worldX <= 6 && worldY >= 0 && worldY <= 6 {
 			continue
+		}
+
+		if w.collectedPickups[pickupKey(worldX, worldY)] {
+			return nil
 		}
 
 		return []Pickup{
