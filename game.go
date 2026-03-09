@@ -115,8 +115,9 @@ type Game struct {
 
 	mode GameMode
 
-	activeEnemyID  world.EntityID
-	hasActiveEnemy bool
+	// battle хранит состояние текущего боя.
+	// nil означает, что активного боя сейчас нет.
+	battle *BattleContext
 }
 
 // Update — главный "тик" логики игры.
@@ -256,9 +257,18 @@ func (g *Game) drawBattleOverlay(screen *ebiten.Image) {
 	titleOp.GeoM.Translate(float64(panelX)+20, float64(panelY)+35)
 	titleOp.ColorScale.ScaleWithColor(color.White)
 
+	title := "Battle mode"
+
+	// Если контекст боя есть, показываем ID активного врага.
+	// Это простой, но полезный шаг:
+	// UI боя начинает читать данные из BattleContext.
+	if g.battle != nil {
+		title = fmt.Sprintf("Battle mode: enemy #%d", g.battle.EnemyID)
+	}
+
 	text.Draw(
 		screen,
-		"Battle mode",
+		title,
 		g.hudFace,
 		titleOp,
 	)
@@ -394,8 +404,13 @@ func mergeDirections(a, b Direction) Direction {
 
 func (g *Game) startBattle(enemyID world.EntityID) {
 	g.mode = ModeBattle
-	g.activeEnemyID = enemyID
-	g.hasActiveEnemy = true
+
+	// Создаём новый контекст боя.
+	// Пока он знает только ID врага,
+	// но позже сюда добавятся все остальные боевые данные.
+	g.battle = &BattleContext{
+		EnemyID: enemyID,
+	}
 
 	// Сбрасываем буфер ввода движения,
 	// чтобы после выхода из боя старый ввод не сработал неожиданно.
@@ -406,17 +421,24 @@ func (g *Game) startBattle(enemyID world.EntityID) {
 
 func (g *Game) endBattle() {
 	g.mode = ModeExplore
-	g.hasActiveEnemy = false
-	g.activeEnemyID = 0
+
+	// Полностью очищаем контекст боя,
+	// потому что после завершения старое состояние нам больше не нужно.
+	g.battle = nil
 }
 
 func (g *Game) updateBattleMode() {
+	// Страховка:
+	// если по какой-то причине игра находится в ModeBattle,
+	// но контекст боя отсутствует, выходим обратно в исследование.
+	if g.battle == nil {
+		g.endBattle()
+		return
+	}
+
 	// B = тестовая победа над врагом.
 	if inpututil.IsKeyJustPressed(ebiten.KeyB) {
-		if g.hasActiveEnemy {
-			g.world.RemoveEnemy(g.activeEnemyID)
-		}
-
+		g.world.RemoveEnemy(g.battle.EnemyID)
 		g.endBattle()
 		return
 	}
