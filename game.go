@@ -8,6 +8,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+
+	"mygame/world"
 )
 
 // Константы, описывающие конфигурацию игры:
@@ -79,7 +81,7 @@ type Game struct {
 	// одной картой, чанками или позже более сложной генерацией.
 	// Он просто обращается к миру за данными:
 	// можно ли пройти, как рисовать мир и как работать с чанками.
-	world World
+	world *world.World
 	// bufferedDirection — текущее "собранное" направление движения игрока.
 	// Например: сначала нажали вправо → {1, 0}, затем успели нажать вниз → станет {1, 1}.
 	bufferedDirection Direction
@@ -173,7 +175,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.Black)
 
 	// Сначала рисуем сам мир.
-	g.world.Draw(screen, g.cameraX, g.cameraY)
+	g.world.Draw(screen, g.cameraX, g.cameraY, visibleTilesX, visibleTilesY, tileSize)
 
 	// Затем обычную сетку клеток.
 	g.drawGrid(screen)
@@ -181,7 +183,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// После этого, при включённом debug-режиме,
 	// рисуем границы чанков поверх мира и сетки.
 	if debugShowChunkOverlay {
-		g.world.DrawChunkDebugOverlay(screen, g.cameraX, g.cameraY)
+		g.world.DrawChunkDebugOverlay(screen, g.cameraX, g.cameraY, visibleTilesX, visibleTilesY, tileSize, screenWidth, screenHeight)
 	}
 
 	// Игрока рисуем уже поверх мира и всех сеток,
@@ -211,10 +213,10 @@ func (g *Game) drawDebugInfo(screen *ebiten.Image) {
 		"Player: (%d, %d)\nChunk: (%d, %d)\nLoaded chunks: %d\nSeed: %d",
 		g.player.gridX,
 		g.player.gridY,
-		playerChunk.x,
-		playerChunk.y,
+		playerChunk.X,
+		playerChunk.Y,
 		g.world.LoadedChunkCount(),
-		g.world.seed,
+		g.world.Seed(),
 	)
 
 	ebitenutil.DebugPrint(screen, debugText)

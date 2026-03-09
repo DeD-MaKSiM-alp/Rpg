@@ -1,9 +1,11 @@
 package main
 
 import (
+	"log"
+
 	"github.com/hajimehoshi/ebiten/v2"
 
-	"log"
+	"mygame/world"
 )
 
 // main — точка входа в приложение.
@@ -25,7 +27,7 @@ func main() {
 	game := &Game{
 		// создаём игрока и ставим его в клетку (2, 2) сетки
 		player: *NewPlayer(2, 2),
-		world:  NewWorld(worldSeed),
+		world:  world.NewWorld(worldSeed),
 	}
 	// Запускаем основной цикл игры.
 	// Если Ebiten вернёт ошибку, логируем её и завершаем программу.
