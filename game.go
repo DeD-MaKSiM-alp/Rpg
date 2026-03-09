@@ -41,6 +41,19 @@ const (
 	// debugShowChunkOverlay — включает отладочную отрисовку чанков:
 	// границы чанков и текстовую информацию поверх игрового кадра.
 	debugShowChunkOverlay = true
+
+	// chunkPreloadRadius — радиус предзагрузки чанков вокруг игрока.
+	// Эти чанки создаются заранее, чтобы при движении по миру
+	// соседние области уже были готовы к отрисовке и логике.
+	chunkPreloadRadius = 1
+
+	// chunkUnloadRadius — радиус, внутри которого чанки сохраняются в памяти.
+	// Всё, что дальше этого радиуса от игрока, будет выгружаться.
+	//
+	// Важно:
+	// радиус выгрузки лучше делать больше, чем радиус предзагрузки,
+	// чтобы чанки не создавались и не удалялись слишком агрессивно.
+	chunkUnloadRadius = 2
 )
 
 // Direction представляет намерение игрока двигаться по сетке.
@@ -125,7 +138,11 @@ func (g *Game) Update() error {
 		// Заранее создаём чанки вокруг игрока,
 		// чтобы соседние области мира уже были готовы,
 		// когда игрок приблизится к их границе.
-		g.world.PreloadChunksAround(g.player.gridX, g.player.gridY, 1)
+		g.world.PreloadChunksAround(g.player.gridX, g.player.gridY, chunkPreloadRadius)
+		// После предзагрузки очищаем слишком дальние чанки,
+		// чтобы память не росла бесконечно.
+		// Это первый шаг к поддержке очень большого мира.
+		g.world.UnloadChunksFarFrom(g.player.gridX, g.player.gridY, chunkUnloadRadius)
 		return nil
 	}
 
@@ -144,7 +161,11 @@ func (g *Game) Update() error {
 	// Заранее создаём чанки вокруг игрока,
 	// чтобы соседние области мира уже были готовы,
 	// когда игрок приблизится к их границе.
-	g.world.PreloadChunksAround(g.player.gridX, g.player.gridY, 1)
+	g.world.PreloadChunksAround(g.player.gridX, g.player.gridY, chunkPreloadRadius)
+	// После предзагрузки очищаем слишком дальние чанки,
+	// чтобы память не росла бесконечно.
+	// Это первый шаг к поддержке очень большого мира.
+	g.world.UnloadChunksFarFrom(g.player.gridX, g.player.gridY, chunkUnloadRadius)
 	return nil
 }
 
