@@ -6,7 +6,6 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	text "github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
@@ -130,64 +129,6 @@ type Game struct {
 	battle *BattleContext
 }
 
-/*
-Update обрабатывает один кадр игры:
-- Если режим — боевой, обновляет бой;
-- Иначе обновляет исследовательский режим.
-*/
-func (g *Game) Update() error {
-	if g.mode == ModeBattle {
-		g.updateBattleMode()
-		return nil
-	}
-
-	return g.updateExploreMode()
-}
-
-// updateExploreMode обрабатывает один кадр в режиме исследования мира:
-// читает ввод, обновляет буфер направления, двигает игрока и поддерживает мир вокруг.
-func (g *Game) updateExploreMode() error {
-	newDirection := g.readDirectionInput()
-
-	if g.hasBufferedInput {
-		g.updateBufferedInput(newDirection)
-	} else {
-		g.startInputBufferIfNeeded(newDirection)
-	}
-
-	g.updateCamera()
-	g.updateStreamingWorld()
-
-	return nil
-}
-
-// updateBufferedInput обновляет уже активный буфер направления
-// и при необходимости двигает игрока.
-func (g *Game) updateBufferedInput(newDirection Direction) {
-	if newDirection.dx != 0 || newDirection.dy != 0 {
-		g.bufferedDirection = mergeDirections(g.bufferedDirection, newDirection)
-	}
-
-	g.bufferTicksLeft--
-
-	if g.bufferTicksLeft <= 0 {
-		g.TryMovePlayer(g.bufferedDirection.dx, g.bufferedDirection.dy)
-		g.hasBufferedInput = false
-	}
-}
-
-// startInputBufferIfNeeded запускает новый буфер направления,
-// если игрок только что нажал кнопку движения.
-func (g *Game) startInputBufferIfNeeded(newDirection Direction) {
-	if newDirection.dx == 0 && newDirection.dy == 0 {
-		return
-	}
-
-	g.bufferedDirection = newDirection
-	g.bufferTicksLeft = inputBufferTicks
-	g.hasBufferedInput = true
-}
-
 // updateStreamingWorld поддерживает "ленивый" мир вокруг игрока:
 // подгружает ближайшие чанки и выгружает слишком дальние.
 func (g *Game) updateStreamingWorld() {
@@ -258,32 +199,6 @@ func (g *Game) drawGrid(screen *ebiten.Image) {
 	}
 }
 
-// readDirectionInput считывает "свежее" состояние клавиш движения
-// и возвращает направление, в котором игрок хочет сдвинуться в этом кадре.
-// Здесь мы ещё никого не двигаем — только собираем вектор dx/dy.
-func (g *Game) readDirectionInput() Direction {
-	dx := 0
-	dy := 0
-
-	if inpututil.IsKeyJustPressed(ebiten.KeyRight) {
-		dx += 1
-	}
-
-	if inpututil.IsKeyJustPressed(ebiten.KeyLeft) {
-		dx -= 1
-	}
-
-	if inpututil.IsKeyJustPressed(ebiten.KeyDown) {
-		dy += 1
-	}
-
-	if inpututil.IsKeyJustPressed(ebiten.KeyUp) {
-		dy -= 1
-	}
-
-	return Direction{dx: dx, dy: dy}
-}
-
 // mergeDirections объединяет два направления движения.
 // Используется, чтобы аккуратно "достроить" диагональное движение:
 // если по одной оси уже есть значение, а по другой приходит новое — берём новое.
@@ -330,94 +245,6 @@ func (g *Game) endBattle() {
 	// Полностью очищаем контекст боя,
 	// потому что после завершения старое состояние нам больше не нужно.
 	g.battle = nil
-}
-
-/*
-updateBattleMode обрабатывает один кадр боевого режима:
-- читает ввод игрока;
-- обновляет контекст боя;
-- обрабатывает результаты боя;
-- вызывает методы Game для обновления состояния игры.
-*/
-func (g *Game) updateBattleMode() {
-	// Страховка:
-	// если по какой-то причине игра находится в ModeBattle,
-	// но контекст боя отсутствует, выходим обратно в исследование.
-	if g.battle == nil {
-		g.endBattle()
-		return
-	}
-
-	// Делегируем обновление самому боевому контексту.
-	// Game не знает, какие именно фазы и правила есть внутри боя.
-	action := g.battle.Update()
-
-	switch action {
-	case BattleActionVictory:
-		// При победе удаляем врага из мира
-		// и выходим обратно в режим исследования.
-		g.world.RemoveEnemy(g.battle.EnemyID)
-		g.endBattle()
-		return
-
-	case BattleActionDefeat:
-		// Пока что поражение просто завершает бой.
-		//
-		// Позже здесь можно будет добавить:
-		// - экран поражения;
-		// - откат игрока;
-		// - штраф;
-		// - загрузку сейва;
-		// - последствия в мире.
-		g.endBattle()
-		return
-
-	case BattleActionRetreat:
-		// Выходим из боя без удаления врага.
-		g.endBattle()
-		return
-
-	case BattleActionNone:
-		// Бой продолжается, ничего дополнительно делать не нужно.
-		return
-	}
-}
-
-/*
-TryMovePlayer пытается переместить игрока на одну клетку в заданном направлении.
-- Проверяет, не находится ли игрок на клетке с врагом;
-- Проверяет, можно ли двигаться на эту клетку;
-- Перемещает игрока;
-- Собирает pickup, если есть;
-- Продвигает мир на один ход, чтобы враги могли двигаться.
-- Если на клетке с врагом, начинает бой.
-*/
-func (g *Game) TryMovePlayer(dx, dy int) {
-	nextX := g.player.gridX + dx
-	nextY := g.player.gridY + dy
-
-	// Если в целевой клетке враг — не двигаемся,
-	// а входим в режим боя.
-	enemy := g.world.GetEnemyAt(nextX, nextY)
-	if enemy != nil {
-		g.startBattle(enemy.ID)
-		return
-	}
-
-	if !g.world.IsWalkable(nextX, nextY) {
-		return
-	}
-
-	g.player.Move(dx, dy)
-
-	if g.world.CollectPickupAt(g.player.gridX, g.player.gridY) {
-		g.pickupCount++
-	}
-
-	enemyID, startedBattle := g.world.AdvanceTurn(g.player.gridX, g.player.gridY)
-	if startedBattle {
-		g.startBattle(enemyID)
-	}
 }
 
 // updateCamera обновляет положение камеры.
