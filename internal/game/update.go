@@ -15,26 +15,18 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) readPlayerAction() PlayerAction {
-	dir, ok := g.input.ConsumeDirection()
-	if ok {
-		return PlayerAction{
-			Type: ActionMove,
-			DX:   dir.Dx,
-			DY:   dir.Dy,
-		}
+	dx, dy, wait := g.input.ReadExploreInput()
+	if dx != 0 || dy != 0 {
+		return PlayerAction{Type: ActionMove, DX: dx, DY: dy}
 	}
-
-	if g.input.WaitPressed() {
-		return PlayerAction{
-			Type: ActionWait,
-		}
+	if wait {
+		return PlayerAction{Type: ActionWait}
 	}
-
 	return PlayerAction{Type: ActionNone}
 }
 
-// processWorldTurn — единственная точка вызова AdvanceTurn: ход врагов, затем обновление камеры и стриминга.
-func (g *Game) processWorldTurn() {
+// advanceWorldTurn — единственная точка вызова AdvanceTurn: ход врагов, затем обновление камеры и стриминга.
+func (g *Game) advanceWorldTurn() {
 	px, py := g.player.Position()
 	enemyID, startedBattle := g.world.AdvanceTurn(px, py)
 	if startedBattle && enemyID != 0 {
@@ -68,10 +60,10 @@ func (g *Game) updateExploreMode() error {
 			g.startBattle(enemyID)
 			return nil
 		}
-		g.processWorldTurn()
+		g.advanceWorldTurn()
 
 	case ActionWait:
-		g.processWorldTurn()
+		g.advanceWorldTurn()
 	}
 
 	return nil
@@ -108,7 +100,7 @@ func (g *Game) resolveBattleResult(outcome battlepkg.BattleOutcome) {
 	switch outcome {
 	case battlepkg.BattleOutcomeVictory:
 		for _, e := range g.battle.Encounter.Enemies {
-			g.world.RemoveEnemy(e.WorldEnemyID)
+			g.world.RemoveEnemy(e.EnemyID)
 		}
 	case battlepkg.BattleOutcomeDefeat, battlepkg.BattleOutcomeRetreat:
 		// Пока ничего не делаем; позже: respawn, потеря прогресса и т.д.

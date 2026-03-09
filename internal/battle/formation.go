@@ -45,7 +45,7 @@ func effectiveRange(actor *BattleUnit, ability Ability) AbilityRange {
 	return ability.Range
 }
 
-// ReachableEnemyTargets возвращает допустимые цели для атаки по правилам formation.
+// ReachableEnemyTargets возвращает допустимые цели врага для способности по правилам formation.
 func (c *BattleContext) ReachableEnemyTargets(actor *BattleUnit, ability Ability) []*BattleUnit {
 	if actor == nil {
 		return nil
@@ -62,19 +62,46 @@ func (c *BattleContext) ReachableEnemyTargets(actor *BattleUnit, ability Ability
 	if rng == RangeRanged {
 		return allEnemies
 	}
-	// RangeMelee: только front row, если жив; иначе back row
 	if c.FrontRowAlive(enemyTeam) {
 		return c.LivingUnitsInRow(enemyTeam, RowFront)
 	}
 	return c.LivingUnitsInRow(enemyTeam, RowBack)
 }
 
-// CanTarget проверяет, может ли актёр атаковать цель данной способностью.
+// ReachableAllyTargets возвращает допустимые цели союзника (живые юниты своей команды, включая себя).
+func (c *BattleContext) ReachableAllyTargets(actor *BattleUnit, ability Ability) []*BattleUnit {
+	if actor == nil {
+		return nil
+	}
+	if ability.TargetRule != TargetAllySingle {
+		return nil
+	}
+	return c.LivingUnits(actor.Team)
+}
+
+// ReachableTargets возвращает допустимые цели способности для актёра (враги, союзники или сам актёр).
+func (c *BattleContext) ReachableTargets(actor *BattleUnit, ability Ability) []*BattleUnit {
+	switch ability.TargetRule {
+	case TargetEnemySingle:
+		return c.ReachableEnemyTargets(actor, ability)
+	case TargetAllySingle:
+		return c.ReachableAllyTargets(actor, ability)
+	case TargetSelf:
+		if actor != nil && actor.IsAlive() {
+			return []*BattleUnit{actor}
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
+// CanTarget проверяет, может ли актёр выбрать цель данной способностью.
 func (c *BattleContext) CanTarget(actor *BattleUnit, ability Ability, target *BattleUnit) bool {
 	if actor == nil || target == nil {
 		return false
 	}
-	reachable := c.ReachableEnemyTargets(actor, ability)
+	reachable := c.ReachableTargets(actor, ability)
 	for _, u := range reachable {
 		if u.ID == target.ID {
 			return true

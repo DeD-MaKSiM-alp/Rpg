@@ -34,8 +34,8 @@ func IsAdjacent8(ax, ay, bx, by int) bool {
 	return dx != 0 || dy != 0
 }
 
-// StepToward возвращает желаемый шаг (dx, dy) от (fromX, fromY) к (toX, toY).
-// Возвращает -1/0/1 по каждой оси, допускает диагональ. Не применяет движение.
+// StepToward returns step direction (dx, dy) toward target from (fromX, fromY) to (toX, toY).
+// Returns -1/0/1 per axis, allows diagonal. Does not apply movement.
 func StepToward(fromX, fromY, toX, toY int) (dx, dy int) {
 	if toX > fromX {
 		dx = 1

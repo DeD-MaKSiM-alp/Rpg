@@ -11,8 +11,9 @@ type WorldForMove interface {
 	CollectPickupAt(x, y int) bool
 }
 
-// TryMovePlayer пытается переместить игрока на одну клетку в заданном направлении.
-// Возвращает: удалось ли выполнить действие (в т.ч. вступление в бой), ID врага при контакте, был ли подобран предмет.
+// TryMovePlayer tries to move the player or initiate combat.
+// "moved" means the action was accepted (step or contact with enemy), not necessarily that the position changed.
+// Returns: moved, enemyID if contact, pickedUp.
 func TryMovePlayer(pl *Player, w WorldForMove, dx, dy int) (moved bool, enemyID world.EntityID, pickedUp bool) {
 	nextX := pl.GridX + dx
 	nextY := pl.GridY + dy

@@ -21,14 +21,9 @@ func (b *BattleContext) Update() BattleOutcome {
 		return BattleOutcomeNone
 	}
 
-	// Защита: бой завершён (legacy PhaseFinished) — вернуть outcome.
-	if b.Phase == PhaseFinished {
-		return b.ToBattleOutcome()
-	}
-
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		b.Result = ResultEscape
-		b.LastLog = "Игрок покинул бой."
+		b.LastMessage = "Игрок покинул бой."
 		b.Phase = PhaseFinishedWaitInput
 		return BattleOutcomeNone
 	}
@@ -67,7 +62,8 @@ func (b *BattleContext) Update() BattleOutcome {
 				if ok {
 					result := ResolveAbility(b, action)
 					b.ApplyActionResult(result)
-					b.Phase = PhaseTurnResolve
+					b.PauseFrames = actionPauseFrames
+					b.Phase = PhaseActionPause
 				}
 			}
 		} else {
@@ -76,25 +72,20 @@ func (b *BattleContext) Update() BattleOutcome {
 				result := ResolveAbility(b, action)
 				b.ApplyActionResult(result)
 			}
-			b.Phase = PhaseTurnResolve
+			b.PauseFrames = actionPauseFrames
+			b.Phase = PhaseActionPause
 		}
 		return BattleOutcomeNone
 
 	case PhaseActionPause:
-		b.PhaseTimer--
-		if b.PhaseTimer <= 0 {
+		b.PauseFrames--
+		if b.PauseFrames <= 0 {
 			if b.IsFinished() {
 				b.Phase = PhaseFinishedWaitInput
 			} else {
 				b.Phase = PhaseTurnEnd
 			}
 		}
-		return BattleOutcomeNone
-
-	case PhaseTurnResolve:
-		b.UpdateResultIfFinished()
-		b.PhaseTimer = actionPauseFrames
-		b.Phase = PhaseActionPause
 		return BattleOutcomeNone
 
 	case PhaseTurnEnd:
@@ -115,9 +106,6 @@ func (b *BattleContext) Update() BattleOutcome {
 	case PhaseRoundEnd:
 		b.Phase = PhaseTurnStart
 		return BattleOutcomeNone
-
-	case PhaseFinished:
-		return b.ToBattleOutcome()
 	}
 
 	return BattleOutcomeNone

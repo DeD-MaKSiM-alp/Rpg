@@ -9,8 +9,9 @@ type BattleAction struct {
 
 // ActionResult — описание фактического эффекта действия (runtime применяет его).
 type ActionResult struct {
-	Actor  UnitID
-	Target UnitID
-	Damage int
-	Killed bool
+	Actor      UnitID
+	Target     UnitID
+	Damage     int
+	Killed     bool
+	HealAmount int // если > 0 — лечение цели
 }

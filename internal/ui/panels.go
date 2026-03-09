@@ -38,8 +38,8 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	titleOp.ColorScale.ScaleWithColor(color.White)
 
 	title := "Battle mode"
-	if battle != nil {
-		title = fmt.Sprintf("Battle mode: enemy #%d", battle.EnemyID)
+	if battle != nil && len(battle.Encounter.Enemies) > 0 {
+		title = fmt.Sprintf("Battle mode: enemy #%d", battle.Encounter.Enemies[0].EnemyID)
 	}
 
 	text.Draw(screen, title, hudFace, titleOp)
@@ -77,12 +77,12 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	bodyOp1 := &text.DrawOptions{}
 	bodyOp1.GeoM.Translate(float64(panelX)+20, float64(panelY)+80+offsetY)
 	bodyOp1.ColorScale.ScaleWithColor(color.White)
-	text.Draw(screen, fmt.Sprintf("Player HP: %d", battle.PlayerHP()), hudFace, bodyOp1)
+	text.Draw(screen, fmt.Sprintf("Player HP: %d", battle.TeamFirstHP(battlepkg.TeamPlayer)), hudFace, bodyOp1)
 
 	bodyOp2 := &text.DrawOptions{}
 	bodyOp2.GeoM.Translate(float64(panelX)+20, float64(panelY)+110+offsetY)
 	bodyOp2.ColorScale.ScaleWithColor(color.White)
-	text.Draw(screen, fmt.Sprintf("Enemy HP: %d", battle.EnemyHP()), hudFace, bodyOp2)
+	text.Draw(screen, fmt.Sprintf("Enemy HP: %d", battle.TeamFirstHP(battlepkg.TeamEnemy)), hudFace, bodyOp2)
 
 	bodyOp3 := &text.DrawOptions{}
 	bodyOp3.GeoM.Translate(float64(panelX)+20, float64(panelY)+125+offsetY)
@@ -92,16 +92,7 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	bodyOp3b := &text.DrawOptions{}
 	bodyOp3b.GeoM.Translate(float64(panelX)+20, float64(panelY)+145+offsetY)
 	bodyOp3b.ColorScale.ScaleWithColor(color.White)
-	phaseText := "Фаза: неизвестно"
-	switch battle.DisplayPhase() {
-	case battlepkg.BattlePhasePlayerTurn:
-		phaseText = ">>> ХОД ИГРОКА <<<"
-	case battlepkg.BattlePhaseEnemyTurn:
-		phaseText = ">>> ХОД ВРАГА <<<"
-	case battlepkg.BattlePhaseFinished:
-		phaseText = "Бой завершён"
-	}
-	text.Draw(screen, phaseText, hudFace, bodyOp3b)
+	text.Draw(screen, battle.DisplayPhaseLabel(), hudFace, bodyOp3b)
 
 	// Debug: phase, timer, active, result, last message
 	bodyOp3c := &text.DrawOptions{}
@@ -111,12 +102,12 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	if u := battle.ActiveUnit(); u != nil {
 		activeHP = u.HP
 	}
-	lastMsg := battle.LastLog
+	lastMsg := battle.LastMessage
 	if len(lastMsg) > 40 {
 		lastMsg = lastMsg[:37] + "..."
 	}
 	text.Draw(screen, fmt.Sprintf("phase:%s timer:%d active:%s HP:%d result:%s | %s",
-		battle.PhaseString(), battle.PhaseTimer, battle.ActiveUnitName(), activeHP, battle.ResultString(), lastMsg), hudFace, bodyOp3c)
+		battle.PhaseString(), battle.PauseFrames, battle.ActiveUnitName(), activeHP, battle.ResultString(), lastMsg), hudFace, bodyOp3c)
 
 	bodyOp4 := &text.DrawOptions{}
 	bodyOp4.GeoM.Translate(float64(panelX)+20, float64(panelY)+195+offsetY)
@@ -131,7 +122,7 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	bodyOp6 := &text.DrawOptions{}
 	bodyOp6.GeoM.Translate(float64(panelX)+20, float64(panelY)+250+offsetY)
 	bodyOp6.ColorScale.ScaleWithColor(color.White)
-	text.Draw(screen, battle.LastLog, hudFace, bodyOp6)
+	text.Draw(screen, battle.LastMessage, hudFace, bodyOp6)
 }
 
 // drawHUDText рисует текстовые блоки HUD (счётчик собранных предметов и т.п.).

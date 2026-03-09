@@ -3,8 +3,6 @@ package battle
 import (
 	"fmt"
 	"sort"
-
-	"mygame/world"
 )
 
 // BattleContext хранит состояние одного активного боя.
@@ -17,14 +15,11 @@ type BattleContext struct {
 	TurnIndex int
 	Round     int
 
-	Phase      Phase
-	Result     Result
-	PhaseTimer int // кадры до перехода к следующей фазе
+	Phase       Phase
+	Result      Result
+	PauseFrames int // кадры до перехода к следующей фазе
 
-	LastLog string
-
-	// EnemyID — удобный доступ к SourceEnemyID (для UI/legacy).
-	EnemyID world.EntityID
+	LastMessage string
 }
 
 // BuildBattleContextFromEncounter создаёт BattleContext из Encounter.
@@ -33,13 +28,12 @@ func BuildBattleContextFromEncounter(enc Encounter) *BattleContext {
 		return nil
 	}
 	ctx := &BattleContext{
-		Encounter: enc,
-		EnemyID:   enc.SourceEnemyID,
-		Units:     make(map[UnitID]*BattleUnit),
-		Teams:     make(map[TeamID]*BattleTeam),
-		Phase:     PhaseStart,
-		Result:    ResultNone,
-		LastLog:   "Бой начался.",
+		Encounter:   enc,
+		Units:       make(map[UnitID]*BattleUnit),
+		Teams:       make(map[TeamID]*BattleTeam),
+		Phase:       PhaseStart,
+		Result:      ResultNone,
+		LastMessage: "Бой начался.",
 	}
 
 	// Player team (player front row)
@@ -70,9 +64,9 @@ func BuildBattleContextFromEncounter(enc Encounter) *BattleContext {
 		if i >= MaxFrontRowUnits {
 			row = RowBack
 		}
-		abil := AbilityBasicAttack
-		if seed.IsRanged {
-			abil = AbilityRangedAttack
+		abils := seed.Abilities
+		if len(abils) == 0 {
+			abils = []AbilityID{AbilityBasicAttack}
 		}
 		u := &BattleUnit{
 			ID:             uid,
@@ -87,7 +81,7 @@ func BuildBattleContextFromEncounter(enc Encounter) *BattleContext {
 			Initiative:     seed.Initiative,
 			Alive:          true,
 			Ranged:         seed.IsRanged,
-			Abilities:      []AbilityID{abil},
+			Abilities:      abils,
 			SourceEnemyID:  seed.SourceEnemyID,
 		}
 		ctx.Units[uid] = u
@@ -131,9 +125,9 @@ func BuildTurnOrder(ctx *BattleContext) []UnitID {
 	return out
 }
 
-// ActiveUnitID возвращает ID активного юнита (в PhaseTurnStart, PhaseAwaitAction, PhaseTurnResolve, PhaseActionPause).
+// ActiveUnitID возвращает ID активного юнита (в PhaseTurnStart, PhaseAwaitAction, PhaseActionPause).
 func (c *BattleContext) ActiveUnitID() UnitID {
-	if c.Phase != PhaseTurnStart && c.Phase != PhaseAwaitAction && c.Phase != PhaseTurnResolve && c.Phase != PhaseActionPause {
+	if c.Phase != PhaseTurnStart && c.Phase != PhaseAwaitAction && c.Phase != PhaseActionPause {
 		return 0
 	}
 	if c.TurnIndex < 0 || c.TurnIndex >= len(c.TurnOrder) {
@@ -151,9 +145,9 @@ func (c *BattleContext) ActiveUnit() *BattleUnit {
 	return c.Units[id]
 }
 
-// IsFinished возвращает true, если бой завершён.
+// IsFinished возвращает true, если бой завершён (Result определён).
 func (c *BattleContext) IsFinished() bool {
-	return c.Phase == PhaseFinished || c.Result != ResultNone
+	return c.Result != ResultNone
 }
 
 // LivingUnits возвращает живых юнитов команды.
@@ -181,12 +175,12 @@ func (c *BattleContext) TeamAlive(team TeamID) bool {
 func (c *BattleContext) UpdateResultIfFinished() {
 	if !c.TeamAlive(TeamPlayer) {
 		c.Result = ResultDefeat
-		c.LastLog = "Поражение."
+		c.LastMessage = "Поражение."
 		return
 	}
 	if !c.TeamAlive(TeamEnemy) {
 		c.Result = ResultVictory
-		c.LastLog = "Победа!"
+		c.LastMessage = "Победа!"
 		return
 	}
 }
@@ -215,33 +209,24 @@ func (c *BattleContext) AdvanceTurn() {
 	c.Phase = PhaseTurnStart
 }
 
-// DisplayPhase возвращает BattlePhase для UI (ход игрока / ход врага / завершён).
-func (c *BattleContext) DisplayPhase() BattlePhase {
-	if c.Phase == PhaseFinished || c.Phase == PhaseFinishedWaitInput || c.Result != ResultNone {
-		return BattlePhaseFinished
+// DisplayPhaseLabel возвращает текст фазы для UI (ход игрока / ход врага / завершён).
+func (c *BattleContext) DisplayPhaseLabel() string {
+	if c.Phase == PhaseFinishedWaitInput || c.Result != ResultNone {
+		return "Бой завершён"
 	}
 	u := c.ActiveUnit()
 	if u == nil {
-		return BattlePhaseFinished
+		return "Бой завершён"
 	}
 	if u.Team == TeamPlayer {
-		return BattlePhasePlayerTurn
+		return ">>> ХОД ИГРОКА <<<"
 	}
-	return BattlePhaseEnemyTurn
+	return ">>> ХОД ВРАГА <<<"
 }
 
-// PlayerHP возвращает HP первого живого юнита игрока (для UI).
-func (c *BattleContext) PlayerHP() int {
-	live := c.LivingUnits(TeamPlayer)
-	if len(live) == 0 {
-		return 0
-	}
-	return live[0].HP
-}
-
-// EnemyHP возвращает HP первого живого юнита врага (для UI).
-func (c *BattleContext) EnemyHP() int {
-	live := c.LivingUnits(TeamEnemy)
+// TeamFirstHP возвращает HP первого живого юнита команды (для UI).
+func (c *BattleContext) TeamFirstHP(team TeamID) int {
+	live := c.LivingUnits(team)
 	if len(live) == 0 {
 		return 0
 	}
@@ -287,8 +272,6 @@ func (c *BattleContext) PhaseString() string {
 		return "TurnStart"
 	case PhaseAwaitAction:
 		return "AwaitAction"
-	case PhaseTurnResolve:
-		return "TurnResolve"
 	case PhaseActionPause:
 		return "ActionPause"
 	case PhaseTurnEnd:
@@ -297,8 +280,6 @@ func (c *BattleContext) PhaseString() string {
 		return "RoundEnd"
 	case PhaseFinishedWaitInput:
 		return "FinishedWaitInput"
-	case PhaseFinished:
-		return "Finished"
 	}
 	return "?"
 }
@@ -344,10 +325,14 @@ func (c *BattleContext) ApplyActionResult(r ActionResult) {
 		return
 	}
 	actor := c.Units[r.Actor]
-	if r.Target != 0 {
-		target := c.Units[r.Target]
-		if actor != nil && target != nil && r.Damage > 0 {
-			c.LastLog = logActionResult(actor, target, r)
+	target := c.Units[r.Target]
+	if actor != nil && target != nil {
+		if r.HealAmount > 0 {
+			c.LastMessage = fmt.Sprintf("%s вылечил %s на %d.", actor.Name, target.Name, r.HealAmount)
+		} else if r.Damage > 0 {
+			c.LastMessage = logActionResult(actor, target, r)
+		} else if r.Target != 0 {
+			c.LastMessage = fmt.Sprintf("%s усилил %s.", actor.Name, target.Name)
 		}
 	}
 	c.UpdateResultIfFinished()

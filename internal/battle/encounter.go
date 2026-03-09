@@ -5,16 +5,15 @@ import (
 	"mygame/world/entity"
 )
 
-// Encounter описывает предстоящий бой (подготовительные данные, не runtime battle state).
+// Encounter описывает предстоящий бой (слой между world enemy и battle unit).
 type Encounter struct {
-	SourceEnemyID entity.EntityID // кто инициировал бой
-	Enemies       []EncounterEnemy
+	Enemies []EncounterEnemy
 }
 
-// EncounterEnemy — участник encounter из мира.
+// EncounterEnemy — участник encounter (ссылка на врага в мире и его тип).
 type EncounterEnemy struct {
-	WorldEnemyID entity.EntityID
-	Kind         entity.EnemyKind
+	EnemyID entity.EntityID
+	Kind    entity.EnemyKind
 }
 
 // BuildEncounterFromWorld строит Encounter по enemyID из мира. Не меняет мир.
@@ -24,15 +23,14 @@ func BuildEncounterFromWorld(w *world.World, enemyID entity.EntityID) (Encounter
 		return Encounter{}, false
 	}
 	return Encounter{
-		SourceEnemyID: enemyID,
 		Enemies: []EncounterEnemy{{
-			WorldEnemyID: enemyID,
-			Kind:         entity.EnemyKind(e.Kind),
+			EnemyID: enemyID,
+			Kind:    entity.EnemyKind(e.Kind),
 		}},
 	}, true
 }
 
-// BattleUnitSeed — подготовительные боевые данные для создания юнита (отвязаны от world entity).
+// BattleUnitSeed — подготовительные боевые данные для создания BattleUnit (отвязаны от world entity).
 type BattleUnitSeed struct {
 	Name          string
 	MaxHP         int
@@ -40,6 +38,7 @@ type BattleUnitSeed struct {
 	Defense       int
 	Initiative    int
 	IsRanged      bool
+	Abilities     []AbilityID
 	SourceEnemyID entity.EntityID
 }
 
@@ -48,11 +47,12 @@ func BuildBattleUnitSeed(e EncounterEnemy) BattleUnitSeed {
 	tpl := GetEnemyTemplate(e.Kind)
 	return BattleUnitSeed{
 		Name:          tpl.Name,
-		MaxHP:         tpl.MaxHP,
+		MaxHP:         tpl.HP,
 		Attack:        tpl.Attack,
 		Defense:       tpl.Defense,
 		Initiative:    tpl.Initiative,
 		IsRanged:      tpl.IsRanged,
-		SourceEnemyID: e.WorldEnemyID,
+		Abilities:     GetRoleAbilities(tpl.Role),
+		SourceEnemyID: e.EnemyID,
 	}
 }

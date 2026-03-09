@@ -4,15 +4,15 @@ import (
 	"mygame/world/entity"
 )
 
-// EnemyTemplate описывает боевые параметры типа врага.
+// EnemyTemplate описывает боевые параметры типа врага (registry шаблонов).
 type EnemyTemplate struct {
-	ID         string
 	Name       string
-	MaxHP      int
+	HP         int
 	Attack     int
 	Defense    int
 	Initiative int
 	IsRanged   bool
+	Role       Role
 }
 
 // GetEnemyTemplate возвращает шаблон врага по kind.
@@ -20,43 +20,43 @@ func GetEnemyTemplate(kind entity.EnemyKind) EnemyTemplate {
 	switch kind {
 	case entity.EnemyKindSlime:
 		return EnemyTemplate{
-			ID:         "slime",
 			Name:       "Слайм",
-			MaxHP:      6,
+			HP:         6,
 			Attack:     1,
 			Defense:    0,
 			Initiative: 1,
 			IsRanged:   false,
+			Role:       RoleFighter,
 		}
 	case entity.EnemyKindWolf:
 		return EnemyTemplate{
-			ID:         "wolf",
 			Name:       "Волк",
-			MaxHP:      8,
+			HP:         8,
 			Attack:     2,
 			Defense:    1,
 			Initiative: 2,
 			IsRanged:   true,
+			Role:       RoleArcher,
 		}
 	case entity.EnemyKindBandit:
 		return EnemyTemplate{
-			ID:         "bandit",
 			Name:       "Бандит",
-			MaxHP:      10,
+			HP:         10,
 			Attack:     2,
 			Defense:    1,
 			Initiative: 2,
 			IsRanged:   false,
+			Role:       RoleHealer,
 		}
 	default:
 		return EnemyTemplate{
-			ID:         "unknown",
 			Name:       "Враг",
-			MaxHP:      6,
+			HP:         6,
 			Attack:     1,
 			Defense:    0,
 			Initiative: 1,
 			IsRanged:   false,
+			Role:       RoleFighter,
 		}
 	}
 }

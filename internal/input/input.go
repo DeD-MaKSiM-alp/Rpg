@@ -5,7 +5,13 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
-// Input считывает ввод игрока (движение, ожидание).
+// Direction задаёт направление движения (смещение по сетке).
+// Нулевое значение Direction{} означает отсутствие направления.
+type Direction struct {
+	Dx, Dy int
+}
+
+// Input считывает ввод игрока для режима исследования (движение, ожидание).
 type Input struct{}
 
 // New создаёт новый экземпляр Input.
@@ -13,35 +19,23 @@ func New() *Input {
 	return &Input{}
 }
 
-// ConsumeDirection возвращает направление движения, если в этом кадре было нажатие, и true.
-func (i *Input) ConsumeDirection() (Direction, bool) {
-	dir := readDirectionInput()
-	if dir.Dx != 0 || dir.Dy != 0 {
-		return dir, true
-	}
-	return Direction{}, false
-}
-
-// WaitPressed возвращает true, если в этом кадре нажата клавиша ожидания (пробел).
-// Использует IsKeyJustPressed, чтобы одно нажатие тратило ровно один ход.
-func (i *Input) WaitPressed() bool {
-	return inpututil.IsKeyJustPressed(ebiten.KeySpace)
-}
-
-// readDirectionInput считывает "свежее" состояние клавиш движения.
-func readDirectionInput() Direction {
-	dx, dy := 0, 0
+// ReadExploreInput возвращает действие игрока в этом кадре: смещение (dx, dy) при нажатии стрелки или wait=true при SPACE.
+// Одно нажатие — одно действие за кадр. Приоритет: стрелка, затем SPACE.
+func (i *Input) ReadExploreInput() (dx, dy int, wait bool) {
 	if inpututil.IsKeyJustPressed(ebiten.KeyRight) {
-		dx = 1
+		return 1, 0, false
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyLeft) {
-		dx = -1
+		return -1, 0, false
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyDown) {
-		dy = 1
+		return 0, 1, false
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyUp) {
-		dy = -1
+		return 0, -1, false
 	}
-	return Direction{Dx: dx, Dy: dy}
+	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		return 0, 0, true
+	}
+	return 0, 0, false
 }
