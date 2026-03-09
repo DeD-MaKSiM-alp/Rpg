@@ -4,8 +4,6 @@ import (
 	"log"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	text "github.com/hajimehoshi/ebiten/v2/text/v2"
-	"golang.org/x/image/font/basicfont"
 
 	"mygame/world"
 )
@@ -28,9 +26,14 @@ func main() {
 	// создаём структуру Game, которая хранит всё состояние игры
 	game := &Game{
 		// создаём игрока и ставим его в клетку (2, 2) сетки
-		player:  *NewPlayer(2, 2),
-		world:   world.NewWorld(worldSeed),
-		hudFace: text.NewGoXFace(basicfont.Face7x13),
+		player: *NewPlayer(2, 2),
+
+		// создаём мир с фиксированным seed.
+		world: world.NewWorld(worldSeed),
+
+		// Загружаем UI-шрифт с поддержкой кириллицы,
+		// чтобы русские строки в HUD и battle overlay отображались без "?".
+		hudFace: loadHUDFace(),
 	}
 	// Запускаем основной цикл игры.
 	// Если Ebiten вернёт ошибку, логируем её и завершаем программу.
