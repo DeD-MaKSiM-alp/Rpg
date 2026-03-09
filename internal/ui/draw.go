@@ -10,9 +10,9 @@ import (
 	battlepkg "mygame/internal/battle"
 )
 
-// DrawDebugInputDirection рисует одну строку с текущим направлением ввода (временный debug для проверки диагонали).
-func DrawDebugInputDirection(screen *ebiten.Image, dx, dy int) {
-	ebitenutil.DebugPrint(screen, fmt.Sprintf("Input: dx=%d dy=%d\n", dx, dy))
+// DrawDebugInputDirection рисует raw и выданное (emit) направление ввода (временный debug для проверки диагонали).
+func DrawDebugInputDirection(screen *ebiten.Image, rawDX, rawDY, emitDX, emitDY int) {
+	ebitenutil.DebugPrint(screen, fmt.Sprintf("Input raw: dx=%d dy=%d | emit: dx=%d dy=%d\n", rawDX, rawDY, emitDX, emitDY))
 }
 
 // DrawHUD рисует поверх кадра элементы HUD (например, счётчик собранных предметов).

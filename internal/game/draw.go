@@ -28,8 +28,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	ui.DrawHUD(screen, g.pickupCount, g.hudFace)
 
 	if g.mode == ModeExplore && debugShowInputDirection {
-		// Временный debug: направление, которое возвращает input layer (удалить после проверки диагонали).
-		ui.DrawDebugInputDirection(screen, g.debugInputDX, g.debugInputDY)
+		rawX, rawY := g.input.DebugRaw()
+		emitX, emitY := g.input.DebugEmit()
+		ui.DrawDebugInputDirection(screen, rawX, rawY, emitX, emitY)
 	}
 
 	if g.mode == ModeBattle {

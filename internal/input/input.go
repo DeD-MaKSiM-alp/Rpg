@@ -5,39 +5,47 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
-// Параметры окна добора второй оси для диагонали (в кадрах).
-const graceWindowFrames = 4
-
-// Параметры controlled repeat: задержка до первого повтора и интервал повторов (в кадрах).
-const (
-	initialDelayFrames   = 15 // ~250 ms при 60 FPS
-	repeatIntervalFrames = 5  // ~83 ms между повторами
-)
-
 // Input считывает ввод игрока для режима исследования (движение, ожидание).
-// Внутри: physical axes → grace window → effective direction → repeat logic.
+// Цепочка: physical axes (raw) → effective direction (= raw, без подстановки оси) →
+// смена направления = немедленный emit; то же направление = controlled repeat.
 type Input struct {
 	// Счётчик кадров (увеличивается при каждом вызове ReadExploreInput).
 	frameCounter int
 
 	// Последнее выданное эффективное направление и сколько кадров оно удерживается.
+	// Repeat: первый шаг сразу, следующий — после initialDelayFrames, далее каждые repeatIntervalFrames.
 	lastEffectiveDX, lastEffectiveDY int
 	holdFrames                       int
 
-	// Grace window: последнее значение и кадр активации по каждой оси.
-	lastHorizontalValue      int
-	lastHorizontalPressFrame int
-	lastVerticalValue        int
-	lastVerticalPressFrame   int
+	// Момент последнего изменения значения по каждой оси и последнее ненулевое значение.
+	// Нужно для grace: при кратковременном отпускании клавиши сохраняем направление в пределах окна.
+	lastHorizontalChangeFrame int
+	lastVerticalChangeFrame   int
+	lastHorizontalValue      int // последнее ненулевое rawX
+	lastVerticalValue        int // последнее ненулевое rawY
+	prevRawDX, prevRawDY      int
+
+	// Параметры repeat и grace: задаются в New(), легко подстроить.
+	InitialDelayFrames   int // кадров до первого повтора при удержании
+	RepeatIntervalFrames int // кадров между повторами
+	DiagonalGraceFrames  int // окно добора второй оси (в кадрах); смена на диагональ без штрафа по repeat
+
+	// Временный debug: последние raw и выданное направление (для overlay).
+	debugRawDX, debugRawDY   int
+	debugEmitDX, debugEmitDY int
 }
 
-// New создаёт новый экземпляр Input.
+// New создаёт новый экземпляр Input с дефолтными параметрами repeat и grace.
 func New() *Input {
-	return &Input{}
+	return &Input{
+		InitialDelayFrames:   12, // ~200 ms при 60 FPS до первого повтора
+		RepeatIntervalFrames: 5,  // ~83 ms между повторами
+		DiagonalGraceFrames:  10, // окно: добор второй оси и устойчивость при кратком отпускании (~167 ms при 60 FPS)
+	}
 }
 
 // readRawAxes возвращает текущие физические оси по удержанию стрелок.
-// Right=+1, Left=-1, обе=0; Down=+1, Up=-1, обе=0.
+// Right=+1, Left=-1, обе=0; Down=+1, Up=-1, обе=0. Opposite keys cancel.
 func (i *Input) readRawAxes() (rawX, rawY int) {
 	if ebiten.IsKeyPressed(ebiten.KeyRight) && !ebiten.IsKeyPressed(ebiten.KeyLeft) {
 		rawX = 1
@@ -52,65 +60,72 @@ func (i *Input) readRawAxes() (rawX, rawY int) {
 	return rawX, rawY
 }
 
-// updateAxisPressState обновляет last*Value и last*PressFrame для оси, если она активна.
-func (i *Input) updateAxisPressState(rawX, rawY int) {
+// updateAxisChangeFrames обновляет last*ChangeFrame и last*Value при изменении оси.
+func (i *Input) updateAxisChangeFrames(rawX, rawY int) {
+	if rawX != i.prevRawDX {
+		i.lastHorizontalChangeFrame = i.frameCounter
+	}
+	if rawY != i.prevRawDY {
+		i.lastVerticalChangeFrame = i.frameCounter
+	}
 	if rawX != 0 {
 		i.lastHorizontalValue = rawX
-		i.lastHorizontalPressFrame = i.frameCounter
 	}
 	if rawY != 0 {
 		i.lastVerticalValue = rawY
-		i.lastVerticalPressFrame = i.frameCounter
 	}
+	i.prevRawDX, i.prevRawDY = rawX, rawY
 }
 
-// applyGraceWindow возвращает эффективное направление: raw оси + добор второй оси в пределах окна.
-// Если одна ось нуль, но вторая была активна недавно (в пределах graceWindowFrames), подставляем её.
-func (i *Input) applyGraceWindow(rawX, rawY int) (effX, effY int) {
+// effectiveDirection: raw + grace. Если ось стала 0 недавно (в пределах DiagonalGraceFrames),
+// считаем её ещё «удержанной» — так диагональ не дёргается при кратком отпускании и проще добор второй клавиши.
+// Не подставляем ось, которую игрок никогда не нажимал (last*Value был только при реальном нажатии).
+func (i *Input) effectiveDirection(rawX, rawY int) (effX, effY int) {
 	effX = rawX
 	effY = rawY
-	if rawX == 0 && rawY != 0 && (i.frameCounter-i.lastHorizontalPressFrame) <= graceWindowFrames {
+	if rawX == 0 && i.lastHorizontalValue != 0 && (i.frameCounter-i.lastHorizontalChangeFrame) <= i.DiagonalGraceFrames {
 		effX = i.lastHorizontalValue
 	}
-	if rawY == 0 && rawX != 0 && (i.frameCounter-i.lastVerticalPressFrame) <= graceWindowFrames {
+	if rawY == 0 && i.lastVerticalValue != 0 && (i.frameCounter-i.lastVerticalChangeFrame) <= i.DiagonalGraceFrames {
 		effY = i.lastVerticalValue
 	}
 	return effX, effY
 }
 
-// computeEffectiveDirection возвращает эффективное направление: raw axes + grace window.
-func (i *Input) computeEffectiveDirection() (effX, effY int) {
-	rawX, rawY := i.readRawAxes()
-	i.updateAxisPressState(rawX, rawY)
-	return i.applyGraceWindow(rawX, rawY)
-}
-
-// directionChanged возвращает true, если эффективное направление отличается от последнего выданного.
+// directionChanged — true, если эффективное направление отличается от последнего выданного.
+// При смене направления всегда emit сразу, без repeat delay.
 func (i *Input) directionChanged(effX, effY int) bool {
 	return effX != i.lastEffectiveDX || effY != i.lastEffectiveDY
 }
 
-// shouldEmitRepeat возвращает true, если при удержании того же направления пора выдать повтор:
-// первый повтор после initialDelayFrames, далее каждые repeatIntervalFrames.
+// shouldEmitRepeat — true, если при удержании того же направления пора выдать повтор:
+// первый повтор после InitialDelayFrames, далее каждые RepeatIntervalFrames.
 func (i *Input) shouldEmitRepeat() bool {
-	firstRepeatFrame := initialDelayFrames + 1
+	firstRepeatFrame := i.InitialDelayFrames + 1
 	if i.holdFrames < firstRepeatFrame {
 		return false
 	}
 	if i.holdFrames == firstRepeatFrame {
 		return true
 	}
-	return (i.holdFrames-firstRepeatFrame)%repeatIntervalFrames == 0
+	return (i.holdFrames-firstRepeatFrame)%i.RepeatIntervalFrames == 0
 }
 
 // ReadExploreInput — единственная точка чтения ввода для режима исследования (explore).
-// Контракт: (dx, dy int, wait bool). Детали grace window и repeat скрыты внутри.
+// Контракт: (dx, dy int, wait bool). Детали grace/repeat скрыты внутри.
+//
+// Логика: движение по raw осям; смена направления = немедленный emit; удержание = controlled repeat.
+// Wait проверяется только при отсутствии движения в этом кадре (приоритет движения над wait).
 func (i *Input) ReadExploreInput() (dx, dy int, wait bool) {
 	i.frameCounter++
 
-	effX, effY := i.computeEffectiveDirection()
+	rawX, rawY := i.readRawAxes()
+	i.debugRawDX, i.debugRawDY = rawX, rawY
+	i.updateAxisChangeFrames(rawX, rawY)
 
-	// Нет движения: сброс state, wait только по just-pressed Space.
+	effX, effY := i.effectiveDirection(rawX, rawY)
+
+	// Нет движения: сброс state. Wait только по just-pressed Space.
 	if effX == 0 && effY == 0 {
 		i.lastEffectiveDX, i.lastEffectiveDY = 0, 0
 		i.holdFrames = 0
@@ -120,17 +135,25 @@ func (i *Input) ReadExploreInput() (dx, dy int, wait bool) {
 		return 0, 0, false
 	}
 
-	// Приоритет: движение важнее wait. Effective direction изменился — срабатывает сразу, repeat сбрасывается.
+	// Приоритет движения над wait. Смена направления — срабатывает сразу, repeat сбрасывается.
 	if i.directionChanged(effX, effY) {
 		i.lastEffectiveDX, i.lastEffectiveDY = effX, effY
 		i.holdFrames = 1
+		i.debugEmitDX, i.debugEmitDY = effX, effY
 		return effX, effY, false
 	}
 
 	// То же направление удерживается — повтор только по правилам repeat.
 	i.holdFrames++
 	if i.shouldEmitRepeat() {
+		i.debugEmitDX, i.debugEmitDY = i.lastEffectiveDX, i.lastEffectiveDY
 		return i.lastEffectiveDX, i.lastEffectiveDY, false
 	}
 	return 0, 0, false
 }
+
+// DebugRaw возвращает последние считанные raw оси (для отладочного overlay).
+func (i *Input) DebugRaw() (dx, dy int) { return i.debugRawDX, i.debugRawDY }
+
+// DebugEmit возвращает последнее реально выданное направление (для отладочного overlay).
+func (i *Input) DebugEmit() (dx, dy int) { return i.debugEmitDX, i.debugEmitDY }
