@@ -175,7 +175,8 @@ func (g *Game) Update() error {
 // Draw — метод, который отвечает за отрисовку одного кадра игры.
 // Ebiten каждый кадр даёт нам поверхность screen,
 // на которой мы последовательно рисуем:
-//   фон, мир, сетку, (опционально) overlay чанков, игрока, debug-текст и HUD.
+//
+//	фон, мир, сетку, (опционально) overlay чанков, игрока, debug-текст и HUD.
 func (g *Game) Draw(screen *ebiten.Image) {
 	// рисуем фон в черном цвете
 	screen.Fill(color.Black)
@@ -332,6 +333,8 @@ func (g *Game) TryMovePlayer(dx, dy int) {
 	if g.world.CollectPickupAt(g.player.gridX, g.player.gridY) {
 		g.pickupCount++
 	}
+
+	g.world.AdvanceTurn(g.player.gridX, g.player.gridY)
 }
 
 // updateCamera обновляет положение камеры.

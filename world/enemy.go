@@ -41,6 +41,49 @@ func (w *World) GetEnemyAt(worldX, worldY int) *Entity {
 	return nil
 }
 
+func (w *World) isEnemyBlockingTile(worldX, worldY int, ignoreID EntityID) bool {
+	for _, entity := range w.entities {
+		if !entity.Alive {
+			continue
+		}
+
+		if entity.Type != EntityEnemy {
+			continue
+		}
+
+		if entity.ID == ignoreID {
+			continue
+		}
+
+		if entity.X == worldX && entity.Y == worldY {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (w *World) tryMoveEnemy(entity *Entity, nextX, nextY, playerX, playerY int) bool {
+	// Враг не может встать в клетку игрока.
+	if nextX == playerX && nextY == playerY {
+		return false
+	}
+
+	// Враг не может пройти в непроходимый тайл.
+	if !w.IsWalkable(nextX, nextY) {
+		return false
+	}
+
+	// Враг не может встать в клетку другого врага.
+	if w.isEnemyBlockingTile(nextX, nextY, entity.ID) {
+		return false
+	}
+
+	entity.X = nextX
+	entity.Y = nextY
+	return true
+}
+
 func (w *World) RemoveEnemy(id EntityID) {
 	entity, exists := w.entities[id]
 	if !exists {
@@ -96,5 +139,73 @@ func (w *World) generateEnemiesForChunk(chunkX, chunkY, seed int, tiles [][]Tile
 
 		w.addEntity(EntityEnemy, worldX, worldY)
 		return
+	}
+}
+
+func manhattanDistance(ax, ay, bx, by int) int {
+	dx := ax - bx
+	if dx < 0 {
+		dx = -dx
+	}
+
+	dy := ay - by
+	if dy < 0 {
+		dy = -dy
+	}
+
+	return dx + dy
+}
+
+func (w *World) AdvanceTurn(playerX, playerY int) {
+	// Чтобы поведение не зависело от случайного порядка обхода map,
+	// сначала собираем врагов в срез.
+	enemies := make([]*Entity, 0, len(w.entities))
+	for _, entity := range w.entities {
+		if !entity.Alive {
+			continue
+		}
+
+		if entity.Type != EntityEnemy {
+			continue
+		}
+
+		enemies = append(enemies, entity)
+	}
+
+	for _, enemy := range enemies {
+		// Если игрок слишком далеко, враг пока ничего не делает.
+		dist := manhattanDistance(enemy.X, enemy.Y, playerX, playerY)
+		if dist > 6 {
+			continue
+		}
+
+		dx := 0
+		dy := 0
+
+		if playerX > enemy.X {
+			dx = 1
+		} else if playerX < enemy.X {
+			dx = -1
+		}
+
+		if playerY > enemy.Y {
+			dy = 1
+		} else if playerY < enemy.Y {
+			dy = -1
+		}
+
+		// Сначала пытаемся идти по оси X.
+		if dx != 0 {
+			if w.tryMoveEnemy(enemy, enemy.X+dx, enemy.Y, playerX, playerY) {
+				continue
+			}
+		}
+
+		// Если по X не получилось — пробуем по Y.
+		if dy != 0 {
+			if w.tryMoveEnemy(enemy, enemy.X, enemy.Y+dy, playerX, playerY) {
+				continue
+			}
+		}
 	}
 }
