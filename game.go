@@ -65,6 +65,13 @@ type Direction struct {
 	dy int // изменение координаты игрока по Y в клетках
 }
 
+type GameMode int
+
+const (
+	ModeExplore GameMode = iota
+	ModeBattle
+)
+
 // Game — основная структура, описывающая состояние всей игры.
 // В ней мы храним:
 //   - игрока;
@@ -105,6 +112,11 @@ type Game struct {
 	pickupCount int
 
 	hudFace *text.GoXFace
+
+	mode GameMode
+
+	activeEnemyID  world.EntityID
+	hasActiveEnemy bool
 }
 
 // Update — главный "тик" логики игры.
@@ -112,6 +124,11 @@ type Game struct {
 // здесь мы читаем состояние клавиш, обновляем буфер направления
 // и при необходимости двигаем игрока по сетке.
 func (g *Game) Update() error {
+	if g.mode == ModeBattle {
+		g.updateBattleMode()
+		return nil
+	}
+
 	/*Сначала читаем новый ввод
 	Например:
 	нажали вправо → {1, 0}
@@ -211,6 +228,61 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		fmt.Sprintf("Pickups: %d", g.pickupCount),
 		g.hudFace,
 		op,
+	)
+
+	if g.mode == ModeBattle {
+		g.drawBattleOverlay(screen)
+	}
+}
+
+func (g *Game) drawBattleOverlay(screen *ebiten.Image) {
+	overlayColor := color.RGBA{R: 0, G: 0, B: 0, A: 180}
+	panelColor := color.RGBA{R: 40, G: 40, B: 40, A: 255}
+	panelBorderColor := color.RGBA{R: 180, G: 180, B: 180, A: 255}
+
+	// Затемняем фон.
+	vector.FillRect(screen, 0, 0, float32(screenWidth), float32(screenHeight), overlayColor, false)
+
+	// Центральная панель.
+	panelX := float32(120)
+	panelY := float32(140)
+	panelW := float32(560)
+	panelH := float32(220)
+
+	vector.FillRect(screen, panelX, panelY, panelW, panelH, panelColor, false)
+	vector.StrokeRect(screen, panelX, panelY, panelW, panelH, 2, panelBorderColor, false)
+
+	titleOp := &text.DrawOptions{}
+	titleOp.GeoM.Translate(float64(panelX)+20, float64(panelY)+35)
+	titleOp.ColorScale.ScaleWithColor(color.White)
+
+	text.Draw(
+		screen,
+		"Battle mode",
+		g.hudFace,
+		titleOp,
+	)
+
+	bodyOp := &text.DrawOptions{}
+	bodyOp.GeoM.Translate(float64(panelX)+20, float64(panelY)+80)
+	bodyOp.ColorScale.ScaleWithColor(color.White)
+
+	text.Draw(
+		screen,
+		"B - win test battle and remove enemy",
+		g.hudFace,
+		bodyOp,
+	)
+
+	bodyOp2 := &text.DrawOptions{}
+	bodyOp2.GeoM.Translate(float64(panelX)+20, float64(panelY)+115)
+	bodyOp2.ColorScale.ScaleWithColor(color.White)
+
+	text.Draw(
+		screen,
+		"Esc - leave battle mode without removing enemy",
+		g.hudFace,
+		bodyOp2,
 	)
 }
 
@@ -320,9 +392,53 @@ func mergeDirections(a, b Direction) Direction {
 	return result
 }
 
+func (g *Game) startBattle(enemyID world.EntityID) {
+	g.mode = ModeBattle
+	g.activeEnemyID = enemyID
+	g.hasActiveEnemy = true
+
+	// Сбрасываем буфер ввода движения,
+	// чтобы после выхода из боя старый ввод не сработал неожиданно.
+	g.hasBufferedInput = false
+	g.bufferTicksLeft = 0
+	g.bufferedDirection = Direction{}
+}
+
+func (g *Game) endBattle() {
+	g.mode = ModeExplore
+	g.hasActiveEnemy = false
+	g.activeEnemyID = 0
+}
+
+func (g *Game) updateBattleMode() {
+	// B = тестовая победа над врагом.
+	if inpututil.IsKeyJustPressed(ebiten.KeyB) {
+		if g.hasActiveEnemy {
+			g.world.RemoveEnemy(g.activeEnemyID)
+		}
+
+		g.endBattle()
+		return
+	}
+
+	// Escape = выйти из battle mode без победы.
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		g.endBattle()
+		return
+	}
+}
+
 func (g *Game) TryMovePlayer(dx, dy int) {
 	nextX := g.player.gridX + dx
 	nextY := g.player.gridY + dy
+
+	// Если в целевой клетке враг — не двигаемся,
+	// а входим в режим боя.
+	enemy := g.world.GetEnemyAt(nextX, nextY)
+	if enemy != nil {
+		g.startBattle(enemy.ID)
+		return
+	}
 
 	if !g.world.IsWalkable(nextX, nextY) {
 		return
