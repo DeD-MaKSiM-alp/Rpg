@@ -435,18 +435,19 @@ func worldToChunkLocal(worldX, worldY int) (ChunkCoord, int, int) {
 	return ChunkCoord{x: chunkX, y: chunkY}, localX, localY
 }
 
-// heightValue возвращает условную "высоту" клетки в диапазоне 0..99.
+// terrainValue возвращает базовое значение местности в диапазоне 0..99.
 //
-// Это не настоящая высота, а детерминированное значение,
-// зависящее от мировых координат и seed.
-// Позже по нему можно будет решать:
-// где вода, где обычная земля, где скалы/стены.
-func heightValue(worldX, worldY, seed int) int {
-	value := (worldX*23 +
-		worldY*17 +
-		worldX*worldY*3 +
-		seed*29 +
-		(worldX+seed)*(worldY+7)) % 100
+// Это главное значение для формы мира.
+// Оно должно меняться достаточно плавно,
+// чтобы рядом лежащие клетки чаще были похожи друг на друга.
+func terrainValue(worldX, worldY, seed int) int {
+	value := (worldX*7 +
+		worldY*11 +
+		floorDiv(worldX, 4)*13 +
+		floorDiv(worldY, 4)*17 +
+		floorDiv(worldX, 8)*19 +
+		floorDiv(worldY, 8)*23 +
+		seed*29) % 100
 
 	if value < 0 {
 		value += 100
@@ -455,20 +456,17 @@ func heightValue(worldX, worldY, seed int) int {
 	return value
 }
 
-// moistureValue возвращает условную "влажность" клетки в диапазоне 0..99.
+// detailValue возвращает дополнительное значение в диапазоне 0..99.
 //
-// Это второе независимое значение генерации.
-// Оно нужно, чтобы карта зависела не от одного числа,
-// а хотя бы от двух параметров.
-// Например:
-// низкая высота -> вода
-// нормальная высота + высокая влажность -> трава
-func moistureValue(worldX, worldY, seed int) int {
-	value := (worldX*11 +
+// Оно используется не для формы мира,
+// а для выбора конкретного типа поверхности внутри уже выбранного слоя:
+// например, TileFloor или TileGrass, TileWall или TileWater.
+func detailValue(worldX, worldY, seed int) int {
+	value := (worldX*17 +
 		worldY*31 +
-		worldX*worldY*5 +
-		seed*43 +
-		(worldX-seed)*(worldY+13)) % 100
+		floorDiv(worldX, 2)*7 +
+		floorDiv(worldY, 2)*9 +
+		seed*37) % 100
 
 	if value < 0 {
 		value += 100
@@ -477,43 +475,64 @@ func moistureValue(worldX, worldY, seed int) int {
 	return value
 }
 
-// generateTile определяет, каким должен быть тайл
-// в мировой клетке worldX/worldY.
+// isBlockedTile решает, должна ли клетка быть непроходимой.
 //
-// Теперь логика разделена на два этапа:
-//  1. считаем параметры местности (высоту и влажность);
-//  2. по этим параметрам выбираем итоговый тайл.
+// На этом этапе мир должен быть в основном проходимым,
+// поэтому blocked-зона должна занимать меньшую часть карты.
+// Здесь мы сознательно делаем широкую "сушу" посередине
+// и только по краям диапазона получаем препятствия.
+func isBlockedTile(terrain int) bool {
+	return terrain < 10 || terrain > 92
+}
+
+// blockedTileType выбирает тип непроходимого тайла.
 //
-// Такой подход лучше масштабируется:
-// позже сюда будет проще добавить биомы,
-// новые типы поверхности и более сложные правила генерации.
+// Низкие значения terrain превращаем в воду,
+// высокие — в стены.
+func blockedTileType(terrain int) TileType {
+	if terrain < 10 {
+		return TileWater
+	}
+
+	return TileWall
+}
+
+// walkableTileType выбирает тип проходимого тайла.
+//
+// Основная масса — обычный пол,
+// часть клеток — трава как проходимая вариация поверхности.
+func walkableTileType(detail int) TileType {
+	if detail > 72 {
+		return TileGrass
+	}
+
+	return TileFloor
+}
+
+// generateTile определяет итоговый тайл мировой клетки.
+//
+// Новый подход двухслойный:
+//  1. сначала определяем, клетка проходимая или нет;
+//  2. затем выбираем конкретный тип тайла внутри этого слоя.
+//
+// Это удобнее старой схемы, где мы сразу выбирали TileFloor/TileGrass/TileWater/TileWall.
+// Теперь гораздо проще контролировать:
+//   - сколько в мире проходимого пространства;
+//   - сколько препятствий;
+//   - какие именно тайлы должны появляться внутри каждой группы.
 func generateTile(worldX, worldY, seed int) TileType {
 	// Стартовую область вокруг игрока оставляем свободной,
-	// чтобы игрок не появился внутри препятствия
-	// и мог спокойно начать движение.
+	// чтобы старт всегда был безопасным и удобным для движения.
 	if worldX >= 0 && worldX <= 6 && worldY >= 0 && worldY <= 6 {
 		return TileFloor
 	}
 
-	height := heightValue(worldX, worldY, seed)
-	moisture := moistureValue(worldX, worldY, seed)
+	terrain := terrainValue(worldX, worldY, seed)
 
-	// Низкая "высота" -> вода.
-	if height < 18 {
-		return TileWater
+	if isBlockedTile(terrain) {
+		return blockedTileType(terrain)
 	}
 
-	// Очень высокая "высота" -> стена/скала.
-	if height > 82 {
-		return TileWall
-	}
-
-	// На нормальной высоте при высокой влажности
-	// делаем травяные области.
-	if moisture > 60 {
-		return TileGrass
-	}
-
-	// Всё остальное — обычный пол.
-	return TileFloor
+	detail := detailValue(worldX, worldY, seed)
+	return walkableTileType(detail)
 }
