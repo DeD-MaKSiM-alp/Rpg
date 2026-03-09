@@ -33,6 +33,7 @@ func (g *Game) readPlayerAction() PlayerAction {
 	return PlayerAction{Type: ActionNone}
 }
 
+// processWorldTurn — единственная точка вызова AdvanceTurn: ход врагов, затем обновление камеры и стриминга.
 func (g *Game) processWorldTurn() {
 	px, py := g.player.Position()
 	enemyID, startedBattle := g.world.AdvanceTurn(px, py)
@@ -44,12 +45,11 @@ func (g *Game) processWorldTurn() {
 	g.updateStreamingWorld()
 }
 
+// updateExploreMode: Input → PlayerAction → применение действия → при успехе завершение хода → world turn → возможный бой.
 func (g *Game) updateExploreMode() error {
 	action := g.readPlayerAction()
 
 	if action.Type == ActionNone {
-		g.updateCamera()
-		g.updateStreamingWorld()
 		return nil
 	}
 
