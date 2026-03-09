@@ -1,6 +1,8 @@
 package world
 
 import (
+	"sort"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	"mygame/world/entity"
 	"mygame/world/generation"
@@ -239,76 +241,115 @@ func (w *World) generateEnemiesForChunk(chunkX, chunkY, seed int, tiles [][]mapd
 	}
 }
 
-// AdvanceTurn выполняет ход врагов; возвращает ID врага и true, если враг вступил в бой.
+// AdvanceTurn выполняет ход врагов в 3 фазы: collect intents → resolve → apply.
+// Возвращает ID врага и true, если есть валидный attack intent по игроку (старт боя).
 func (w *World) AdvanceTurn(playerX, playerY int) (EntityID, bool) {
-	enemies := w.collectAliveEnemies()
-	for _, e := range enemies {
-		if entity.ManhattanDistance(e.X, e.Y, playerX, playerY) > 6 {
-			continue
-		}
-		dx, dy := entity.EnemyStepTowardsPlayer(e.X, e.Y, playerX, playerY)
-		if id, engaged := w.advanceEnemyOneStep(e, dx, dy, playerX, playerY); engaged {
-			return EntityID(id), true
-		}
+	intents := w.collectEnemyIntents(playerX, playerY)
+	attackID, validMoves := w.resolveEnemyIntents(intents, playerX, playerY)
+	if attackID != 0 {
+		return EntityID(attackID), true
 	}
+	w.applyMoveIntents(validMoves)
 	return 0, false
 }
 
-func (w *World) collectAliveEnemies() []*entity.Entity {
-	list := make([]*entity.Entity, 0, len(w.entities))
-	for _, e := range w.entities {
+// collectEnemyIntents возвращает срез намерений всех живых врагов в стабильном порядке (по EntityID).
+func (w *World) collectEnemyIntents(playerX, playerY int) []entity.Intent {
+	ids := w.aliveEnemyIDsStable()
+	out := make([]entity.Intent, 0, len(ids))
+	for _, id := range ids {
+		e := w.entities[id]
+		if e == nil {
+			continue
+		}
+		out = append(out, entity.BuildEnemyIntent(e, playerX, playerY))
+	}
+	return out
+}
+
+func (w *World) aliveEnemyIDsStable() []entity.EntityID {
+	ids := make([]entity.EntityID, 0, len(w.entities))
+	for id, e := range w.entities {
 		if !e.Alive || e.Type != entity.EntityEnemy {
 			continue
 		}
-		list = append(list, e)
+		ids = append(ids, id)
 	}
-	return list
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
 }
 
-func (w *World) advanceEnemyOneStep(e *entity.Entity, dx, dy, playerX, playerY int) (entity.EntityID, bool) {
-	if dx != 0 && dy != 0 {
-		nx, ny := e.X+dx, e.Y+dy
-		if entity.IsPlayerTile(nx, ny, playerX, playerY) {
-			return e.ID, true
+// resolveEnemyIntents возвращает enemyID для старта боя (первый валидный attack в стабильном порядке)
+// и срез валидных move intents для применения.
+func (w *World) resolveEnemyIntents(intents []entity.Intent, playerX, playerY int) (entity.EntityID, []entity.Intent) {
+	moveTargetCount := make(map[struct{ x, y int }]int)
+	for _, in := range intents {
+		if in.Type != entity.IntentMove {
+			continue
 		}
-		if w.tryMoveEnemy(e, nx, ny, playerX, playerY) {
-			return 0, false
+		key := struct{ x, y int }{in.TargetX, in.TargetY}
+		moveTargetCount[key]++
+	}
+	conflictCells := make(map[struct{ x, y int }]bool)
+	for k, n := range moveTargetCount {
+		if n > 1 {
+			conflictCells[k] = true
 		}
 	}
-	if dx != 0 {
-		nx, ny := e.X+dx, e.Y
-		if entity.IsPlayerTile(nx, ny, playerX, playerY) {
-			return e.ID, true
-		}
-		if w.tryMoveEnemy(e, nx, ny, playerX, playerY) {
-			return 0, false
+
+	var attackID entity.EntityID
+	var validMoves []entity.Intent
+	for _, in := range intents {
+		switch in.Type {
+		case entity.IntentAttack:
+			if attackID != 0 {
+				continue
+			}
+			e := w.entities[in.EntityID]
+			if e == nil || !e.Alive {
+				continue
+			}
+			if in.TargetX != playerX || in.TargetY != playerY {
+				continue
+			}
+			if !entity.IsAdjacent8(e.X, e.Y, playerX, playerY) {
+				continue
+			}
+			attackID = in.EntityID
+		case entity.IntentMove:
+			if in.TargetX == playerX && in.TargetY == playerY {
+				continue
+			}
+			if conflictCells[struct{ x, y int }{in.TargetX, in.TargetY}] {
+				continue
+			}
+			if !w.IsWalkable(in.TargetX, in.TargetY) {
+				continue
+			}
+			if w.isEnemyBlockingTile(in.TargetX, in.TargetY, in.EntityID) {
+				continue
+			}
+			validMoves = append(validMoves, in)
 		}
 	}
-	if dy != 0 {
-		nx, ny := e.X, e.Y+dy
-		if entity.IsPlayerTile(nx, ny, playerX, playerY) {
-			return e.ID, true
-		}
-		if w.tryMoveEnemy(e, nx, ny, playerX, playerY) {
-			return 0, false
-		}
-	}
-	return 0, false
+	return attackID, validMoves
 }
 
-func (w *World) tryMoveEnemy(e *entity.Entity, nextX, nextY, playerX, playerY int) bool {
-	if nextX == playerX && nextY == playerY {
-		return false
+func (w *World) applyMoveIntents(moves []entity.Intent) {
+	for _, in := range moves {
+		e := w.entities[in.EntityID]
+		if e == nil || !e.Alive {
+			continue
+		}
+		if w.isEnemyBlockingTile(in.TargetX, in.TargetY, in.EntityID) {
+			continue
+		}
+		if !w.IsWalkable(in.TargetX, in.TargetY) {
+			continue
+		}
+		e.X = in.TargetX
+		e.Y = in.TargetY
 	}
-	if !w.IsWalkable(nextX, nextY) {
-		return false
-	}
-	if w.isEnemyBlockingTile(nextX, nextY, e.ID) {
-		return false
-	}
-	e.X = nextX
-	e.Y = nextY
-	return true
 }
 
 // ——— Рендер ———
