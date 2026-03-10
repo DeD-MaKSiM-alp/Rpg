@@ -35,12 +35,20 @@ type Input struct {
 	debugEmitDX, debugEmitDY int
 }
 
+// resetMovementHoldState сбрасывает состояние удержания/повтора движения.
+// Вызывается, когда игрок полностью отпускает оси движения.
+func (i *Input) resetMovementHoldState() {
+	i.lastEffectiveDX, i.lastEffectiveDY = 0, 0
+	i.holdFrames = 0
+	i.debugEmitDX, i.debugEmitDY = 0, 0
+}
+
 // New создаёт новый экземпляр Input с дефолтными параметрами repeat и grace.
 func New() *Input {
 	return &Input{
-		InitialDelayFrames:   12, // ~200 ms при 60 FPS до первого повтора
-		RepeatIntervalFrames: 5,  // ~83 ms между повторами
-		DiagonalGraceFrames:  10, // окно: добор второй оси и устойчивость при кратком отпускании (~167 ms при 60 FPS)
+		InitialDelayFrames:   20,
+		RepeatIntervalFrames: 12,
+		DiagonalGraceFrames:  16,
 	}
 }
 
@@ -123,17 +131,21 @@ func (i *Input) ReadExploreInput() (dx, dy int, wait bool) {
 	i.debugRawDX, i.debugRawDY = rawX, rawY
 	i.updateAxisChangeFrames(rawX, rawY)
 
-	effX, effY := i.effectiveDirection(rawX, rawY)
-
-	// Нет движения: сброс state. Wait только по just-pressed Space.
-	if effX == 0 && effY == 0 {
-		i.lastEffectiveDX, i.lastEffectiveDY = 0, 0
-		i.holdFrames = 0
+	// Полное отпускание движения: немедленно сбрасываем удержание и grace-состояние.
+	// В этом кадре никакого движения не выдаём, только возможный wait.
+	if rawX == 0 && rawY == 0 {
+		i.resetMovementHoldState()
+		// Обнуляем last*Value, чтобы grace не воспринимал старое направление как «ещё удерживаемое»
+		// после полноценного отпускания всех осей.
+		i.lastHorizontalValue = 0
+		i.lastVerticalValue = 0
 		if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 			return 0, 0, true
 		}
 		return 0, 0, false
 	}
+
+	effX, effY := i.effectiveDirection(rawX, rawY)
 
 	// Приоритет движения над wait. Смена направления — срабатывает сразу, repeat сбрасывается.
 	if i.directionChanged(effX, effY) {
