@@ -12,32 +12,97 @@ import (
 	battlepkg "mygame/internal/battle"
 )
 
+const (
+	uiLineH       = float32(18)
+	uiPad         = float32(12)
+	uiGap         = float32(10)
+	uiPanelBorder = float32(2)
+)
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func clampF(v, lo, hi float32) float32 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+func inset(r rect, pad float32) rect {
+	n := rect{X: r.X + pad, Y: r.Y + pad, W: r.W - pad*2, H: r.H - pad*2}
+	if n.W < 0 {
+		n.W = 0
+	}
+	if n.H < 0 {
+		n.H = 0
+	}
+	return n
+}
+
+func splitH(r rect, leftW, gap float32) (rect, rect) {
+	left := rect{X: r.X, Y: r.Y, W: leftW, H: r.H}
+	right := rect{X: r.X + leftW + gap, Y: r.Y, W: r.W - leftW - gap, H: r.H}
+	if right.W < 0 {
+		right.W = 0
+	}
+	return left, right
+}
+
+func splitV(r rect, topH, gap float32) (rect, rect) {
+	top := rect{X: r.X, Y: r.Y, W: r.W, H: topH}
+	bot := rect{X: r.X, Y: r.Y + topH + gap, W: r.W, H: r.H - topH - gap}
+	if bot.H < 0 {
+		bot.H = 0
+	}
+	return top, bot
+}
+
 // drawBattleOverlayPanel рисует затемнённый фон и центральную панель боевого overlay.
-func drawBattleOverlayPanel(screen *ebiten.Image, screenWidth, screenHeight int) {
+func drawBattleOverlayPanel(screen *ebiten.Image, screenWidth, screenHeight int) rect {
 	overlayColor := color.RGBA{R: 0, G: 0, B: 0, A: 180}
 	panelColor := color.RGBA{R: 40, G: 40, B: 40, A: 255}
 	panelBorderColor := color.RGBA{R: 180, G: 180, B: 180, A: 255}
 
 	vector.FillRect(screen, 0, 0, float32(screenWidth), float32(screenHeight), overlayColor, false)
 
-	panelX := float32(80)
-	panelY := float32(80)
-	panelW := float32(640)
-	panelH := float32(360)
+	sw := float32(screenWidth)
+	sh := float32(screenHeight)
+
+	// Overlay takes most of the screen with margins, centered.
+	marginX := clampF(sw*0.08, 12, 80)
+	marginY := clampF(sh*0.08, 12, 80)
+	panelW := sw - marginX*2
+	panelH := sh - marginY*2
+
+	// Reasonable max size (keeps things readable if screen is large later).
+	panelW = clampF(panelW, 520, 760)
+	panelH = clampF(panelH, 360, 540)
+
+	panelX := (sw - panelW) / 2
+	panelY := (sh - panelH) / 2
 
 	vector.FillRect(screen, panelX, panelY, panelW, panelH, panelColor, false)
-	vector.StrokeRect(screen, panelX, panelY, panelW, panelH, 2, panelBorderColor, false)
+	vector.StrokeRect(screen, panelX, panelY, panelW, panelH, uiPanelBorder, panelBorderColor, false)
+	return rect{X: panelX, Y: panelY, W: panelW, H: panelH}
 }
 
 // drawBattleOverlayText рисует все текстовые блоки боевого overlay.
-func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext) {
-	panelX := float32(80)
-	panelY := float32(80)
-	panelW := float32(640)
-	panelH := float32(360)
+func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, overlay rect) {
+	panelX := overlay.X
+	panelY := overlay.Y
+	panelW := overlay.W
+	panelH := overlay.H
 
 	titleOp := &text.DrawOptions{}
-	titleOp.GeoM.Translate(float64(panelX)+20, float64(panelY)+35)
+	titleOp.GeoM.Translate(float64(panelX)+float64(uiPad), float64(panelY)+float64(uiPad)+float64(uiLineH))
 	titleOp.ColorScale.ScaleWithColor(color.White)
 
 	title := "Battle mode"
@@ -51,11 +116,11 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 		return
 	}
 
-	offsetY := 0.0
+	extraHeaderLines := float32(0)
 	if battle.Result != battlepkg.ResultNone {
-		bannerY := float64(panelY) + 70
+		bannerY := float64(panelY) + float64(uiPad) + float64(uiLineH)*2
 		bannerOp := &text.DrawOptions{}
-		bannerOp.GeoM.Translate(float64(panelX)+20, bannerY)
+		bannerOp.GeoM.Translate(float64(panelX)+float64(uiPad), bannerY)
 		bannerOp.ColorScale.ScaleWithColor(color.White)
 		var banner string
 		switch battle.Result {
@@ -71,20 +136,30 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 		text.Draw(screen, banner, hudFace, bannerOp)
 
 		hintOp := &text.DrawOptions{}
-		hintOp.GeoM.Translate(float64(panelX)+20, bannerY+25)
+		hintOp.GeoM.Translate(float64(panelX)+float64(uiPad), bannerY+float64(uiLineH))
 		hintOp.ColorScale.ScaleWithColor(color.RGBA{R: 200, G: 200, B: 200, A: 255})
 		text.Draw(screen, "SPACE/ENTER: continue", hudFace, hintOp)
-		offsetY = 55
+		extraHeaderLines = 2
 	}
 
-	// Layout: top info line + two formation panels + ability panel + message/controls.
-	contentTop := float32(panelY) + 60 + float32(offsetY)
-	contentLeft := panelX + 20
-	contentRight := panelX + panelW - 20
+	// Layout: container-based inside overlay.
+	content := inset(rect{X: panelX, Y: panelY, W: panelW, H: panelH}, uiPad)
+	content.Y += uiLineH // title line already used
+	content.H -= uiLineH
+
+	// Reserve extra header rows when result banner is shown.
+	if extraHeaderLines > 0 {
+		used := extraHeaderLines * uiLineH
+		content.Y += used
+		content.H -= used
+	}
+	if content.H < 0 {
+		content.H = 0
+	}
 
 	// Info line.
 	infoOp := &text.DrawOptions{}
-	infoOp.GeoM.Translate(float64(contentLeft), float64(contentTop))
+	infoOp.GeoM.Translate(float64(content.X), float64(content.Y+uiLineH))
 	infoOp.ColorScale.ScaleWithColor(color.White)
 
 	active := battle.ActiveUnit()
@@ -103,30 +178,62 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	}
 	text.Draw(screen, fmt.Sprintf("Round %d | phase:%s%s | active: %s", battle.Round, battle.PhaseString(), playerSub, activeLabel), hudFace, infoOp)
 
-	// Formation panels.
-	formationTop := contentTop + 18
-	formationH := float32(160)
-	gap := float32(12)
-	colW := (contentRight - contentLeft - gap) / 2
+	// Vertical packing: info row + formation + middle + footer.
+	afterInfo := rect{X: content.X, Y: content.Y + uiLineH + uiGap, W: content.W, H: content.H - uiLineH - uiGap}
+	if afterInfo.H < 0 {
+		afterInfo.H = 0
+	}
 
-	playerPanel := rect{X: contentLeft, Y: formationTop, W: colW, H: formationH}
-	enemyPanel := rect{X: contentLeft + colW + gap, Y: formationTop, W: colW, H: formationH}
+	footerMin := uiLineH*4 + uiPad
+	middleMin := uiLineH*5 + uiPad
+	formationMin := uiLineH*7 + uiPad
+
+	total := afterInfo.H
+	// Footer is intentionally kept smaller; it should not dominate the HUD.
+	footerH := clampF(total*0.22, footerMin, total)
+	middleH := clampF(total*0.28, middleMin, total-footerH)
+	formationH := total - footerH - middleH - uiGap*2
+	if formationH < formationMin {
+		deficit := formationMin - formationH
+		take := clampF(deficit, 0, middleH-middleMin)
+		middleH -= take
+		deficit -= take
+		if deficit > 0 {
+			take2 := clampF(deficit, 0, footerH-footerMin)
+			footerH -= take2
+			deficit -= take2
+		}
+		formationH = total - footerH - middleH - uiGap*2
+		if formationH < 0 {
+			formationH = 0
+		}
+	}
+
+	formationRect := rect{X: afterInfo.X, Y: afterInfo.Y, W: afterInfo.W, H: clampF(formationH, 0, afterInfo.H)}
+	middleRect := rect{X: afterInfo.X, Y: formationRect.Y + formationRect.H + uiGap, W: afterInfo.W, H: clampF(middleH, 0, afterInfo.H)}
+	footerRect := rect{X: afterInfo.X, Y: middleRect.Y + middleRect.H + uiGap, W: afterInfo.W, H: afterInfo.Y + afterInfo.H - (middleRect.Y + middleRect.H + uiGap)}
+	if footerRect.H < 0 {
+		footerRect.H = 0
+	}
+
+	colW := (formationRect.W - uiGap) / 2
+	leftCol, rightCol := splitH(formationRect, colW, uiGap)
+
+	playerPanel := leftCol
+	enemyPanel := rightCol
 
 	drawFormationPanel(screen, hudFace, battle, playerPanel, battlepkg.BattleSidePlayer, "PLAYER")
 	drawFormationPanel(screen, hudFace, battle, enemyPanel, battlepkg.BattleSideEnemy, "ENEMY")
 
 	// Ability panel (only meaningful on player turn).
-	abilitiesTop := formationTop + formationH + 10
-	abilitiesH := float32(110)
-	abilitiesRect := rect{X: contentLeft, Y: abilitiesTop, W: colW, H: abilitiesH}
-	confirmRect := rect{X: contentLeft + colW + gap, Y: abilitiesTop, W: colW, H: abilitiesH}
+	mColW := (middleRect.W - uiGap) / 2
+	mLeft, mRight := splitH(middleRect, mColW, uiGap)
+	abilitiesRect := mLeft
+	confirmRect := mRight
 
 	drawAbilityPanel(screen, hudFace, battle, abilitiesRect)
 	drawConfirmPanel(screen, hudFace, battle, confirmRect)
 
-	// Combat log + controls.
-	footerTop := abilitiesTop + abilitiesH + 10
-	footerRect := rect{X: contentLeft, Y: footerTop, W: contentRight - contentLeft, H: (panelY + panelH - 20) - footerTop}
 	drawFooterPanel(screen, hudFace, battle, footerRect)
 }
 
@@ -152,7 +259,7 @@ func drawPanelBox(screen *ebiten.Image, r rect, title string, hudFace *text.GoTe
 		return
 	}
 	op := &text.DrawOptions{}
-	op.GeoM.Translate(float64(r.X)+8, float64(r.Y)+14)
+	op.GeoM.Translate(float64(r.X)+float64(uiPad*0.6), float64(r.Y)+float64(uiLineH))
 	op.ColorScale.ScaleWithColor(color.RGBA{R: 200, G: 200, B: 200, A: 255})
 	text.Draw(screen, title, hudFace, op)
 }
@@ -161,6 +268,12 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 	drawPanelBox(screen, r, title, hudFace)
 	if battle == nil {
 		return
+	}
+	inner := inset(r, uiPad*0.6)
+	inner.Y += uiLineH
+	inner.H -= uiLineH
+	if inner.H < 0 {
+		inner.H = 0
 	}
 
 	active := battle.ActiveUnit()
@@ -182,22 +295,26 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 	}
 
 	// Slot grid: 3 front + 3 back.
-	cellW := (r.W - 16) / 3
-	cellH := float32(44)
-	rowGap := float32(10)
+	cellW := (inner.W - uiGap*2) / 3
+	rowGap := uiGap * 0.6
+	labelH := uiLineH
+	rowAreaH := (inner.H - labelH*2 - rowGap) / 2
+	cellH := clampF(rowAreaH, uiLineH*2.4, uiLineH*3.5)
 
 	drawRowLabel := func(label string, y float32) {
 		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(r.X)+8, float64(y)+14)
+		op.GeoM.Translate(float64(inner.X), float64(y+labelH))
 		op.ColorScale.ScaleWithColor(color.RGBA{R: 170, G: 170, B: 170, A: 255})
 		text.Draw(screen, label, hudFace, op)
 	}
 
-	frontY := r.Y + 22
-	backY := frontY + cellH + rowGap + 16
+	frontLabelY := inner.Y
+	frontSlotsY := frontLabelY + labelH
+	backLabelY := frontSlotsY + cellH + rowGap
+	backSlotsY := backLabelY + labelH
 
-	drawRowLabel("FRONT", frontY)
-	drawRowLabel("BACK", backY)
+	drawRowLabel("FRONT", frontLabelY)
+	drawRowLabel("BACK", backLabelY)
 
 	drawSlot := func(row battlepkg.BattleRow, idx int, x, y float32) {
 		slot := battle.Slot(side, row, idx)
@@ -230,10 +347,14 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 			border = color.RGBA{R: 255, G: 215, B: 80, A: 255}
 		}
 
-		vector.FillRect(screen, x, y, cellW-4, cellH, fill, false)
-		vector.StrokeRect(screen, x, y, cellW-4, cellH, 2, border, false)
+		w := cellW - 4
+		vector.FillRect(screen, x, y, w, cellH, fill, false)
+		vector.StrokeRect(screen, x, y, w, cellH, 2, border, false)
 
-		label := fmt.Sprintf("(%d)", idx)
+		// NOTE: avoid "\n" in a single string here: the current text renderer
+		// does not reliably support multi-line strings without artifacts.
+		line1 := "EMPTY"
+		line2 := ""
 		if u != nil {
 			hp := fmt.Sprintf("%d/%d", u.State.HP, u.MaxHP())
 			name := u.Name()
@@ -241,24 +362,33 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 				rs := []rune(name)
 				name = string(rs[:10])
 			}
-			label = fmt.Sprintf("%s\nHP %s", name, hp)
 			if !u.IsAlive() {
-				label = fmt.Sprintf("%s\nDEAD", name)
+				line1 = name
+				line2 = "DEAD"
+			} else {
+				line1 = name
+				line2 = "HP " + hp
 			}
-		} else {
-			label = "EMPTY"
 		}
 
-		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(x)+6, float64(y)+14)
-		op.ColorScale.ScaleWithColor(textCol)
-		text.Draw(screen, label, hudFace, op)
+		// Two separate text draws to keep line spacing predictable.
+		op1 := &text.DrawOptions{}
+		op1.GeoM.Translate(float64(x)+6, float64(y)+float64(uiLineH*0.95))
+		op1.ColorScale.ScaleWithColor(textCol)
+		text.Draw(screen, line1, hudFace, op1)
+
+		if line2 != "" {
+			op2 := &text.DrawOptions{}
+			op2.GeoM.Translate(float64(x)+6, float64(y)+float64(uiLineH*1.90))
+			op2.ColorScale.ScaleWithColor(textCol)
+			text.Draw(screen, line2, hudFace, op2)
+		}
 	}
 
 	for i := 0; i < 3; i++ {
-		x := r.X + 8 + float32(i)*cellW
-		drawSlot(battlepkg.BattleRowFront, i, x, frontY+12)
-		drawSlot(battlepkg.BattleRowBack, i, x, backY+12)
+		x := inner.X + float32(i)*cellW
+		drawSlot(battlepkg.BattleRowFront, i, x, frontSlotsY)
+		drawSlot(battlepkg.BattleRowBack, i, x, backSlotsY)
 	}
 }
 
@@ -270,7 +400,7 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	active := battle.ActiveUnit()
 	if active == nil || active.Side != battlepkg.TeamPlayer || battle.Phase != battlepkg.PhaseAwaitAction {
 		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(r.X)+8, float64(r.Y)+34)
+		op.GeoM.Translate(float64(r.X)+float64(uiPad*0.6), float64(r.Y)+float64(uiLineH*2))
 		op.ColorScale.ScaleWithColor(color.RGBA{R: 150, G: 150, B: 150, A: 255})
 		text.Draw(screen, "(waiting)", hudFace, op)
 		return
@@ -279,7 +409,9 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	abs := active.Abilities()
 	sel := battle.PlayerTurn.SelectedAbilityID
 
-	y := r.Y + 34
+	inner := inset(r, uiPad*0.6)
+	y := inner.Y + uiLineH*2
+	maxY := inner.Y + inner.H - uiLineH*0.5
 	for i, id := range abs {
 		a := battlepkg.GetAbility(id)
 		prefix := "  "
@@ -301,11 +433,11 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		}
 		line := fmt.Sprintf("%s%d) %s [%s]", prefix, i+1, a.Name, rule)
 		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(r.X)+8, float64(y))
+		op.GeoM.Translate(float64(inner.X), float64(y))
 		op.ColorScale.ScaleWithColor(col)
 		text.Draw(screen, line, hudFace, op)
-		y += 16
-		if y > r.Y+r.H-10 {
+		y += uiLineH
+		if y > maxY {
 			break
 		}
 	}
@@ -320,7 +452,7 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	active := battle.ActiveUnit()
 	if active == nil || active.Side != battlepkg.TeamPlayer || battle.Phase != battlepkg.PhaseAwaitAction {
 		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(r.X)+8, float64(r.Y)+34)
+		op.GeoM.Translate(float64(r.X)+float64(uiPad*0.6), float64(r.Y)+float64(uiLineH*2))
 		op.ColorScale.ScaleWithColor(color.RGBA{R: 150, G: 150, B: 150, A: 255})
 		text.Draw(screen, "(enemy turn)", hudFace, op)
 		return
@@ -367,13 +499,14 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		lines = append(lines, fmt.Sprintf("valid targets: %d", len(pt.ValidTargets)))
 	}
 
-	y := r.Y + 34
+	inner := inset(r, uiPad*0.6)
+	y := inner.Y + uiLineH*2
 	for _, line := range lines {
 		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(r.X)+8, float64(y))
+		op.GeoM.Translate(float64(inner.X), float64(y))
 		op.ColorScale.ScaleWithColor(color.White)
 		text.Draw(screen, line, hudFace, op)
-		y += 16
+		y += uiLineH
 	}
 }
 
@@ -399,9 +532,25 @@ func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *bat
 		}
 	}
 
-	// Log lines (last N).
-	y := r.Y + 34
-	maxLines := 6
+	inner := inset(r, uiPad*0.6)
+	titleH := uiLineH * 2
+	controlsH := uiLineH
+	logTop := inner.Y + titleH
+	controlsPadBottom := uiPad * 0.65
+	logBottom := inner.Y + inner.H - controlsH - controlsPadBottom
+	if logBottom < logTop {
+		logBottom = logTop
+	}
+	availableLines := int((logBottom - logTop) / uiLineH)
+	if availableLines < 1 {
+		availableLines = 1
+	}
+	// Visually cap the log height: the footer should not feel "too tall" because of log space.
+	availableLines = minInt(availableLines, 4)
+
+	// Log lines (last N that fits).
+	y := logTop
+	maxLines := availableLines
 	start := 0
 	if len(battle.BattleLog) > maxLines {
 		start = len(battle.BattleLog) - maxLines
@@ -413,14 +562,15 @@ func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *bat
 			line = string(rs[:77]) + "..."
 		}
 		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(r.X)+8, float64(y))
+		op.GeoM.Translate(float64(inner.X), float64(y))
 		op.ColorScale.ScaleWithColor(color.RGBA{R: 220, G: 220, B: 220, A: 255})
 		text.Draw(screen, line, hudFace, op)
-		y += 16
+		y += uiLineH
 	}
 
 	op2 := &text.DrawOptions{}
-	op2.GeoM.Translate(float64(r.X)+8, float64(r.Y+r.H-10))
+	// Raise baseline so glyph descenders aren't clipped by the panel border.
+	op2.GeoM.Translate(float64(inner.X), float64(inner.Y+inner.H-controlsPadBottom))
 	op2.ColorScale.ScaleWithColor(color.RGBA{R: 170, G: 170, B: 170, A: 255})
 	text.Draw(screen, controls, hudFace, op2)
 }
