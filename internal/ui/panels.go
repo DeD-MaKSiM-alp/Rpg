@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"image/color"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	text "github.com/hajimehoshi/ebiten/v2/text/v2"
@@ -32,6 +33,8 @@ func drawBattleOverlayPanel(screen *ebiten.Image, screenWidth, screenHeight int)
 func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext) {
 	panelX := float32(80)
 	panelY := float32(80)
+	panelW := float32(640)
+	panelH := float32(360)
 
 	titleOp := &text.DrawOptions{}
 	titleOp.GeoM.Translate(float64(panelX)+20, float64(panelY)+35)
@@ -74,55 +77,57 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 		offsetY = 55
 	}
 
-	bodyOp1 := &text.DrawOptions{}
-	bodyOp1.GeoM.Translate(float64(panelX)+20, float64(panelY)+80+offsetY)
-	bodyOp1.ColorScale.ScaleWithColor(color.White)
-	text.Draw(screen, fmt.Sprintf("Player HP: %d", battle.TeamFirstHP(battlepkg.TeamPlayer)), hudFace, bodyOp1)
+	// Layout: top info line + two formation panels + ability panel + message/controls.
+	contentTop := float32(panelY) + 60 + float32(offsetY)
+	contentLeft := panelX + 20
+	contentRight := panelX + panelW - 20
 
-	bodyOp2 := &text.DrawOptions{}
-	bodyOp2.GeoM.Translate(float64(panelX)+20, float64(panelY)+110+offsetY)
-	bodyOp2.ColorScale.ScaleWithColor(color.White)
-	text.Draw(screen, fmt.Sprintf("Enemy HP: %d", battle.TeamFirstHP(battlepkg.TeamEnemy)), hudFace, bodyOp2)
+	// Info line.
+	infoOp := &text.DrawOptions{}
+	infoOp.GeoM.Translate(float64(contentLeft), float64(contentTop))
+	infoOp.ColorScale.ScaleWithColor(color.White)
 
-	bodyOp3 := &text.DrawOptions{}
-	bodyOp3.GeoM.Translate(float64(panelX)+20, float64(panelY)+125+offsetY)
-	bodyOp3.ColorScale.ScaleWithColor(color.White)
-	text.Draw(screen, fmt.Sprintf("Раунд: %d | %s", battle.Round, battle.FormationSummary()), hudFace, bodyOp3)
-
-	bodyOp3b := &text.DrawOptions{}
-	bodyOp3b.GeoM.Translate(float64(panelX)+20, float64(panelY)+145+offsetY)
-	bodyOp3b.ColorScale.ScaleWithColor(color.White)
-	text.Draw(screen, battle.DisplayPhaseLabel(), hudFace, bodyOp3b)
-
-	// Debug: phase, timer, active, result, last message
-	bodyOp3c := &text.DrawOptions{}
-	bodyOp3c.GeoM.Translate(float64(panelX)+20, float64(panelY)+165+offsetY)
-	bodyOp3c.ColorScale.ScaleWithColor(color.RGBA{R: 180, G: 220, B: 180, A: 255})
-	activeHP := 0
-	if u := battle.ActiveUnit(); u != nil {
-		activeHP = u.State.HP
+	active := battle.ActiveUnit()
+	activeLabel := "-"
+	if active != nil {
+		activeLabel = fmt.Sprintf("%s (#%d)", active.Name(), active.ID)
+		if active.Side == battlepkg.TeamPlayer {
+			activeLabel += " [PLAYER]"
+		} else {
+			activeLabel += " [ENEMY]"
+		}
 	}
-	lastMsg := battle.LastMessage
-	if len(lastMsg) > 40 {
-		lastMsg = lastMsg[:37] + "..."
+	playerSub := ""
+	if active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
+		playerSub = fmt.Sprintf(" | player:%s", battle.PlayerTurn.PhaseString())
 	}
-	text.Draw(screen, fmt.Sprintf("phase:%s timer:%d active:%s HP:%d result:%s | %s | %s",
-		battle.PhaseString(), battle.PauseFrames, battle.ActiveUnitName(), activeHP, battle.ResultString(), lastMsg, battle.PlayerTurnStatusString()), hudFace, bodyOp3c)
+	text.Draw(screen, fmt.Sprintf("Round %d | phase:%s%s | active: %s", battle.Round, battle.PhaseString(), playerSub, activeLabel), hudFace, infoOp)
 
-	bodyOp4 := &text.DrawOptions{}
-	bodyOp4.GeoM.Translate(float64(panelX)+20, float64(panelY)+195+offsetY)
-	bodyOp4.ColorScale.ScaleWithColor(color.White)
-	text.Draw(screen, "Arrows: select | SPACE/ENTER: confirm | Backspace: back | Esc: retreat", hudFace, bodyOp4)
+	// Formation panels.
+	formationTop := contentTop + 18
+	formationH := float32(160)
+	gap := float32(12)
+	colW := (contentRight - contentLeft - gap) / 2
 
-	bodyOp5 := &text.DrawOptions{}
-	bodyOp5.GeoM.Translate(float64(panelX)+20, float64(panelY)+220+offsetY)
-	bodyOp5.ColorScale.ScaleWithColor(color.White)
-	text.Draw(screen, "Tip: choose ability -> target -> confirm", hudFace, bodyOp5)
+	playerPanel := rect{X: contentLeft, Y: formationTop, W: colW, H: formationH}
+	enemyPanel := rect{X: contentLeft + colW + gap, Y: formationTop, W: colW, H: formationH}
 
-	bodyOp6 := &text.DrawOptions{}
-	bodyOp6.GeoM.Translate(float64(panelX)+20, float64(panelY)+250+offsetY)
-	bodyOp6.ColorScale.ScaleWithColor(color.White)
-	text.Draw(screen, battle.LastMessage, hudFace, bodyOp6)
+	drawFormationPanel(screen, hudFace, battle, playerPanel, battlepkg.BattleSidePlayer, "PLAYER")
+	drawFormationPanel(screen, hudFace, battle, enemyPanel, battlepkg.BattleSideEnemy, "ENEMY")
+
+	// Ability panel (only meaningful on player turn).
+	abilitiesTop := formationTop + formationH + 10
+	abilitiesH := float32(110)
+	abilitiesRect := rect{X: contentLeft, Y: abilitiesTop, W: colW, H: abilitiesH}
+	confirmRect := rect{X: contentLeft + colW + gap, Y: abilitiesTop, W: colW, H: abilitiesH}
+
+	drawAbilityPanel(screen, hudFace, battle, abilitiesRect)
+	drawConfirmPanel(screen, hudFace, battle, confirmRect)
+
+	// Message + controls.
+	footerTop := abilitiesTop + abilitiesH + 10
+	footerRect := rect{X: contentLeft, Y: footerTop, W: contentRight - contentLeft, H: (panelY + panelH - 20) - footerTop}
+	drawFooterPanel(screen, hudFace, battle, footerRect)
 }
 
 // drawHUDText рисует текстовые блоки HUD (счётчик собранных предметов и т.п.).
@@ -131,4 +136,272 @@ func drawHUDText(screen *ebiten.Image, pickupCount int, hudFace *text.GoTextFace
 	op.GeoM.Translate(10, 20)
 	op.ColorScale.ScaleWithColor(color.White)
 	text.Draw(screen, fmt.Sprintf("Pickups: %d", pickupCount), hudFace, op)
+}
+
+type rect struct {
+	X, Y, W, H float32
+}
+
+func drawPanelBox(screen *ebiten.Image, r rect, title string, hudFace *text.GoTextFace) {
+	bg := color.RGBA{R: 28, G: 28, B: 28, A: 255}
+	border := color.RGBA{R: 120, G: 120, B: 120, A: 255}
+	vector.FillRect(screen, r.X, r.Y, r.W, r.H, bg, false)
+	vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 1, border, false)
+
+	if title == "" {
+		return
+	}
+	op := &text.DrawOptions{}
+	op.GeoM.Translate(float64(r.X)+8, float64(r.Y)+14)
+	op.ColorScale.ScaleWithColor(color.RGBA{R: 200, G: 200, B: 200, A: 255})
+	text.Draw(screen, title, hudFace, op)
+}
+
+func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, side battlepkg.BattleSide, title string) {
+	drawPanelBox(screen, r, title, hudFace)
+	if battle == nil {
+		return
+	}
+
+	active := battle.ActiveUnit()
+	isPlayerTurn := active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction
+	pt := battle.PlayerTurn
+
+	validSet := map[battlepkg.UnitID]bool{}
+	if isPlayerTurn && (pt.Phase == battlepkg.PlayerChooseTarget || pt.Phase == battlepkg.PlayerConfirmAction) {
+		for _, td := range pt.ValidTargets {
+			if td.Kind == battlepkg.TargetKindUnit {
+				validSet[td.UnitID] = true
+			}
+		}
+	}
+
+	selectedTargetID := battlepkg.UnitID(0)
+	if isPlayerTurn && (pt.Phase == battlepkg.PlayerChooseTarget || pt.Phase == battlepkg.PlayerConfirmAction) && pt.SelectedTarget.Kind == battlepkg.TargetKindUnit {
+		selectedTargetID = pt.SelectedTarget.UnitID
+	}
+
+	// Slot grid: 3 front + 3 back.
+	cellW := (r.W - 16) / 3
+	cellH := float32(44)
+	rowGap := float32(10)
+
+	drawRowLabel := func(label string, y float32) {
+		op := &text.DrawOptions{}
+		op.GeoM.Translate(float64(r.X)+8, float64(y)+14)
+		op.ColorScale.ScaleWithColor(color.RGBA{R: 170, G: 170, B: 170, A: 255})
+		text.Draw(screen, label, hudFace, op)
+	}
+
+	frontY := r.Y + 22
+	backY := frontY + cellH + rowGap + 16
+
+	drawRowLabel("FRONT", frontY)
+	drawRowLabel("BACK", backY)
+
+	drawSlot := func(row battlepkg.BattleRow, idx int, x, y float32) {
+		slot := battle.Slot(side, row, idx)
+		var u *battlepkg.BattleUnit
+		if slot != nil {
+			u = battle.UnitInSlot(slot)
+		}
+
+		// Base style.
+		fill := color.RGBA{R: 45, G: 45, B: 45, A: 255}
+		border := color.RGBA{R: 90, G: 90, B: 90, A: 255}
+		textCol := color.RGBA{R: 230, G: 230, B: 230, A: 255}
+
+		if u == nil {
+			fill = color.RGBA{R: 35, G: 35, B: 35, A: 255}
+			textCol = color.RGBA{R: 120, G: 120, B: 120, A: 255}
+		} else if !u.IsAlive() {
+			fill = color.RGBA{R: 25, G: 25, B: 25, A: 255}
+			textCol = color.RGBA{R: 120, G: 120, B: 120, A: 255}
+		}
+
+		// Valid/selected/active highlights (read from battle state; no rule logic here).
+		if u != nil && validSet[u.ID] {
+			border = color.RGBA{R: 80, G: 150, B: 255, A: 255}
+		}
+		if u != nil && u.ID == selectedTargetID {
+			border = color.RGBA{R: 255, G: 80, B: 80, A: 255}
+		}
+		if active != nil && u != nil && u.ID == active.ID {
+			border = color.RGBA{R: 255, G: 215, B: 80, A: 255}
+		}
+
+		vector.FillRect(screen, x, y, cellW-4, cellH, fill, false)
+		vector.StrokeRect(screen, x, y, cellW-4, cellH, 2, border, false)
+
+		label := fmt.Sprintf("(%d)", idx)
+		if u != nil {
+			hp := fmt.Sprintf("%d/%d", u.State.HP, u.MaxHP())
+			name := u.Name()
+			if len([]rune(name)) > 10 {
+				rs := []rune(name)
+				name = string(rs[:10])
+			}
+			label = fmt.Sprintf("%s\nHP %s", name, hp)
+			if !u.IsAlive() {
+				label = fmt.Sprintf("%s\nDEAD", name)
+			}
+		} else {
+			label = "EMPTY"
+		}
+
+		op := &text.DrawOptions{}
+		op.GeoM.Translate(float64(x)+6, float64(y)+14)
+		op.ColorScale.ScaleWithColor(textCol)
+		text.Draw(screen, label, hudFace, op)
+	}
+
+	for i := 0; i < 3; i++ {
+		x := r.X + 8 + float32(i)*cellW
+		drawSlot(battlepkg.BattleRowFront, i, x, frontY+12)
+		drawSlot(battlepkg.BattleRowBack, i, x, backY+12)
+	}
+}
+
+func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect) {
+	drawPanelBox(screen, r, "ABILITIES", hudFace)
+	if battle == nil {
+		return
+	}
+	active := battle.ActiveUnit()
+	if active == nil || active.Side != battlepkg.TeamPlayer || battle.Phase != battlepkg.PhaseAwaitAction {
+		op := &text.DrawOptions{}
+		op.GeoM.Translate(float64(r.X)+8, float64(r.Y)+34)
+		op.ColorScale.ScaleWithColor(color.RGBA{R: 150, G: 150, B: 150, A: 255})
+		text.Draw(screen, "(waiting)", hudFace, op)
+		return
+	}
+
+	abs := active.Abilities()
+	sel := battle.PlayerTurn.SelectedAbilityID
+
+	y := r.Y + 34
+	for i, id := range abs {
+		a := battlepkg.GetAbility(id)
+		prefix := "  "
+		col := color.RGBA{R: 220, G: 220, B: 220, A: 255}
+		if id == sel && battle.PlayerTurn.Phase == battlepkg.PlayerChooseAbility {
+			prefix = "> "
+			col = color.RGBA{R: 255, G: 215, B: 80, A: 255}
+		}
+		rule := ""
+		switch a.TargetRule {
+		case battlepkg.TargetEnemySingle:
+			rule = "enemy"
+		case battlepkg.TargetAllySingle:
+			rule = "ally"
+		case battlepkg.TargetSelf:
+			rule = "self"
+		default:
+			rule = "none"
+		}
+		line := fmt.Sprintf("%s%d) %s [%s]", prefix, i+1, a.Name, rule)
+		op := &text.DrawOptions{}
+		op.GeoM.Translate(float64(r.X)+8, float64(y))
+		op.ColorScale.ScaleWithColor(col)
+		text.Draw(screen, line, hudFace, op)
+		y += 16
+		if y > r.Y+r.H-10 {
+			break
+		}
+	}
+}
+
+func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect) {
+	drawPanelBox(screen, r, "ACTION", hudFace)
+	if battle == nil {
+		return
+	}
+
+	active := battle.ActiveUnit()
+	if active == nil || active.Side != battlepkg.TeamPlayer || battle.Phase != battlepkg.PhaseAwaitAction {
+		op := &text.DrawOptions{}
+		op.GeoM.Translate(float64(r.X)+8, float64(r.Y)+34)
+		op.ColorScale.ScaleWithColor(color.RGBA{R: 150, G: 150, B: 150, A: 255})
+		text.Draw(screen, "(enemy turn)", hudFace, op)
+		return
+	}
+
+	pt := battle.PlayerTurn
+	a := battlepkg.GetAbility(pt.SelectedAbilityID)
+
+	targetStr := "-"
+	switch pt.SelectedTarget.Kind {
+	case battlepkg.TargetKindSelf:
+		targetStr = "self"
+	case battlepkg.TargetKindUnit:
+		if tu := battle.Units[pt.SelectedTarget.UnitID]; tu != nil {
+			targetStr = fmt.Sprintf("%s (#%d)", tu.Name(), tu.ID)
+		} else {
+			targetStr = fmt.Sprintf("unit #%d", pt.SelectedTarget.UnitID)
+		}
+	case battlepkg.TargetKindNone:
+		targetStr = "none"
+	}
+
+	lines := []string{
+		fmt.Sprintf("phase: %s", pt.PhaseString()),
+		fmt.Sprintf("ability: %s", a.Name),
+		fmt.Sprintf("target: %s", targetStr),
+	}
+	if pt.Phase == battlepkg.PlayerConfirmAction {
+		lines = append(lines, "READY: confirm to act")
+	} else if pt.Phase == battlepkg.PlayerChooseTarget {
+		lines = append(lines, fmt.Sprintf("valid targets: %d", len(pt.ValidTargets)))
+	}
+
+	y := r.Y + 34
+	for _, line := range lines {
+		op := &text.DrawOptions{}
+		op.GeoM.Translate(float64(r.X)+8, float64(y))
+		op.ColorScale.ScaleWithColor(color.White)
+		text.Draw(screen, line, hudFace, op)
+		y += 16
+	}
+}
+
+func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect) {
+	drawPanelBox(screen, r, "INFO", hudFace)
+	if battle == nil {
+		return
+	}
+	active := battle.ActiveUnit()
+	isPlayerTurn := active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction
+
+	msg := strings.TrimSpace(battle.LastMessage)
+	if msg == "" {
+		msg = "-"
+	}
+	if len([]rune(msg)) > 110 {
+		rs := []rune(msg)
+		msg = string(rs[:107]) + "..."
+	}
+
+	controls := "Esc: retreat"
+	if isPlayerTurn {
+		switch battle.PlayerTurn.Phase {
+		case battlepkg.PlayerChooseAbility:
+			controls = "Arrows: ability | Space/Enter: choose | Backspace: (noop) | Esc: retreat"
+		case battlepkg.PlayerChooseTarget:
+			controls = "Arrows: target | Space/Enter: choose | Backspace: back | Esc: retreat"
+		case battlepkg.PlayerConfirmAction:
+			controls = "Space/Enter: confirm | Backspace: back | Esc: retreat"
+		default:
+			controls = "Arrows: select | Space/Enter: confirm | Backspace: back | Esc: retreat"
+		}
+	}
+
+	op1 := &text.DrawOptions{}
+	op1.GeoM.Translate(float64(r.X)+8, float64(r.Y)+34)
+	op1.ColorScale.ScaleWithColor(color.RGBA{R: 220, G: 220, B: 220, A: 255})
+	text.Draw(screen, "Last: "+msg, hudFace, op1)
+
+	op2 := &text.DrawOptions{}
+	op2.GeoM.Translate(float64(r.X)+8, float64(r.Y)+52)
+	op2.ColorScale.ScaleWithColor(color.RGBA{R: 170, G: 170, B: 170, A: 255})
+	text.Draw(screen, controls, hudFace, op2)
 }
