@@ -10,7 +10,7 @@ type BattleContext struct {
 	Encounter Encounter
 
 	Units     map[UnitID]*BattleUnit
-	Teams     map[TeamID]*BattleTeam
+	Sides     map[BattleSide]*BattleSideState
 	TurnOrder []UnitID
 	TurnIndex int
 	Round     int
@@ -30,81 +30,55 @@ func BuildBattleContextFromEncounter(enc Encounter) *BattleContext {
 	ctx := &BattleContext{
 		Encounter:   enc,
 		Units:       make(map[UnitID]*BattleUnit),
-		Teams:       make(map[TeamID]*BattleTeam),
+		Sides:       make(map[BattleSide]*BattleSideState),
 		Phase:       PhaseStart,
 		Result:      ResultNone,
 		LastMessage: "Бой начался.",
 	}
 
+	// Initialize spatial model (source of truth for placement).
+	ctx.Sides[BattleSidePlayer] = NewBattleSideState(BattleSidePlayer)
+	ctx.Sides[BattleSideEnemy] = NewBattleSideState(BattleSideEnemy)
+
+	spawnUnit := func(id UnitID, side BattleSide, seed CombatUnitSeed) *BattleUnit {
+		u := &BattleUnit{
+			ID:     id,
+			Side:   side,
+			Def:    seed.Def,
+			Origin: seed.Origin,
+			State: CombatUnitState{
+				HP:    seed.Def.Base.MaxHP,
+				Alive: true,
+			},
+		}
+		return u
+	}
+
 	// Player team (temporary: single unit, front row).
 	// NOTE: canonical party composition will be introduced in the next steps.
-	playerUnit := &BattleUnit{
-		ID:   UnitID(1),
-		Side: TeamPlayer,
-		Def: CombatUnitDefinition{
-			ArchetypeID: "player:default",
-			DisplayName: "Игрок",
-			Role:        RoleFighter,
-			Base: UnitBaseStats{
-				MaxHP:      10,
-				Attack:     2,
-				Defense:    0,
-				Initiative: 2,
-			},
-			IsRanged: false,
-			Loadout:  AbilityLoadout{Abilities: []AbilityID{AbilityBasicAttack}},
-		},
-		State: CombatUnitState{
-			HP:    10,
-			Alive: true,
-			Row:   RowFront,
-			Slot:  0,
-		},
-	}
+	playerSeed := DefaultPlayerCombatUnitSeed()
+	playerUnit := spawnUnit(UnitID(1), BattleSidePlayer, playerSeed)
 	ctx.Units[playerUnit.ID] = playerUnit
-	ctx.Teams[TeamPlayer] = &BattleTeam{ID: TeamPlayer, Units: []UnitID{playerUnit.ID}}
+	_ = ctx.PlaceUnit(playerUnit.ID, BattleSlotID{Side: BattleSidePlayer, Row: BattleRowFront, Index: 0})
 
 	// Enemy team (first MaxFrontRowUnits in front, rest in back)
-	enemyUnits := make([]UnitID, 0, len(enc.Enemies))
 	for i, e := range enc.Enemies {
-		seed := BuildBattleUnitSeed(e)
+		if i >= MaxFrontRowUnits+MaxBackRowUnits {
+			break
+		}
+		seed := BuildEnemyCombatUnitSeed(e)
 		uid := UnitID(2 + i)
-		row := RowFront
-		if i >= MaxFrontRowUnits {
-			row = RowBack
-		}
-		abils := seed.Abilities
-		if len(abils) == 0 {
-			abils = []AbilityID{AbilityBasicAttack}
-		}
-		u := &BattleUnit{
-			ID:   uid,
-			Side: TeamEnemy,
-			Def: CombatUnitDefinition{
-				ArchetypeID: seed.ArchetypeID,
-				DisplayName: seed.Name,
-				Role:        seed.Role,
-				Base: UnitBaseStats{
-					MaxHP:      seed.MaxHP,
-					Attack:     seed.Attack,
-					Defense:    seed.Defense,
-					Initiative: seed.Initiative,
-				},
-				IsRanged: seed.IsRanged,
-				Loadout:  AbilityLoadout{Abilities: abils},
-			},
-			State: CombatUnitState{
-				HP:    seed.MaxHP,
-				Alive: true,
-				Row:   row,
-				Slot:  i,
-			},
-			Origin: CombatUnitOrigin{WorldEnemyID: seed.SourceEnemyID},
-		}
+		u := spawnUnit(uid, BattleSideEnemy, seed)
 		ctx.Units[uid] = u
-		enemyUnits = append(enemyUnits, uid)
+
+		row := BattleRowFront
+		index := i
+		if i >= MaxFrontRowUnits {
+			row = BattleRowBack
+			index = i - MaxFrontRowUnits
+		}
+		_ = ctx.PlaceUnit(uid, BattleSlotID{Side: BattleSideEnemy, Row: row, Index: index})
 	}
-	ctx.Teams[TeamEnemy] = &BattleTeam{ID: TeamEnemy, Units: enemyUnits}
 
 	ctx.TurnOrder = BuildTurnOrder(ctx)
 	ctx.TurnIndex = 0
@@ -130,8 +104,19 @@ func BuildTurnOrder(ctx *BattleContext) []UnitID {
 		if a.Side != b.Side {
 			return a.Side < b.Side
 		}
-		if a.State.Slot != b.State.Slot {
-			return a.State.Slot < b.State.Slot
+		slotOrder := func(u *BattleUnit) int {
+			sl := ctx.SlotByUnit(u.ID)
+			if sl == nil {
+				return 1_000_000
+			}
+			rowWeight := 0
+			if sl.ID.Row == BattleRowBack {
+				rowWeight = 1000
+			}
+			return rowWeight + sl.ID.Index
+		}
+		if slotOrder(a) != slotOrder(b) {
+			return slotOrder(a) < slotOrder(b)
 		}
 		return a.ID < b.ID
 	})
@@ -169,13 +154,17 @@ func (c *BattleContext) IsFinished() bool {
 
 // LivingUnits возвращает живых юнитов команды.
 func (c *BattleContext) LivingUnits(team TeamID) []*BattleUnit {
-	t := c.Teams[team]
-	if t == nil {
+	st := c.SideState(team)
+	if st == nil {
 		return nil
 	}
 	var out []*BattleUnit
-	for _, id := range t.Units {
-		u := c.Units[id]
+	for i := range st.Slots {
+		sl := &st.Slots[i]
+		if sl.IsEmpty() {
+			continue
+		}
+		u := c.Units[sl.Occupied]
 		if u != nil && u.IsAlive() {
 			out = append(out, u)
 		}

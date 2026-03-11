@@ -1,26 +1,21 @@
 package battle
 
-// RowType — ряд построения (передний/задний).
-type RowType int
-
-const (
-	RowFront RowType = iota
-	RowBack
-)
-
-// MaxFrontRowUnits — максимум юнитов в переднем ряду.
-const MaxFrontRowUnits = 3
+// NOTE: legacy reachable helpers are kept as thin wrappers around the unified validation layer.
 
 // LivingUnitsInRow возвращает живых юнитов команды в указанном ряду.
 func (c *BattleContext) LivingUnitsInRow(team TeamID, row RowType) []*BattleUnit {
-	t := c.Teams[team]
-	if t == nil {
+	st := c.SideState(team)
+	if st == nil {
 		return nil
 	}
 	var out []*BattleUnit
-	for _, id := range t.Units {
-		u := c.Units[id]
-		if u != nil && u.IsAlive() && u.State.Row == row {
+	for i := range st.Slots {
+		sl := &st.Slots[i]
+		if sl.ID.Row != row || sl.IsEmpty() {
+			continue
+		}
+		u := c.Units[sl.Occupied]
+		if u != nil && u.IsAlive() {
 			out = append(out, u)
 		}
 	}
@@ -47,65 +42,75 @@ func effectiveRange(actor *BattleUnit, ability Ability) AbilityRange {
 
 // ReachableEnemyTargets возвращает допустимые цели врага для способности по правилам formation.
 func (c *BattleContext) ReachableEnemyTargets(actor *BattleUnit, ability Ability) []*BattleUnit {
-	if actor == nil {
-		return nil
-	}
-	enemyTeam := c.EnemyTeam(actor.Side)
-	allEnemies := c.LivingUnits(enemyTeam)
-	if len(allEnemies) == 0 {
+	if c == nil || actor == nil {
 		return nil
 	}
 	if ability.TargetRule != TargetEnemySingle {
 		return nil
 	}
-	rng := effectiveRange(actor, ability)
-	if rng == RangeRanged {
-		return allEnemies
+	tds, _ := ListValidTargets(c, actor.ID, ability.ID)
+	out := make([]*BattleUnit, 0, len(tds))
+	for _, td := range tds {
+		if td.Kind != TargetKindUnit {
+			continue
+		}
+		if u := c.Units[td.UnitID]; u != nil {
+			out = append(out, u)
+		}
 	}
-	if c.FrontRowAlive(enemyTeam) {
-		return c.LivingUnitsInRow(enemyTeam, RowFront)
-	}
-	return c.LivingUnitsInRow(enemyTeam, RowBack)
+	return out
 }
 
 // ReachableAllyTargets возвращает допустимые цели союзника (живые юниты своей команды, включая себя).
 func (c *BattleContext) ReachableAllyTargets(actor *BattleUnit, ability Ability) []*BattleUnit {
-	if actor == nil {
+	if c == nil || actor == nil {
 		return nil
 	}
 	if ability.TargetRule != TargetAllySingle {
 		return nil
 	}
-	return c.LivingUnits(actor.Side)
+	tds, _ := ListValidTargets(c, actor.ID, ability.ID)
+	out := make([]*BattleUnit, 0, len(tds))
+	for _, td := range tds {
+		if td.Kind != TargetKindUnit {
+			continue
+		}
+		if u := c.Units[td.UnitID]; u != nil {
+			out = append(out, u)
+		}
+	}
+	return out
 }
 
 // ReachableTargets возвращает допустимые цели способности для актёра (враги, союзники или сам актёр).
 func (c *BattleContext) ReachableTargets(actor *BattleUnit, ability Ability) []*BattleUnit {
-	switch ability.TargetRule {
-	case TargetEnemySingle:
-		return c.ReachableEnemyTargets(actor, ability)
-	case TargetAllySingle:
-		return c.ReachableAllyTargets(actor, ability)
-	case TargetSelf:
-		if actor != nil && actor.IsAlive() {
-			return []*BattleUnit{actor}
-		}
-		return nil
-	default:
+	if c == nil || actor == nil {
 		return nil
 	}
+	tds, _ := ListValidTargets(c, actor.ID, ability.ID)
+	out := make([]*BattleUnit, 0, len(tds))
+	for _, td := range tds {
+		switch td.Kind {
+		case TargetKindSelf:
+			out = append(out, actor)
+		case TargetKindUnit:
+			if u := c.Units[td.UnitID]; u != nil {
+				out = append(out, u)
+			}
+		}
+	}
+	return out
 }
 
 // CanTarget проверяет, может ли актёр выбрать цель данной способностью.
 func (c *BattleContext) CanTarget(actor *BattleUnit, ability Ability, target *BattleUnit) bool {
-	if actor == nil || target == nil {
+	if c == nil || actor == nil || target == nil {
 		return false
 	}
-	reachable := c.ReachableTargets(actor, ability)
-	for _, u := range reachable {
-		if u.ID == target.ID {
-			return true
-		}
-	}
-	return false
+	v := ValidateAction(c, ActionRequest{
+		Actor:   actor.ID,
+		Ability: ability.ID,
+		Target:  UnitTarget(target.ID),
+	})
+	return v.OK
 }

@@ -6,16 +6,15 @@ func BuildEnemyAction(ctx *BattleContext, actor *BattleUnit) (BattleAction, bool
 		return BattleAction{}, false
 	}
 	for _, abilityID := range actor.Abilities() {
-		ability := GetAbility(abilityID)
-		targets := ctx.ReachableTargets(actor, ability)
-		if len(targets) == 0 {
+		validTargets, _ := ListValidTargets(ctx, actor.ID, abilityID)
+		if len(validTargets) == 0 {
 			continue
 		}
-		return BattleAction{
-			Actor:   actor.ID,
-			Ability: abilityID,
-			Target:  targets[0].ID,
-		}, true
+		req := ActionRequest{Actor: actor.ID, Ability: abilityID, Target: validTargets[0]}
+		act, v := ToBattleAction(ctx, req)
+		if v.OK {
+			return act, true
+		}
 	}
 	return BattleAction{}, false
 }
@@ -33,16 +32,15 @@ func buildPlayerAction(ctx *BattleContext, actor *BattleUnit) (BattleAction, boo
 		return BattleAction{}, false
 	}
 	for _, abilityID := range actor.Abilities() {
-		ability := GetAbility(abilityID)
-		targets := ctx.ReachableTargets(actor, ability)
-		if len(targets) == 0 {
+		validTargets, _ := ListValidTargets(ctx, actor.ID, abilityID)
+		if len(validTargets) == 0 {
 			continue
 		}
-		return BattleAction{
-			Actor:   actor.ID,
-			Ability: abilityID,
-			Target:  targets[0].ID,
-		}, true
+		req := ActionRequest{Actor: actor.ID, Ability: abilityID, Target: validTargets[0]}
+		act, v := ToBattleAction(ctx, req)
+		if v.OK {
+			return act, true
+		}
 	}
 	return BattleAction{}, false
 }

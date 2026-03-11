@@ -5,12 +5,27 @@ const buffAttackBonus = 1
 
 // ResolveAbility применяет действие по способности и возвращает результат. Единственная точка изменения HP/статов.
 func ResolveAbility(ctx *BattleContext, action BattleAction) ActionResult {
+	if ctx == nil || ctx.Units == nil {
+		return ActionResult{}
+	}
 	ability := GetAbility(action.Ability)
 	actor := ctx.Units[action.Actor]
-	target := ctx.Units[action.Target]
 	if actor == nil || !actor.IsAlive() {
 		return ActionResult{}
 	}
+
+	// Unified rule gate: never assume caller validated correctly.
+	req := ActionRequest{Actor: action.Actor, Ability: action.Ability, Target: UnitTarget(action.Target)}
+	if ability.TargetRule == TargetSelf {
+		req.Target = SelfTarget()
+	}
+	if action.Target == 0 {
+		req.Target = NoTarget()
+	}
+	if v := ValidateAction(ctx, req); !v.OK {
+		return ActionResult{}
+	}
+	target := ctx.Units[action.Target]
 
 	switch ability.ID {
 	case AbilityBasicAttack, AbilityRangedAttack:

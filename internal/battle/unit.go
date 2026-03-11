@@ -7,16 +7,24 @@ import (
 // UnitID уникально идентифицирует боевого юнита в рамках боя.
 type UnitID int
 
-// TeamID — сторона боя.
-type TeamID int
+// BattleSide — сторона боя (player/enemy).
+type BattleSide int
 
 const (
-	TeamPlayer TeamID = iota
-	TeamEnemy
+	BattleSidePlayer BattleSide = iota
+	BattleSideEnemy
 )
 
-// UnitSide — доменное имя для стороны боя (алиас на TeamID для совместимости).
-type UnitSide = TeamID
+// TeamID — legacy имя стороны (compatibility).
+type TeamID = BattleSide
+
+const (
+	TeamPlayer TeamID = BattleSidePlayer
+	TeamEnemy  TeamID = BattleSideEnemy
+)
+
+// UnitSide — доменное имя для стороны боя (алиас на BattleSide/TeamID для совместимости).
+type UnitSide = BattleSide
 
 // UnitRole — доменное имя роли (алиас на Role).
 type UnitRole = Role
@@ -72,9 +80,11 @@ type CombatUnitState struct {
 	Modifiers CombatModifiers
 	Statuses  []StatusInstance
 
-	// Placement groundwork (до следующего шага side+slot model).
+	// Placement compatibility mirror.
+	// IMPORTANT: source of truth for placement is BattleContext.Sides/Slots (side+slot model).
+	// These fields exist only to keep old code paths working during migration.
 	Slot int
-	Row  RowType
+	Row  BattleRow
 }
 
 // CombatUnitOrigin — hook для связи с внешним миром/персистентностью.

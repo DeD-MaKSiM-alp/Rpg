@@ -30,33 +30,53 @@ func BuildEncounterFromWorld(w *world.World, enemyID entity.EntityID) (Encounter
 	}, true
 }
 
-// BattleUnitSeed — подготовительные боевые данные для создания BattleUnit (отвязаны от world entity).
-type BattleUnitSeed struct {
-	ArchetypeID    string
-	Name          string
-	MaxHP         int
-	Attack        int
-	Defense       int
-	Initiative    int
-	IsRanged      bool
-	Role          Role
-	Abilities     []AbilityID
-	SourceEnemyID entity.EntityID
+// CombatUnitSeed — вход для построения боевого юнита из внешнего контекста (encounter/world, player snapshot и т.п.).
+// Это "conversion layer": на выходе даёт definition (archetype) + origin hook, без смешивания с runtime state боя.
+type CombatUnitSeed struct {
+	Def    CombatUnitDefinition
+	Origin CombatUnitOrigin
 }
 
-// BuildBattleUnitSeed преобразует EncounterEnemy в BattleUnitSeed.
-func BuildBattleUnitSeed(e EncounterEnemy) BattleUnitSeed {
+// BuildEnemyCombatUnitSeed преобразует EncounterEnemy в CombatUnitSeed.
+func BuildEnemyCombatUnitSeed(e EncounterEnemy) CombatUnitSeed {
 	tpl := GetEnemyTemplate(e.Kind)
-	return BattleUnitSeed{
-		ArchetypeID:    "enemy:" + tpl.Name,
-		Name:          tpl.Name,
-		MaxHP:         tpl.HP,
-		Attack:        tpl.Attack,
-		Defense:       tpl.Defense,
-		Initiative:    tpl.Initiative,
-		IsRanged:      tpl.IsRanged,
-		Role:          tpl.Role,
-		Abilities:     GetRoleAbilities(tpl.Role),
-		SourceEnemyID: e.EnemyID,
+	abils := GetRoleAbilities(tpl.Role)
+	if len(abils) == 0 {
+		abils = []AbilityID{AbilityBasicAttack}
+	}
+	return CombatUnitSeed{
+		Def: CombatUnitDefinition{
+			ArchetypeID: "enemy:" + tpl.Name,
+			DisplayName: tpl.Name,
+			Role:        tpl.Role,
+			Base: UnitBaseStats{
+				MaxHP:      tpl.HP,
+				Attack:     tpl.Attack,
+				Defense:    tpl.Defense,
+				Initiative: tpl.Initiative,
+			},
+			IsRanged: tpl.IsRanged,
+			Loadout:  AbilityLoadout{Abilities: abils},
+		},
+		Origin: CombatUnitOrigin{WorldEnemyID: e.EnemyID},
+	}
+}
+
+// DefaultPlayerCombatUnitSeed — временный seed игрока до появления party/persistent snapshot.
+func DefaultPlayerCombatUnitSeed() CombatUnitSeed {
+	return CombatUnitSeed{
+		Def: CombatUnitDefinition{
+			ArchetypeID: "player:default",
+			DisplayName: "Игрок",
+			Role:        RoleFighter,
+			Base: UnitBaseStats{
+				MaxHP:      10,
+				Attack:     2,
+				Defense:    0,
+				Initiative: 2,
+			},
+			IsRanged: false,
+			Loadout:  AbilityLoadout{Abilities: []AbilityID{AbilityBasicAttack}},
+		},
 	}
 }
