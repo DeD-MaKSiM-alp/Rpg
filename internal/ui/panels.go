@@ -249,6 +249,13 @@ type rect struct {
 	X, Y, W, H float32
 }
 
+func minF(a, b float32) float32 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func drawPanelBox(screen *ebiten.Image, r rect, title string, hudFace *text.GoTextFace) {
 	bg := color.RGBA{R: 28, G: 28, B: 28, A: 255}
 	border := color.RGBA{R: 120, G: 120, B: 120, A: 255}
@@ -293,6 +300,10 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 	if isPlayerTurn && (pt.Phase == battlepkg.PlayerChooseTarget || pt.Phase == battlepkg.PlayerConfirmAction) && pt.SelectedTarget.Kind == battlepkg.TargetKindUnit {
 		selectedTargetID = pt.SelectedTarget.UnitID
 	}
+	hoverTargetID := battlepkg.UnitID(0)
+	if isPlayerTurn && (pt.Phase == battlepkg.PlayerChooseTarget || pt.Phase == battlepkg.PlayerConfirmAction) {
+		hoverTargetID = pt.HoverTargetUnitID
+	}
 
 	// Slot grid: 3 front + 3 back.
 	cellW := (inner.W - uiGap*2) / 3
@@ -336,12 +347,14 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 			textCol = color.RGBA{R: 120, G: 120, B: 120, A: 255}
 		}
 
-		// Valid/selected/active highlights (read from battle state; no rule logic here).
+		// Valid/selected/hover/active highlights (read from battle state; no rule logic here).
 		if u != nil && validSet[u.ID] {
 			border = color.RGBA{R: 80, G: 150, B: 255, A: 255}
 		}
 		if u != nil && u.ID == selectedTargetID {
 			border = color.RGBA{R: 255, G: 80, B: 80, A: 255}
+		} else if u != nil && u.ID == hoverTargetID {
+			border = color.RGBA{R: 120, G: 190, B: 255, A: 255}
 		}
 		if active != nil && u != nil && u.ID == active.ID {
 			border = color.RGBA{R: 255, G: 215, B: 80, A: 255}
@@ -408,10 +421,12 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 
 	abs := active.Abilities()
 	sel := battle.PlayerTurn.SelectedAbilityID
+	hoverIdx := battle.PlayerTurn.HoverAbilityIndex
 
 	inner := inset(r, uiPad*0.6)
 	y := inner.Y + uiLineH*2
 	maxY := inner.Y + inner.H - uiLineH*0.5
+	var hoveredAbility *battlepkg.Ability
 	for i, id := range abs {
 		a := battlepkg.GetAbility(id)
 		prefix := "  "
@@ -419,6 +434,10 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		if id == sel && battle.PlayerTurn.Phase == battlepkg.PlayerChooseAbility {
 			prefix = "> "
 			col = color.RGBA{R: 255, G: 215, B: 80, A: 255}
+		} else if hoverIdx == i && battle.PlayerTurn.Phase == battlepkg.PlayerChooseAbility {
+			// Hover highlight (mouse-driven).
+			col = color.RGBA{R: 160, G: 210, B: 255, A: 255}
+			hoveredAbility = &a
 		}
 		rule := ""
 		switch a.TargetRule {
@@ -440,6 +459,37 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		if y > maxY {
 			break
 		}
+	}
+
+	// Very simple tooltip for hovered ability (inside the panel, under list).
+	if hoveredAbility != nil {
+		infoY := minF(inner.Y+inner.H-uiLineH*3, y+uiGap)
+		op := &text.DrawOptions{}
+		op.GeoM.Translate(float64(inner.X), float64(infoY))
+		op.ColorScale.ScaleWithColor(color.RGBA{R: 180, G: 220, B: 255, A: 255})
+
+		target := ""
+		switch hoveredAbility.TargetRule {
+		case battlepkg.TargetEnemySingle:
+			target = "enemy"
+		case battlepkg.TargetAllySingle:
+			target = "ally"
+		case battlepkg.TargetSelf:
+			target = "self"
+		default:
+			target = "none"
+		}
+		rng := ""
+		switch hoveredAbility.Range {
+		case battlepkg.RangeMelee:
+			rng = "melee"
+		case battlepkg.RangeRanged:
+			rng = "ranged"
+		default:
+			rng = "—"
+		}
+		line := fmt.Sprintf("Target: %s | Range: %s", target, rng)
+		text.Draw(screen, line, hudFace, op)
 	}
 }
 
@@ -475,10 +525,21 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		targetStr = "none"
 	}
 
-	lines := []string{
-		fmt.Sprintf("phase: %s", pt.PhaseString()),
-		fmt.Sprintf("action: %s → %s", a.Name, targetStr),
+	lines := []string{}
+
+	// High-level readable summary.
+	switch pt.Phase {
+	case battlepkg.PlayerChooseAbility:
+		lines = append(lines, "Choose an ability")
+	case battlepkg.PlayerChooseTarget:
+		lines = append(lines, "Choose a target")
+	case battlepkg.PlayerConfirmAction:
+		lines = append(lines, "Confirm action")
+	default:
+		lines = append(lines, fmt.Sprintf("phase: %s", pt.PhaseString()))
 	}
+	lines = append(lines, fmt.Sprintf("Ability: %s", a.Name))
+	lines = append(lines, fmt.Sprintf("Target: %s", targetStr))
 
 	// Preview (UI only reads PreviewAction API).
 	req := pt.Pending
@@ -494,9 +555,11 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	}
 
 	if pt.Phase == battlepkg.PlayerConfirmAction {
-		lines = append(lines, "READY: confirm")
+		lines = append(lines, "Click CONFIRM to execute")
 	} else if pt.Phase == battlepkg.PlayerChooseTarget {
-		lines = append(lines, fmt.Sprintf("valid targets: %d", len(pt.ValidTargets)))
+		lines = append(lines, fmt.Sprintf("Valid targets: %d", len(pt.ValidTargets)))
+	} else if pt.Phase == battlepkg.PlayerChooseAbility {
+		lines = append(lines, "Left-click ability, then target")
 	}
 
 	inner := inset(r, uiPad*0.6)

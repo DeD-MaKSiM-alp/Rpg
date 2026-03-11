@@ -258,7 +258,12 @@ func (b *BattleContext) Update() BattleOutcome {
 			return BattleOutcomeNone
 		}
 		if active.Side == TeamPlayer {
+			// Keyboard-driven state machine remains as fallback.
 			action, ok := b.updatePlayerTurnStateMachine(active)
+			if !ok {
+				// Mouse layer can trigger an action as well; it only uses the same state machine fields.
+				action, ok = b.updatePlayerTurnMouse(active)
+			}
 			if ok {
 				result := ResolveAbility(b, action)
 				b.ApplyActionResult(result)

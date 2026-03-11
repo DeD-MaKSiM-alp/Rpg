@@ -29,6 +29,13 @@ type PlayerTurnState struct {
 	SelectedTargetIdx int
 	SelectedTarget    TargetDescriptor
 
+	// UI/UX-only fields (hover highlights); do not affect rules.
+	HoverAbilityIndex int  // -1 if none
+	HoverTargetUnitID UnitID
+
+	HoverConfirmButton bool
+	HoverBackButton    bool
+
 	Pending ActionRequest
 }
 
