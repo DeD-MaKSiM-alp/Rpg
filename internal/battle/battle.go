@@ -19,6 +19,9 @@ type BattleContext struct {
 	Result      Result
 	PauseFrames int // кадры до перехода к следующей фазе
 
+	// PlayerTurn holds player action selection state machine data.
+	PlayerTurn PlayerTurnState
+
 	LastMessage string
 }
 

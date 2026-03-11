@@ -106,18 +106,18 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	if len(lastMsg) > 40 {
 		lastMsg = lastMsg[:37] + "..."
 	}
-	text.Draw(screen, fmt.Sprintf("phase:%s timer:%d active:%s HP:%d result:%s | %s",
-		battle.PhaseString(), battle.PauseFrames, battle.ActiveUnitName(), activeHP, battle.ResultString(), lastMsg), hudFace, bodyOp3c)
+	text.Draw(screen, fmt.Sprintf("phase:%s timer:%d active:%s HP:%d result:%s | %s | %s",
+		battle.PhaseString(), battle.PauseFrames, battle.ActiveUnitName(), activeHP, battle.ResultString(), lastMsg, battle.PlayerTurnStatusString()), hudFace, bodyOp3c)
 
 	bodyOp4 := &text.DrawOptions{}
 	bodyOp4.GeoM.Translate(float64(panelX)+20, float64(panelY)+195+offsetY)
 	bodyOp4.ColorScale.ScaleWithColor(color.White)
-	text.Draw(screen, "SPACE: attack", hudFace, bodyOp4)
+	text.Draw(screen, "Arrows: select | SPACE/ENTER: confirm | Backspace: back | Esc: retreat", hudFace, bodyOp4)
 
 	bodyOp5 := &text.DrawOptions{}
 	bodyOp5.GeoM.Translate(float64(panelX)+20, float64(panelY)+220+offsetY)
 	bodyOp5.ColorScale.ScaleWithColor(color.White)
-	text.Draw(screen, "Esc: retreat", hudFace, bodyOp5)
+	text.Draw(screen, "Tip: choose ability -> target -> confirm", hudFace, bodyOp5)
 
 	bodyOp6 := &text.DrawOptions{}
 	bodyOp6.GeoM.Translate(float64(panelX)+20, float64(panelY)+250+offsetY)
