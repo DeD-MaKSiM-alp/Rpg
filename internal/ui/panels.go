@@ -100,7 +100,7 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	bodyOp3c.ColorScale.ScaleWithColor(color.RGBA{R: 180, G: 220, B: 180, A: 255})
 	activeHP := 0
 	if u := battle.ActiveUnit(); u != nil {
-		activeHP = u.HP
+		activeHP = u.State.HP
 	}
 	lastMsg := battle.LastMessage
 	if len(lastMsg) > 40 {

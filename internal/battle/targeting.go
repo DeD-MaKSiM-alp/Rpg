@@ -22,5 +22,5 @@ func (c *BattleContext) AllyTargets(actor *BattleUnit) []*BattleUnit {
 	if actor == nil {
 		return nil
 	}
-	return c.LivingUnits(actor.Team)
+	return c.LivingUnits(actor.Side)
 }

@@ -56,7 +56,7 @@ func (b *BattleContext) Update() BattleOutcome {
 			b.Phase = PhaseTurnEnd
 			return BattleOutcomeNone
 		}
-		if active.Team == TeamPlayer {
+		if active.Side == TeamPlayer {
 			if b.CanPlayerActNow() && inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 				action, ok := BuildFirstAvailablePlayerAction(b, active)
 				if ok {

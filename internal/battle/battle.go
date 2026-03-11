@@ -36,21 +36,30 @@ func BuildBattleContextFromEncounter(enc Encounter) *BattleContext {
 		LastMessage: "Бой начался.",
 	}
 
-	// Player team (player front row)
+	// Player team (temporary: single unit, front row).
+	// NOTE: canonical party composition will be introduced in the next steps.
 	playerUnit := &BattleUnit{
-		ID:         UnitID(1),
-		Name:       "Игрок",
-		Team:       TeamPlayer,
-		Slot:       0,
-		Row:        RowFront,
-		MaxHP:      10,
-		HP:         10,
-		Attack:     2,
-		Defense:    0,
-		Initiative: 2,
-		Alive:      true,
-		Ranged:     false,
-		Abilities:  []AbilityID{AbilityBasicAttack},
+		ID:   UnitID(1),
+		Side: TeamPlayer,
+		Def: CombatUnitDefinition{
+			ArchetypeID: "player:default",
+			DisplayName: "Игрок",
+			Role:        RoleFighter,
+			Base: UnitBaseStats{
+				MaxHP:      10,
+				Attack:     2,
+				Defense:    0,
+				Initiative: 2,
+			},
+			IsRanged: false,
+			Loadout:  AbilityLoadout{Abilities: []AbilityID{AbilityBasicAttack}},
+		},
+		State: CombatUnitState{
+			HP:    10,
+			Alive: true,
+			Row:   RowFront,
+			Slot:  0,
+		},
 	}
 	ctx.Units[playerUnit.ID] = playerUnit
 	ctx.Teams[TeamPlayer] = &BattleTeam{ID: TeamPlayer, Units: []UnitID{playerUnit.ID}}
@@ -69,20 +78,28 @@ func BuildBattleContextFromEncounter(enc Encounter) *BattleContext {
 			abils = []AbilityID{AbilityBasicAttack}
 		}
 		u := &BattleUnit{
-			ID:             uid,
-			Name:           seed.Name,
-			Team:           TeamEnemy,
-			Slot:           i,
-			Row:            row,
-			MaxHP:          seed.MaxHP,
-			HP:             seed.MaxHP,
-			Attack:         seed.Attack,
-			Defense:        seed.Defense,
-			Initiative:     seed.Initiative,
-			Alive:          true,
-			Ranged:         seed.IsRanged,
-			Abilities:      abils,
-			SourceEnemyID:  seed.SourceEnemyID,
+			ID:   uid,
+			Side: TeamEnemy,
+			Def: CombatUnitDefinition{
+				ArchetypeID: seed.ArchetypeID,
+				DisplayName: seed.Name,
+				Role:        seed.Role,
+				Base: UnitBaseStats{
+					MaxHP:      seed.MaxHP,
+					Attack:     seed.Attack,
+					Defense:    seed.Defense,
+					Initiative: seed.Initiative,
+				},
+				IsRanged: seed.IsRanged,
+				Loadout:  AbilityLoadout{Abilities: abils},
+			},
+			State: CombatUnitState{
+				HP:    seed.MaxHP,
+				Alive: true,
+				Row:   row,
+				Slot:  i,
+			},
+			Origin: CombatUnitOrigin{WorldEnemyID: seed.SourceEnemyID},
 		}
 		ctx.Units[uid] = u
 		enemyUnits = append(enemyUnits, uid)
@@ -107,14 +124,14 @@ func BuildTurnOrder(ctx *BattleContext) []UnitID {
 	}
 	sort.Slice(live, func(i, j int) bool {
 		a, b := live[i], live[j]
-		if a.Initiative != b.Initiative {
-			return a.Initiative > b.Initiative
+		if a.Initiative() != b.Initiative() {
+			return a.Initiative() > b.Initiative()
 		}
-		if a.Team != b.Team {
-			return a.Team < b.Team
+		if a.Side != b.Side {
+			return a.Side < b.Side
 		}
-		if a.Slot != b.Slot {
-			return a.Slot < b.Slot
+		if a.State.Slot != b.State.Slot {
+			return a.State.Slot < b.State.Slot
 		}
 		return a.ID < b.ID
 	})
@@ -218,7 +235,7 @@ func (c *BattleContext) DisplayPhaseLabel() string {
 	if u == nil {
 		return "Бой завершён"
 	}
-	if u.Team == TeamPlayer {
+	if u.Side == TeamPlayer {
 		return ">>> ХОД ИГРОКА <<<"
 	}
 	return ">>> ХОД ВРАГА <<<"
@@ -230,7 +247,7 @@ func (c *BattleContext) TeamFirstHP(team TeamID) int {
 	if len(live) == 0 {
 		return 0
 	}
-	return live[0].HP
+	return live[0].State.HP
 }
 
 // CanPlayerActNow возвращает true, если сейчас ход игрока и можно выполнить действие.
@@ -239,7 +256,7 @@ func (c *BattleContext) CanPlayerActNow() bool {
 		return false
 	}
 	u := c.ActiveUnit()
-	return u != nil && u.IsAlive() && u.Team == TeamPlayer
+	return u != nil && u.IsAlive() && u.Side == TeamPlayer
 }
 
 // ActiveUnitName возвращает имя активного юнита для UI.
@@ -248,7 +265,7 @@ func (c *BattleContext) ActiveUnitName() string {
 	if u == nil {
 		return "-"
 	}
-	return u.Name
+	return u.Name()
 }
 
 // ActiveUnitTeamName возвращает "Player" или "Enemy" для активного юнита.
@@ -257,7 +274,7 @@ func (c *BattleContext) ActiveUnitTeamName() string {
 	if u == nil {
 		return "-"
 	}
-	if u.Team == TeamPlayer {
+	if u.Side == TeamPlayer {
 		return "Player"
 	}
 	return "Enemy"
@@ -328,11 +345,11 @@ func (c *BattleContext) ApplyActionResult(r ActionResult) {
 	target := c.Units[r.Target]
 	if actor != nil && target != nil {
 		if r.HealAmount > 0 {
-			c.LastMessage = fmt.Sprintf("%s вылечил %s на %d.", actor.Name, target.Name, r.HealAmount)
+			c.LastMessage = fmt.Sprintf("%s вылечил %s на %d.", actor.Name(), target.Name(), r.HealAmount)
 		} else if r.Damage > 0 {
 			c.LastMessage = logActionResult(actor, target, r)
 		} else if r.Target != 0 {
-			c.LastMessage = fmt.Sprintf("%s усилил %s.", actor.Name, target.Name)
+			c.LastMessage = fmt.Sprintf("%s усилил %s.", actor.Name(), target.Name())
 		}
 	}
 	c.UpdateResultIfFinished()
@@ -340,9 +357,9 @@ func (c *BattleContext) ApplyActionResult(r ActionResult) {
 
 func logActionResult(actor, target *BattleUnit, r ActionResult) string {
 	if r.Killed {
-		return actor.Name + " победил " + target.Name + "."
+		return actor.Name() + " победил " + target.Name() + "."
 	}
-	return formatDamageLog(actor.Name, target.Name, r.Damage)
+	return formatDamageLog(actor.Name(), target.Name(), r.Damage)
 }
 
 func formatDamageLog(actorName, targetName string, damage int) string {

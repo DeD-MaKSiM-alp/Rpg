@@ -32,12 +32,14 @@ func BuildEncounterFromWorld(w *world.World, enemyID entity.EntityID) (Encounter
 
 // BattleUnitSeed — подготовительные боевые данные для создания BattleUnit (отвязаны от world entity).
 type BattleUnitSeed struct {
+	ArchetypeID    string
 	Name          string
 	MaxHP         int
 	Attack        int
 	Defense       int
 	Initiative    int
 	IsRanged      bool
+	Role          Role
 	Abilities     []AbilityID
 	SourceEnemyID entity.EntityID
 }
@@ -46,12 +48,14 @@ type BattleUnitSeed struct {
 func BuildBattleUnitSeed(e EncounterEnemy) BattleUnitSeed {
 	tpl := GetEnemyTemplate(e.Kind)
 	return BattleUnitSeed{
+		ArchetypeID:    "enemy:" + tpl.Name,
 		Name:          tpl.Name,
 		MaxHP:         tpl.HP,
 		Attack:        tpl.Attack,
 		Defense:       tpl.Defense,
 		Initiative:    tpl.Initiative,
 		IsRanged:      tpl.IsRanged,
+		Role:          tpl.Role,
 		Abilities:     GetRoleAbilities(tpl.Role),
 		SourceEnemyID: e.EnemyID,
 	}

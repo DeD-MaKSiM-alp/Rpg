@@ -17,16 +17,16 @@ func ResolveAbility(ctx *BattleContext, action BattleAction) ActionResult {
 		if target == nil || !target.IsAlive() {
 			return ActionResult{}
 		}
-		atk := actor.Attack + actor.AttackModifier
-		damage := atk - target.Defense
+		atk := actor.Attack()
+		damage := atk - target.Defense()
 		if damage < 1 {
 			damage = 1
 		}
-		target.HP -= damage
+		target.State.HP -= damage
 		killed := false
-		if target.HP <= 0 {
-			target.HP = 0
-			target.Alive = false
+		if target.State.HP <= 0 {
+			target.State.HP = 0
+			target.State.Alive = false
 			killed = true
 		}
 		return ActionResult{
@@ -40,9 +40,9 @@ func ResolveAbility(ctx *BattleContext, action BattleAction) ActionResult {
 			return ActionResult{}
 		}
 		amount := healAmount
-		target.HP += amount
-		if target.HP > target.MaxHP {
-			target.HP = target.MaxHP
+		target.State.HP += amount
+		if target.State.HP > target.MaxHP() {
+			target.State.HP = target.MaxHP()
 		}
 		return ActionResult{
 			Actor:      action.Actor,
@@ -53,7 +53,7 @@ func ResolveAbility(ctx *BattleContext, action BattleAction) ActionResult {
 		if target == nil || !target.IsAlive() {
 			return ActionResult{}
 		}
-		target.AttackModifier += buffAttackBonus
+		target.State.Modifiers.AttackBonus += buffAttackBonus
 		return ActionResult{
 			Actor:  action.Actor,
 			Target: action.Target,

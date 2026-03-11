@@ -2,10 +2,10 @@ package battle
 
 // BuildEnemyAction выбирает способность, получает допустимые цели и создаёт BattleAction.
 func BuildEnemyAction(ctx *BattleContext, actor *BattleUnit) (BattleAction, bool) {
-	if actor == nil || len(actor.Abilities) == 0 {
+	if actor == nil || len(actor.Abilities()) == 0 {
 		return BattleAction{}, false
 	}
-	for _, abilityID := range actor.Abilities {
+	for _, abilityID := range actor.Abilities() {
 		ability := GetAbility(abilityID)
 		targets := ctx.ReachableTargets(actor, ability)
 		if len(targets) == 0 {
@@ -26,13 +26,13 @@ func BuildFirstAvailablePlayerAction(ctx *BattleContext, actor *BattleUnit) (Bat
 }
 
 func buildPlayerAction(ctx *BattleContext, actor *BattleUnit) (BattleAction, bool) {
-	if actor == nil || actor.Team != TeamPlayer {
+	if actor == nil || actor.Side != TeamPlayer {
 		return BattleAction{}, false
 	}
-	if len(actor.Abilities) == 0 {
+	if len(actor.Abilities()) == 0 {
 		return BattleAction{}, false
 	}
-	for _, abilityID := range actor.Abilities {
+	for _, abilityID := range actor.Abilities() {
 		ability := GetAbility(abilityID)
 		targets := ctx.ReachableTargets(actor, ability)
 		if len(targets) == 0 {

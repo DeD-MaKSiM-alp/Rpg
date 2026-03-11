@@ -20,7 +20,7 @@ func (c *BattleContext) LivingUnitsInRow(team TeamID, row RowType) []*BattleUnit
 	var out []*BattleUnit
 	for _, id := range t.Units {
 		u := c.Units[id]
-		if u != nil && u.IsAlive() && u.Row == row {
+		if u != nil && u.IsAlive() && u.State.Row == row {
 			out = append(out, u)
 		}
 	}
@@ -39,7 +39,7 @@ func (c *BattleContext) BackRowAlive(team TeamID) bool {
 
 // effectiveRange возвращает эффективную дальность способности для актёра (учёт Ranged).
 func effectiveRange(actor *BattleUnit, ability Ability) AbilityRange {
-	if actor != nil && actor.Ranged {
+	if actor != nil && actor.IsRanged() {
 		return RangeRanged
 	}
 	return ability.Range
@@ -50,7 +50,7 @@ func (c *BattleContext) ReachableEnemyTargets(actor *BattleUnit, ability Ability
 	if actor == nil {
 		return nil
 	}
-	enemyTeam := c.EnemyTeam(actor.Team)
+	enemyTeam := c.EnemyTeam(actor.Side)
 	allEnemies := c.LivingUnits(enemyTeam)
 	if len(allEnemies) == 0 {
 		return nil
@@ -76,7 +76,7 @@ func (c *BattleContext) ReachableAllyTargets(actor *BattleUnit, ability Ability)
 	if ability.TargetRule != TargetAllySingle {
 		return nil
 	}
-	return c.LivingUnits(actor.Team)
+	return c.LivingUnits(actor.Side)
 }
 
 // ReachableTargets возвращает допустимые цели способности для актёра (враги, союзники или сам актёр).
