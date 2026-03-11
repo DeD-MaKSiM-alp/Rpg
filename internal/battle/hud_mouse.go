@@ -226,13 +226,21 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 			}
 		}
 
+		// Determine which side's slots we are targeting:
+		// enemy for enemy-target abilities, own side for ally-target.
+		ability := GetAbility(pt.SelectedAbilityID)
+		sideToScan := actor.Side
+		if ability.TargetRule == TargetEnemySingle {
+			sideToScan = b.EnemyTeam(actor.Side)
+		}
+
 		for rowIdx, row := range []BattleRow{BattleRowFront, BattleRowBack} {
 			slotY := frontSlotsY
 			if rowIdx == 1 {
 				slotY = backSlotsY
 			}
 			for i := 0; i < 3; i++ {
-				slot := b.Slot(actor.Side, row, i)
+				slot := b.Slot(sideToScan, row, i)
 				if slot == nil || slot.Occupied == 0 {
 					continue
 				}
