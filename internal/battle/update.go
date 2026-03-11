@@ -65,7 +65,7 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 	p := &b.PlayerTurn
 	abilities := actor.Abilities()
 	if len(abilities) == 0 {
-		b.LastMessage = "У юнита нет способностей."
+		b.AddBattleLog("У юнита нет способностей.")
 		return BattleAction{}, false
 	}
 
@@ -98,11 +98,11 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 			case TargetEnemySingle, TargetAllySingle:
 				targets, v := ListValidTargets(b, actor.ID, p.SelectedAbilityID)
 				if !v.OK {
-					b.LastMessage = v.Message
+					b.AddBattleLog(v.Message)
 					return BattleAction{}, false
 				}
 				if len(targets) == 0 {
-					b.LastMessage = "Нет валидных целей."
+					b.AddBattleLog("Нет валидных целей.")
 					return BattleAction{}, false
 				}
 				p.ValidTargets = targets
@@ -144,7 +144,7 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 			}
 		}
 		if len(p.ValidTargets) == 0 {
-			b.LastMessage = "Нет валидных целей."
+			b.AddBattleLog("Нет валидных целей.")
 			p.Phase = PlayerChooseAbility
 			return BattleAction{}, false
 		}
@@ -178,7 +178,7 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 			// Re-validate on confirm.
 			v := ValidateAction(b, p.Pending)
 			if !v.OK {
-				b.LastMessage = v.Message
+				b.AddBattleLog(v.Message)
 				// Send user back to a recoverable step.
 				if ability.TargetRule == TargetEnemySingle || ability.TargetRule == TargetAllySingle {
 					p.Phase = PlayerChooseTarget
@@ -189,7 +189,7 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 			}
 			act, v2 := ToBattleAction(b, p.Pending)
 			if !v2.OK {
-				b.LastMessage = v2.Message
+				b.AddBattleLog(v2.Message)
 				p.Phase = PlayerChooseAbility
 				return BattleAction{}, false
 			}
@@ -224,7 +224,7 @@ func (b *BattleContext) Update() BattleOutcome {
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		b.Result = ResultEscape
-		b.LastMessage = "Игрок покинул бой."
+		b.AddBattleLog("Отступление.")
 		b.Phase = PhaseFinishedWaitInput
 		return BattleOutcomeNone
 	}

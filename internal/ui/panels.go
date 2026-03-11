@@ -124,7 +124,7 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	drawAbilityPanel(screen, hudFace, battle, abilitiesRect)
 	drawConfirmPanel(screen, hudFace, battle, confirmRect)
 
-	// Message + controls.
+	// Combat log + controls.
 	footerTop := abilitiesTop + abilitiesH + 10
 	footerRect := rect{X: contentLeft, Y: footerTop, W: contentRight - contentLeft, H: (panelY + panelH - 20) - footerTop}
 	drawFooterPanel(screen, hudFace, battle, footerRect)
@@ -345,11 +345,24 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 
 	lines := []string{
 		fmt.Sprintf("phase: %s", pt.PhaseString()),
-		fmt.Sprintf("ability: %s", a.Name),
-		fmt.Sprintf("target: %s", targetStr),
+		fmt.Sprintf("action: %s → %s", a.Name, targetStr),
 	}
+
+	// Preview (UI only reads PreviewAction API).
+	req := pt.Pending
+	if req.Actor == 0 {
+		req = battlepkg.ActionRequest{Actor: active.ID, Ability: pt.SelectedAbilityID, Target: pt.SelectedTarget}
+	}
+	if prev, v := battlepkg.PreviewAction(battle, req); v.OK {
+		if prev.HasDamage() {
+			lines = append(lines, fmt.Sprintf("damage: ~%d-%d", prev.DamageMin, prev.DamageMax))
+		} else if prev.HasHeal() {
+			lines = append(lines, fmt.Sprintf("heal: ~%d-%d", prev.HealMin, prev.HealMax))
+		}
+	}
+
 	if pt.Phase == battlepkg.PlayerConfirmAction {
-		lines = append(lines, "READY: confirm to act")
+		lines = append(lines, "READY: confirm")
 	} else if pt.Phase == battlepkg.PlayerChooseTarget {
 		lines = append(lines, fmt.Sprintf("valid targets: %d", len(pt.ValidTargets)))
 	}
@@ -365,21 +378,12 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 }
 
 func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect) {
-	drawPanelBox(screen, r, "INFO", hudFace)
+	drawPanelBox(screen, r, "COMBAT LOG", hudFace)
 	if battle == nil {
 		return
 	}
 	active := battle.ActiveUnit()
 	isPlayerTurn := active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction
-
-	msg := strings.TrimSpace(battle.LastMessage)
-	if msg == "" {
-		msg = "-"
-	}
-	if len([]rune(msg)) > 110 {
-		rs := []rune(msg)
-		msg = string(rs[:107]) + "..."
-	}
 
 	controls := "Esc: retreat"
 	if isPlayerTurn {
@@ -395,13 +399,28 @@ func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *bat
 		}
 	}
 
-	op1 := &text.DrawOptions{}
-	op1.GeoM.Translate(float64(r.X)+8, float64(r.Y)+34)
-	op1.ColorScale.ScaleWithColor(color.RGBA{R: 220, G: 220, B: 220, A: 255})
-	text.Draw(screen, "Last: "+msg, hudFace, op1)
+	// Log lines (last N).
+	y := r.Y + 34
+	maxLines := 6
+	start := 0
+	if len(battle.BattleLog) > maxLines {
+		start = len(battle.BattleLog) - maxLines
+	}
+	for i := start; i < len(battle.BattleLog); i++ {
+		line := strings.TrimSpace(battle.BattleLog[i])
+		if len([]rune(line)) > 80 {
+			rs := []rune(line)
+			line = string(rs[:77]) + "..."
+		}
+		op := &text.DrawOptions{}
+		op.GeoM.Translate(float64(r.X)+8, float64(y))
+		op.ColorScale.ScaleWithColor(color.RGBA{R: 220, G: 220, B: 220, A: 255})
+		text.Draw(screen, line, hudFace, op)
+		y += 16
+	}
 
 	op2 := &text.DrawOptions{}
-	op2.GeoM.Translate(float64(r.X)+8, float64(r.Y)+52)
+	op2.GeoM.Translate(float64(r.X)+8, float64(r.Y+r.H-10))
 	op2.ColorScale.ScaleWithColor(color.RGBA{R: 170, G: 170, B: 170, A: 255})
 	text.Draw(screen, controls, hudFace, op2)
 }

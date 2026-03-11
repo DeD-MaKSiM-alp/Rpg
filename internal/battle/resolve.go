@@ -1,5 +1,7 @@
 package battle
 
+import "fmt"
+
 const healAmount = 2
 const buffAttackBonus = 1
 
@@ -44,6 +46,10 @@ func ResolveAbility(ctx *BattleContext, action BattleAction) ActionResult {
 			target.State.Alive = false
 			killed = true
 		}
+		ctx.AddBattleLog(fmt.Sprintf("%s hits %s for %d.", actor.Name(), target.Name(), damage))
+		if killed {
+			ctx.AddBattleLog(fmt.Sprintf("%s dies.", target.Name()))
+		}
 		return ActionResult{
 			Actor:  action.Actor,
 			Target: action.Target,
@@ -59,6 +65,7 @@ func ResolveAbility(ctx *BattleContext, action BattleAction) ActionResult {
 		if target.State.HP > target.MaxHP() {
 			target.State.HP = target.MaxHP()
 		}
+		ctx.AddBattleLog(fmt.Sprintf("%s heals %s for %d.", actor.Name(), target.Name(), amount))
 		return ActionResult{
 			Actor:      action.Actor,
 			Target:     action.Target,
@@ -69,6 +76,7 @@ func ResolveAbility(ctx *BattleContext, action BattleAction) ActionResult {
 			return ActionResult{}
 		}
 		target.State.Modifiers.AttackBonus += buffAttackBonus
+		ctx.AddBattleLog(fmt.Sprintf("%s buffs %s.", actor.Name(), target.Name()))
 		return ActionResult{
 			Actor:  action.Actor,
 			Target: action.Target,

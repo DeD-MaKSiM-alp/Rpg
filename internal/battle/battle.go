@@ -22,6 +22,9 @@ type BattleContext struct {
 	// PlayerTurn holds player action selection state machine data.
 	PlayerTurn PlayerTurnState
 
+	// BattleLog is a fixed-size (ring-buffer like) combat log.
+	BattleLog []string
+
 	LastMessage string
 }
 
@@ -36,8 +39,8 @@ func BuildBattleContextFromEncounter(enc Encounter) *BattleContext {
 		Sides:       make(map[BattleSide]*BattleSideState),
 		Phase:       PhaseStart,
 		Result:      ResultNone,
-		LastMessage: "Бой начался.",
 	}
+	ctx.AddBattleLog("Бой начался.")
 
 	// Initialize spatial model (source of truth for placement).
 	ctx.Sides[BattleSidePlayer] = NewBattleSideState(BattleSidePlayer)
@@ -182,14 +185,17 @@ func (c *BattleContext) TeamAlive(team TeamID) bool {
 
 // UpdateResultIfFinished проверяет конец боя и выставляет Result (Phase не меняет).
 func (c *BattleContext) UpdateResultIfFinished() {
+	if c == nil || c.Result != ResultNone {
+		return
+	}
 	if !c.TeamAlive(TeamPlayer) {
 		c.Result = ResultDefeat
-		c.LastMessage = "Поражение."
+		c.AddBattleLog("Поражение.")
 		return
 	}
 	if !c.TeamAlive(TeamEnemy) {
 		c.Result = ResultVictory
-		c.LastMessage = "Победа!"
+		c.AddBattleLog("Победа!")
 		return
 	}
 }
@@ -333,30 +339,5 @@ func (c *BattleContext) ApplyActionResult(r ActionResult) {
 	if r.Actor == 0 {
 		return
 	}
-	actor := c.Units[r.Actor]
-	target := c.Units[r.Target]
-	if actor != nil && target != nil {
-		if r.HealAmount > 0 {
-			c.LastMessage = fmt.Sprintf("%s вылечил %s на %d.", actor.Name(), target.Name(), r.HealAmount)
-		} else if r.Damage > 0 {
-			c.LastMessage = logActionResult(actor, target, r)
-		} else if r.Target != 0 {
-			c.LastMessage = fmt.Sprintf("%s усилил %s.", actor.Name(), target.Name())
-		}
-	}
 	c.UpdateResultIfFinished()
-}
-
-func logActionResult(actor, target *BattleUnit, r ActionResult) string {
-	if r.Killed {
-		return actor.Name() + " победил " + target.Name() + "."
-	}
-	return formatDamageLog(actor.Name(), target.Name(), r.Damage)
-}
-
-func formatDamageLog(actorName, targetName string, damage int) string {
-	if damage <= 0 {
-		return actorName + " атаковал " + targetName + "."
-	}
-	return fmt.Sprintf("%s атаковал %s на %d урона.", actorName, targetName, damage)
 }
