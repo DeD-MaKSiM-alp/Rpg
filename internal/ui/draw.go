@@ -23,6 +23,10 @@ func DrawHUD(screen *ebiten.Image, pickupCount int, hudFace *text.GoTextFace) {
 // DrawBattleOverlay рисует поверх кадра HUD для боевого режима:
 // затемнение фона, центральная панель и текстовые блоки.
 func DrawBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, screenWidth, screenHeight int) {
-	overlay := drawBattleOverlayPanel(screen, screenWidth, screenHeight)
-	drawBattleOverlayText(screen, hudFace, battle, overlay)
+	if battle == nil {
+		return
+	}
+	layout := battle.ComputeBattleHUDLayout(screenWidth, screenHeight)
+	drawBattleOverlayPanel(screen, screenWidth, screenHeight, layout)
+	drawBattleOverlayText(screen, hudFace, battle, layout)
 }

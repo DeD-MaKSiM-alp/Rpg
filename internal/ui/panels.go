@@ -66,40 +66,28 @@ func splitV(r rect, topH, gap float32) (rect, rect) {
 }
 
 // drawBattleOverlayPanel рисует затемнённый фон и центральную панель боевого overlay.
-func drawBattleOverlayPanel(screen *ebiten.Image, screenWidth, screenHeight int) rect {
+func drawBattleOverlayPanel(screen *ebiten.Image, screenWidth, screenHeight int, layout battlepkg.BattleHUDLayout) rect {
 	overlayColor := color.RGBA{R: 0, G: 0, B: 0, A: 180}
 	panelColor := color.RGBA{R: 40, G: 40, B: 40, A: 255}
 	panelBorderColor := color.RGBA{R: 180, G: 180, B: 180, A: 255}
 
 	vector.FillRect(screen, 0, 0, float32(screenWidth), float32(screenHeight), overlayColor, false)
 
-	sw := float32(screenWidth)
-	sh := float32(screenHeight)
+	ov := layout.Overlay
+	vector.FillRect(screen, ov.X, ov.Y, ov.W, ov.H, panelColor, false)
+	vector.StrokeRect(screen, ov.X, ov.Y, ov.W, ov.H, uiPanelBorder, panelBorderColor, false)
+	return rect{X: ov.X, Y: ov.Y, W: ov.W, H: ov.H}
+}
 
-	// Overlay takes most of the screen with margins, centered.
-	marginX := clampF(sw*0.08, 12, 80)
-	marginY := clampF(sh*0.08, 12, 80)
-	panelW := sw - marginX*2
-	panelH := sh - marginY*2
-
-	// Reasonable max size (keeps things readable if screen is large later).
-	panelW = clampF(panelW, 520, 760)
-	panelH = clampF(panelH, 360, 540)
-
-	panelX := (sw - panelW) / 2
-	panelY := (sh - panelH) / 2
-
-	vector.FillRect(screen, panelX, panelY, panelW, panelH, panelColor, false)
-	vector.StrokeRect(screen, panelX, panelY, panelW, panelH, uiPanelBorder, panelBorderColor, false)
-	return rect{X: panelX, Y: panelY, W: panelW, H: panelH}
+func toRect(hr battlepkg.HUDRect) rect {
+	return rect{X: hr.X, Y: hr.Y, W: hr.W, H: hr.H}
 }
 
 // drawBattleOverlayText рисует все текстовые блоки боевого overlay.
-func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, overlay rect) {
-	panelX := overlay.X
-	panelY := overlay.Y
-	panelW := overlay.W
-	panelH := overlay.H
+func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, layout battlepkg.BattleHUDLayout) {
+	panel := toRect(layout.Overlay)
+	panelX := panel.X
+	panelY := panel.Y
 
 	titleOp := &text.DrawOptions{}
 	titleOp.GeoM.Translate(float64(panelX)+float64(uiPad), float64(panelY)+float64(uiPad)+float64(uiLineH))
@@ -116,7 +104,6 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 		return
 	}
 
-	extraHeaderLines := float32(0)
 	if battle.Result != battlepkg.ResultNone {
 		bannerY := float64(panelY) + float64(uiPad) + float64(uiLineH)*2
 		bannerOp := &text.DrawOptions{}
@@ -139,23 +126,10 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 		hintOp.GeoM.Translate(float64(panelX)+float64(uiPad), bannerY+float64(uiLineH))
 		hintOp.ColorScale.ScaleWithColor(color.RGBA{R: 200, G: 200, B: 200, A: 255})
 		text.Draw(screen, "SPACE/ENTER: continue", hudFace, hintOp)
-		extraHeaderLines = 2
 	}
 
-	// Layout: container-based inside overlay.
-	content := inset(rect{X: panelX, Y: panelY, W: panelW, H: panelH}, uiPad)
-	content.Y += uiLineH // title line already used
-	content.H -= uiLineH
-
-	// Reserve extra header rows when result banner is shown.
-	if extraHeaderLines > 0 {
-		used := extraHeaderLines * uiLineH
-		content.Y += used
-		content.H -= used
-	}
-	if content.H < 0 {
-		content.H = 0
-	}
+	// Layout: container-based inside overlay, driven by shared layout.
+	content := toRect(layout.Content)
 
 	// Info line.
 	infoOp := &text.DrawOptions{}
@@ -178,61 +152,20 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	}
 	text.Draw(screen, fmt.Sprintf("Round %d | phase:%s%s | active: %s", battle.Round, battle.PhaseString(), playerSub, activeLabel), hudFace, infoOp)
 
-	// Vertical packing: info row + formation + middle + footer.
-	afterInfo := rect{X: content.X, Y: content.Y + uiLineH + uiGap, W: content.W, H: content.H - uiLineH - uiGap}
-	if afterInfo.H < 0 {
-		afterInfo.H = 0
-	}
+	// Vertical packing: info row + formation + middle + footer — из layout.
+	footerRect := toRect(layout.Footer)
 
-	footerMin := uiLineH*4 + uiPad
-	middleMin := uiLineH*5 + uiPad
-	formationMin := uiLineH*7 + uiPad
+	playerPanel := toRect(layout.PlayerFormation)
+	enemyPanel := toRect(layout.EnemyFormation)
 
-	total := afterInfo.H
-	// Footer is intentionally kept smaller; it should not dominate the HUD.
-	footerH := clampF(total*0.22, footerMin, total)
-	middleH := clampF(total*0.28, middleMin, total-footerH)
-	formationH := total - footerH - middleH - uiGap*2
-	if formationH < formationMin {
-		deficit := formationMin - formationH
-		take := clampF(deficit, 0, middleH-middleMin)
-		middleH -= take
-		deficit -= take
-		if deficit > 0 {
-			take2 := clampF(deficit, 0, footerH-footerMin)
-			footerH -= take2
-			deficit -= take2
-		}
-		formationH = total - footerH - middleH - uiGap*2
-		if formationH < 0 {
-			formationH = 0
-		}
-	}
+	drawFormationPanel(screen, hudFace, battle, playerPanel, battlepkg.BattleSidePlayer, "PLAYER", layout)
+	drawFormationPanel(screen, hudFace, battle, enemyPanel, battlepkg.BattleSideEnemy, "ENEMY", layout)
 
-	formationRect := rect{X: afterInfo.X, Y: afterInfo.Y, W: afterInfo.W, H: clampF(formationH, 0, afterInfo.H)}
-	middleRect := rect{X: afterInfo.X, Y: formationRect.Y + formationRect.H + uiGap, W: afterInfo.W, H: clampF(middleH, 0, afterInfo.H)}
-	footerRect := rect{X: afterInfo.X, Y: middleRect.Y + middleRect.H + uiGap, W: afterInfo.W, H: afterInfo.Y + afterInfo.H - (middleRect.Y + middleRect.H + uiGap)}
-	if footerRect.H < 0 {
-		footerRect.H = 0
-	}
+	abilitiesRect := toRect(layout.Abilities)
+	confirmRect := toRect(layout.Action)
 
-	colW := (formationRect.W - uiGap) / 2
-	leftCol, rightCol := splitH(formationRect, colW, uiGap)
-
-	playerPanel := leftCol
-	enemyPanel := rightCol
-
-	drawFormationPanel(screen, hudFace, battle, playerPanel, battlepkg.BattleSidePlayer, "PLAYER")
-	drawFormationPanel(screen, hudFace, battle, enemyPanel, battlepkg.BattleSideEnemy, "ENEMY")
-
-	// Ability panel (only meaningful on player turn).
-	mColW := (middleRect.W - uiGap) / 2
-	mLeft, mRight := splitH(middleRect, mColW, uiGap)
-	abilitiesRect := mLeft
-	confirmRect := mRight
-
-	drawAbilityPanel(screen, hudFace, battle, abilitiesRect)
-	drawConfirmPanel(screen, hudFace, battle, confirmRect)
+	drawAbilityPanel(screen, hudFace, battle, abilitiesRect, layout)
+	drawConfirmPanel(screen, hudFace, battle, confirmRect, layout)
 
 	drawFooterPanel(screen, hudFace, battle, footerRect)
 }
@@ -271,7 +204,7 @@ func drawPanelBox(screen *ebiten.Image, r rect, title string, hudFace *text.GoTe
 	text.Draw(screen, title, hudFace, op)
 }
 
-func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, side battlepkg.BattleSide, title string) {
+func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, side battlepkg.BattleSide, title string, layout battlepkg.BattleHUDLayout) {
 	drawPanelBox(screen, r, title, hudFace)
 	if battle == nil {
 		return
@@ -305,13 +238,8 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		hoverTargetID = pt.HoverTargetUnitID
 	}
 
-	// Slot grid: 3 front + 3 back.
-	cellW := (inner.W - uiGap*2) / 3
-	rowGap := uiGap * 0.6
+	// Slot grid labels (approximate; per-unit rects come from shared layout).
 	labelH := uiLineH
-	rowAreaH := (inner.H - labelH*2 - rowGap) / 2
-	cellH := clampF(rowAreaH, uiLineH*2.4, uiLineH*3.5)
-
 	drawRowLabel := func(label string, y float32) {
 		op := &text.DrawOptions{}
 		op.GeoM.Translate(float64(inner.X), float64(y+labelH))
@@ -321,7 +249,7 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 
 	frontLabelY := inner.Y
 	frontSlotsY := frontLabelY + labelH
-	backLabelY := frontSlotsY + cellH + rowGap
+	backLabelY := inner.Y + (inner.H-labelH*2)*0.5
 	backSlotsY := backLabelY + labelH
 
 	drawRowLabel("FRONT", frontLabelY)
@@ -347,22 +275,35 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 			textCol = color.RGBA{R: 120, G: 120, B: 120, A: 255}
 		}
 
-		// Valid/selected/hover/active highlights (read from battle state; no rule logic here).
-		if u != nil && validSet[u.ID] {
-			border = color.RGBA{R: 80, G: 150, B: 255, A: 255}
-		}
+		// Visual priority: selected > hovered > valid > active > normal.
 		if u != nil && u.ID == selectedTargetID {
-			border = color.RGBA{R: 255, G: 80, B: 80, A: 255}
+			border = color.RGBA{R: 240, G: 80, B: 80, A: 255}
 		} else if u != nil && u.ID == hoverTargetID {
 			border = color.RGBA{R: 120, G: 190, B: 255, A: 255}
-		}
-		if active != nil && u != nil && u.ID == active.ID {
+		} else if u != nil && validSet[u.ID] {
+			border = color.RGBA{R: 80, G: 150, B: 255, A: 255}
+		} else if active != nil && u != nil && u.ID == active.ID {
 			border = color.RGBA{R: 255, G: 215, B: 80, A: 255}
 		}
 
-		w := cellW - 4
-		vector.FillRect(screen, x, y, w, cellH, fill, false)
-		vector.StrokeRect(screen, x, y, w, cellH, 2, border, false)
+		// Use shared layout for unit-bearing slots to match mouse hit-areas.
+		w := float32(0)
+		h := float32(0)
+		if u != nil {
+			if rUnit, ok := layout.UnitRects[u.ID]; ok {
+				x = rUnit.X
+				y = rUnit.Y
+				w = rUnit.W
+				h = rUnit.H
+			}
+		}
+		if w == 0 || h == 0 {
+			// Fallback to approximate grid when we don't have a unit rect (e.g. empty slot).
+			w = (inner.W - uiGap*2) / 3
+			h = clampF((inner.H-labelH*2-uiGap*0.6)/2, uiLineH*2.4, uiLineH*3.5)
+		}
+		vector.FillRect(screen, x, y, w, h, fill, false)
+		vector.StrokeRect(screen, x, y, w, h, 2, border, false)
 
 		// NOTE: avoid "\n" in a single string here: the current text renderer
 		// does not reliably support multi-line strings without artifacts.
@@ -399,13 +340,13 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 	}
 
 	for i := 0; i < 3; i++ {
-		x := inner.X + float32(i)*cellW
+		x := inner.X + float32(i)*((inner.W - uiGap*2) / 3)
 		drawSlot(battlepkg.BattleRowFront, i, x, frontSlotsY)
 		drawSlot(battlepkg.BattleRowBack, i, x, backSlotsY)
 	}
 }
 
-func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect) {
+func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, layout battlepkg.BattleHUDLayout) {
 	drawPanelBox(screen, r, "ABILITIES", hudFace)
 	if battle == nil {
 		return
@@ -423,20 +364,24 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	sel := battle.PlayerTurn.SelectedAbilityID
 	hoverIdx := battle.PlayerTurn.HoverAbilityIndex
 
-	inner := inset(r, uiPad*0.6)
-	y := inner.Y + uiLineH*2
-	maxY := inner.Y + inner.H - uiLineH*0.5
 	var hoveredAbility *battlepkg.Ability
 	for i, id := range abs {
+		if i >= len(layout.AbilityItemRects) {
+			break
+		}
+		rowRect := toRect(layout.AbilityItemRects[i])
 		a := battlepkg.GetAbility(id)
-		prefix := "  "
+		prefix := " "
 		col := color.RGBA{R: 220, G: 220, B: 220, A: 255}
+		bg := color.RGBA{R: 35, G: 35, B: 35, A: 255}
 		if id == sel && battle.PlayerTurn.Phase == battlepkg.PlayerChooseAbility {
-			prefix = "> "
-			col = color.RGBA{R: 255, G: 215, B: 80, A: 255}
+			prefix = "▶"
+			bg = color.RGBA{R: 60, G: 60, B: 30, A: 255}
+			col = color.RGBA{R: 255, G: 235, B: 120, A: 255}
 		} else if hoverIdx == i && battle.PlayerTurn.Phase == battlepkg.PlayerChooseAbility {
 			// Hover highlight (mouse-driven).
-			col = color.RGBA{R: 160, G: 210, B: 255, A: 255}
+			bg = color.RGBA{R: 40, G: 55, B: 70, A: 255}
+			col = color.RGBA{R: 180, G: 220, B: 255, A: 255}
 			hoveredAbility = &a
 		}
 		rule := ""
@@ -450,20 +395,20 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		default:
 			rule = "none"
 		}
-		line := fmt.Sprintf("%s%d) %s [%s]", prefix, i+1, a.Name, rule)
+		vector.FillRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, bg, false)
+
+		line := fmt.Sprintf("%s %s [%s]", prefix, a.Name, rule)
 		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(inner.X), float64(y))
+		op.GeoM.Translate(float64(rowRect.X+4), float64(rowRect.Y+uiLineH*0.9))
 		op.ColorScale.ScaleWithColor(col)
 		text.Draw(screen, line, hudFace, op)
-		y += uiLineH
-		if y > maxY {
-			break
-		}
+		// y increment is encoded into layout.AbilityItemRects; nothing to update here.
 	}
 
 	// Very simple tooltip for hovered ability (inside the panel, under list).
 	if hoveredAbility != nil {
-		infoY := minF(inner.Y+inner.H-uiLineH*3, y+uiGap)
+		inner := inset(r, uiPad*0.6)
+		infoY := inner.Y + inner.H - uiLineH*3
 		op := &text.DrawOptions{}
 		op.GeoM.Translate(float64(inner.X), float64(infoY))
 		op.ColorScale.ScaleWithColor(color.RGBA{R: 180, G: 220, B: 255, A: 255})
@@ -493,7 +438,7 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	}
 }
 
-func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect) {
+func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, layout battlepkg.BattleHUDLayout) {
 	drawPanelBox(screen, r, "ACTION", hudFace)
 	if battle == nil {
 		return
@@ -527,17 +472,29 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 
 	lines := []string{}
 
-	// High-level readable summary.
+	// STEP / actor summary.
 	switch pt.Phase {
 	case battlepkg.PlayerChooseAbility:
-		lines = append(lines, "Choose an ability")
+		lines = append(lines, "STEP: Choose ability")
 	case battlepkg.PlayerChooseTarget:
-		lines = append(lines, "Choose a target")
+		lines = append(lines, "STEP: Choose target")
 	case battlepkg.PlayerConfirmAction:
-		lines = append(lines, "Confirm action")
+		lines = append(lines, "STEP: Confirm action")
 	default:
-		lines = append(lines, fmt.Sprintf("phase: %s", pt.PhaseString()))
+		lines = append(lines, fmt.Sprintf("STEP: %s", pt.PhaseString()))
 	}
+
+	actor := battle.ActiveUnit()
+	if actor != nil {
+		roleStr := fmt.Sprintf("%v", actor.Def.Role)
+		atkKind := "melee"
+		if actor.IsRanged() {
+			atkKind = "ranged"
+		}
+		lines = append(lines, fmt.Sprintf("Actor: %s (%s, %s)", actor.Name(), roleStr, atkKind))
+		lines = append(lines, fmt.Sprintf("HP: %d/%d", actor.State.HP, actor.MaxHP()))
+	}
+
 	lines = append(lines, fmt.Sprintf("Ability: %s", a.Name))
 	lines = append(lines, fmt.Sprintf("Target: %s", targetStr))
 
@@ -555,22 +512,78 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	}
 
 	if pt.Phase == battlepkg.PlayerConfirmAction {
-		lines = append(lines, "Click CONFIRM to execute")
+		lines = append(lines, "Hint: Click CONFIRM or RMB to go back")
 	} else if pt.Phase == battlepkg.PlayerChooseTarget {
-		lines = append(lines, fmt.Sprintf("Valid targets: %d", len(pt.ValidTargets)))
+		lines = append(lines, fmt.Sprintf("Hint: Click a highlighted enemy; %d valid targets", len(pt.ValidTargets)))
 	} else if pt.Phase == battlepkg.PlayerChooseAbility {
-		lines = append(lines, "Left-click ability, then target")
+		lines = append(lines, "Hint: Left-click ability, then target")
 	}
 
 	inner := inset(r, uiPad*0.6)
-	y := inner.Y + uiLineH*2
+	y := inner.Y + uiLineH*1.6
 	for _, line := range lines {
 		op := &text.DrawOptions{}
 		op.GeoM.Translate(float64(inner.X), float64(y))
 		op.ColorScale.ScaleWithColor(color.White)
 		text.Draw(screen, line, hudFace, op)
-		y += uiLineH
+		y += uiLineH * 1.1
 	}
+
+	// Unit hover info block.
+	hoverID := battle.PlayerTurn.HoverTargetUnitID
+	if hoverID != 0 {
+		if hu := battle.Units[hoverID]; hu != nil {
+			infoY := inner.Y + inner.H - uiLineH*3.0
+			op := &text.DrawOptions{}
+			op.GeoM.Translate(float64(inner.X), float64(infoY))
+			op.ColorScale.ScaleWithColor(color.RGBA{R: 180, G: 220, B: 255, A: 255})
+			roleStr := fmt.Sprintf("%v", hu.Def.Role)
+			atkKind := "melee"
+			if hu.IsRanged() {
+				atkKind = "ranged"
+			}
+			text.Draw(screen, fmt.Sprintf("Hover: %s (%s, %s)", hu.Name(), roleStr, atkKind), hudFace, op)
+
+			op2 := &text.DrawOptions{}
+			op2.GeoM.Translate(float64(inner.X), float64(infoY+uiLineH))
+			op2.ColorScale.ScaleWithColor(color.RGBA{R: 200, G: 240, B: 255, A: 255})
+			text.Draw(screen, fmt.Sprintf("HP: %d/%d", hu.State.HP, hu.MaxHP()), hudFace, op2)
+		}
+	}
+
+	// Confirm / Back buttons: use shared layout rects so visuals match hit-areas.
+	backR := toRect(layout.BackButton)
+	confirmR := toRect(layout.ConfirmButton)
+
+	// Draw Back button (always available while on player turn).
+	drawButton := func(r rect, label string, enabled, hovered bool) {
+		baseFill := color.RGBA{R: 40, G: 40, B: 40, A: 255}
+		baseBorder := color.RGBA{R: 140, G: 140, B: 140, A: 255}
+		textCol := color.RGBA{R: 255, G: 255, B: 255, A: 255}
+		if !enabled {
+			baseFill = color.RGBA{R: 30, G: 30, B: 30, A: 255}
+			baseBorder = color.RGBA{R: 90, G: 90, B: 90, A: 255}
+			textCol = color.RGBA{R: 180, G: 180, B: 180, A: 255}
+		}
+		if enabled && hovered {
+			baseFill = color.RGBA{R: 60, G: 80, B: 100, A: 255}
+			baseBorder = color.RGBA{R: 200, G: 220, B: 255, A: 255}
+		}
+		vector.FillRect(screen, r.X, r.Y, r.W, r.H, baseFill, false)
+		vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 2, baseBorder, false)
+
+		op := &text.DrawOptions{}
+		// Roughly center text.
+		textX := r.X + r.W*0.5 - float32(len(label))*uiLineH*0.22
+		textY := r.Y + r.H*0.5 + uiLineH*0.15
+		op.GeoM.Translate(float64(textX), float64(textY))
+		op.ColorScale.ScaleWithColor(textCol)
+		text.Draw(screen, label, hudFace, op)
+	}
+
+	canConfirm := pt.Phase == battlepkg.PlayerConfirmAction
+	drawButton(backR, "Back", true, pt.HoverBackButton)
+	drawButton(confirmR, "Confirm", canConfirm, pt.HoverConfirmButton && canConfirm)
 }
 
 func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect) {
@@ -585,13 +598,13 @@ func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *bat
 	if isPlayerTurn {
 		switch battle.PlayerTurn.Phase {
 		case battlepkg.PlayerChooseAbility:
-			controls = "Arrows: ability | Space/Enter: choose | Backspace: (noop) | Esc: retreat"
+			controls = "Mouse: ability/target/confirm | RMB: back | Esc: retreat"
 		case battlepkg.PlayerChooseTarget:
-			controls = "Arrows: target | Space/Enter: choose | Backspace: back | Esc: retreat"
+			controls = "Mouse: target/confirm | RMB: back | Esc: retreat"
 		case battlepkg.PlayerConfirmAction:
-			controls = "Space/Enter: confirm | Backspace: back | Esc: retreat"
+			controls = "Mouse: confirm/back | RMB: back | Esc: retreat"
 		default:
-			controls = "Arrows: select | Space/Enter: confirm | Backspace: back | Esc: retreat"
+			controls = "Mouse: select | Keyboard: still works | Esc: retreat"
 		}
 	}
 

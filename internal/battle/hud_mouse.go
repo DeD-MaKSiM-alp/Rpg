@@ -5,105 +5,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
-// HUD layout constants duplicated from ui layer for mouse hit-testing.
-const (
-	hudLineH = float32(18)
-	hudPad   = float32(12)
-	hudGap   = float32(10)
-)
-
-type hudRect struct {
-	X, Y, W, H float32
-}
-
-func hudClamp(v, lo, hi float32) float32 {
-	if v < lo {
-		return lo
-	}
-	if v > hi {
-		return hi
-	}
-	return v
-}
-
-func hudInset(r hudRect, pad float32) hudRect {
-	return hudRect{X: r.X + pad, Y: r.Y + pad, W: r.W - pad*2, H: r.H - pad*2}
-}
-
-func hudSplitH(r hudRect, leftW, gap float32) (hudRect, hudRect) {
-	left := hudRect{X: r.X, Y: r.Y, W: leftW, H: r.H}
-	right := hudRect{X: r.X + leftW + gap, Y: r.Y, W: r.W - leftW - gap, H: r.H}
-	if right.W < 0 {
-		right.W = 0
-	}
-	return left, right
-}
-
-// computeHUDLayout reproduces the battle HUD container layout for hit-testing.
-func computeHUDLayout(screenW, screenH int) (overlay hudRect, formation hudRect, abilities hudRect, action hudRect) {
-	sw := float32(screenW)
-	sh := float32(screenH)
-
-	marginX := hudClamp(sw*0.08, 12, 80)
-	marginY := hudClamp(sh*0.08, 12, 80)
-	panelW := sw - marginX*2
-	panelH := sh - marginY*2
-	panelW = hudClamp(panelW, 520, 760)
-	panelH = hudClamp(panelH, 360, 540)
-
-	panelX := (sw - panelW) / 2
-	panelY := (sh - panelH) / 2
-	overlay = hudRect{X: panelX, Y: panelY, W: panelW, H: panelH}
-
-	content := hudInset(overlay, hudPad)
-	content.Y += hudLineH // title
-	content.H -= hudLineH
-	if content.H < 0 {
-		content.H = 0
-	}
-
-	afterInfo := hudRect{X: content.X, Y: content.Y + hudLineH + hudGap, W: content.W, H: content.H - hudLineH - hudGap}
-	if afterInfo.H < 0 {
-		afterInfo.H = 0
-	}
-
-	footerMin := hudLineH*4 + hudPad
-	middleMin := hudLineH*5 + hudPad
-	formationMin := hudLineH*7 + hudPad
-
-	total := afterInfo.H
-	footerH := hudClamp(total*0.22, footerMin, total)
-	middleH := hudClamp(total*0.28, middleMin, total-footerH)
-	formationH := total - footerH - middleH - hudGap*2
-	if formationH < formationMin {
-		deficit := formationMin - formationH
-		take := hudClamp(deficit, 0, middleH-middleMin)
-		middleH -= take
-		deficit -= take
-		if deficit > 0 {
-			take2 := hudClamp(deficit, 0, footerH-footerMin)
-			footerH -= take2
-			deficit -= take2
-		}
-		formationH = total - footerH - middleH - hudGap*2
-		if formationH < 0 {
-			formationH = 0
-		}
-	}
-
-	formation = hudRect{X: afterInfo.X, Y: afterInfo.Y, W: afterInfo.W, H: formationH}
-	middle := hudRect{X: afterInfo.X, Y: formation.Y + formation.H + hudGap, W: afterInfo.W, H: middleH}
-	// footer not needed for mouse right now
-
-	colW := (formation.W - hudGap) / 2
-	_, _ = hudSplitH(formation, colW, hudGap) // we only need overall formation rect for slots
-
-	mColW := (middle.W - hudGap) / 2
-	abilities, action = hudSplitH(middle, mColW, hudGap)
-	return
-}
-
-func pointInRect(x, y float32, r hudRect) bool {
+func pointInRect(x, y float32, r HUDRect) bool {
 	return x >= r.X && y >= r.Y && x <= r.X+r.W && y <= r.Y+r.H
 }
 
@@ -130,19 +32,16 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 	rightClick := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight)
 
 	screenW, screenH := ebiten.WindowSize()
-	_, formationRect, abilitiesRect, actionRect := computeHUDLayout(screenW, screenH)
+	layout := b.ComputeBattleHUDLayout(screenW, screenH)
 
 	action := BattleAction{}
 	var performed bool
 
 	// 1) Ability panel hit-test (only in PlayerChooseAbility; hover always).
 	abilities := actor.Abilities()
-	if len(abilities) > 0 {
-		inner := hudInset(abilitiesRect, hudPad*0.6)
-		y := inner.Y + hudLineH*2
-		maxY := inner.Y + inner.H - hudLineH*0.5
-		for i := 0; i < len(abilities) && y <= maxY; i++ {
-			rowRect := hudRect{X: inner.X, Y: y - hudLineH*0.5, W: inner.W, H: hudLineH}
+	if len(abilities) > 0 && len(layout.AbilityItemRects) > 0 {
+		for i := 0; i < len(abilities) && i < len(layout.AbilityItemRects); i++ {
+			rowRect := layout.AbilityItemRects[i]
 			if pointInRect(mxf, myf, rowRect) {
 				b.PlayerTurn.HoverAbilityIndex = i
 				if leftClick && b.PlayerTurn.Phase == PlayerChooseAbility {
@@ -194,30 +93,12 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 				}
 				break
 			}
-			y += hudLineH
 		}
 	}
 
 	// 2) Formation slots hit-test for targets (only in target-related phases).
 	pt := &b.PlayerTurn
 	if pt.Phase == PlayerChooseTarget || pt.Phase == PlayerConfirmAction {
-		inner := hudInset(formationRect, hudPad*0.6)
-		inner.Y += hudLineH
-		inner.H -= hudLineH
-		if inner.H < 0 {
-			inner.H = 0
-		}
-		cellW := (inner.W - hudGap*2) / 3
-		rowGap := hudGap * 0.6
-		labelH := hudLineH
-		rowAreaH := (inner.H - labelH*2 - rowGap) / 2
-		cellH := hudClamp(rowAreaH, hudLineH*2.4, hudLineH*3.5)
-
-		frontLabelY := inner.Y
-		frontSlotsY := frontLabelY + labelH
-		backLabelY := frontSlotsY + cellH + rowGap
-		backSlotsY := backLabelY + labelH
-
 		// Precompute valid target set for quick lookup.
 		validSet := map[UnitID]bool{}
 		for _, td := range pt.ValidTargets {
@@ -234,11 +115,7 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 			sideToScan = b.EnemyTeam(actor.Side)
 		}
 
-		for rowIdx, row := range []BattleRow{BattleRowFront, BattleRowBack} {
-			slotY := frontSlotsY
-			if rowIdx == 1 {
-				slotY = backSlotsY
-			}
+		for _, row := range []BattleRow{BattleRowFront, BattleRowBack} {
 			for i := 0; i < 3; i++ {
 				slot := b.Slot(sideToScan, row, i)
 				if slot == nil || slot.Occupied == 0 {
@@ -248,8 +125,10 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 				if u == nil {
 					continue
 				}
-				x := inner.X + float32(i)*cellW
-				r := hudRect{X: x, Y: slotY, W: cellW - 4, H: cellH}
+				r, ok := layout.UnitRects[u.ID]
+				if !ok {
+					continue
+				}
 				if pointInRect(mxf, myf, r) {
 					pt.HoverTargetUnitID = u.ID
 					if leftClick && validSet[u.ID] && pt.Phase == PlayerChooseTarget {
@@ -270,13 +149,8 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 
 	// 3) Action panel buttons (Confirm / Back) hit-test.
 	if pt.Phase == PlayerConfirmAction || pt.Phase == PlayerChooseTarget {
-		inner := hudInset(actionRect, hudPad*0.6)
-		btnH := hudLineH * 1.2
-		btnW := inner.W * 0.45
-		btnY := inner.Y + inner.H - btnH - hudPad*0.3
-
-		backBtn := hudRect{X: inner.X, Y: btnY, W: btnW, H: btnH}
-		confirmBtn := hudRect{X: inner.X + inner.W - btnW, Y: btnY, W: btnW, H: btnH}
+		backBtn := layout.BackButton
+		confirmBtn := layout.ConfirmButton
 
 		hasBack := pt.Phase == PlayerChooseTarget || pt.Phase == PlayerConfirmAction
 		canConfirm := pt.Phase == PlayerConfirmAction
@@ -299,17 +173,41 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 				}
 				pt.Pending = ActionRequest{}
 			} else if canConfirm && pointInRect(mxf, myf, confirmBtn) {
-				// Confirm: validate + ToBattleAction.
-				v := ValidateAction(b, pt.Pending)
+				// Confirm: mirror keyboard confirm behavior with defensive Pending handling.
+				req := pt.Pending
+				if req.Actor == 0 || req.Ability == 0 {
+					// Defensive fallback: reconstruct from current selection.
+					req = ActionRequest{
+						Actor:   actor.ID,
+						Ability: pt.SelectedAbilityID,
+						Target:  pt.SelectedTarget,
+					}
+				}
+
+				v := ValidateAction(b, req)
 				if !v.OK {
-					b.AddBattleLog(v.Message)
+					if v.Message != "" {
+						b.AddBattleLog("Cannot confirm action: " + v.Message)
+					} else {
+						b.AddBattleLog("Cannot confirm action: invalid action")
+					}
+
+					// Send the player back to a recoverable step, same as keyboard path.
+					if ability.TargetRule == TargetEnemySingle || ability.TargetRule == TargetAllySingle {
+						pt.Phase = PlayerChooseTarget
+					} else {
+						pt.Phase = PlayerChooseAbility
+					}
+					pt.Pending = ActionRequest{}
 				} else {
-					act, v2 := ToBattleAction(b, pt.Pending)
+					act, v2 := ToBattleAction(b, req)
 					if v2.OK {
 						action = act
 						performed = true
+						pt.Pending = req
+						pt.Phase = PlayerResolveAction
 					} else if v2.Message != "" {
-						b.AddBattleLog(v2.Message)
+						b.AddBattleLog("Cannot confirm action: " + v2.Message)
 					}
 				}
 			}
