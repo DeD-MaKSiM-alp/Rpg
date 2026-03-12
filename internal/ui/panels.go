@@ -129,28 +129,46 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	}
 
 	// Layout: container-based inside overlay, driven by shared layout.
-	content := toRect(layout.Content)
+	primary := toRect(layout.TopInfoPrimary)
+	secondary := toRect(layout.TopInfoSecondary)
 
-	// Info line.
-	infoOp := &text.DrawOptions{}
-	infoOp.GeoM.Translate(float64(content.X), float64(content.Y+uiLineH))
-	infoOp.ColorScale.ScaleWithColor(color.White)
+	// Info line 1: Round / Battle phase.
+	infoOp1 := &text.DrawOptions{}
+	infoOp1.GeoM.Translate(float64(primary.X)+float64(uiPad*0.6), float64(primary.Y+uiLineH*0.9))
+	infoOp1.ColorScale.ScaleWithColor(color.White)
+
+	roundStr := fmt.Sprintf("Round %d", battle.Round)
+	phaseStr := fmt.Sprintf("Phase: %s", battle.PhaseString())
+	text.Draw(screen, fmt.Sprintf("%s | %s", roundStr, phaseStr), hudFace, infoOp1)
+
+	// Info line 2: Active unit / side / player turn subphase.
+	infoOp2 := &text.DrawOptions{}
+	infoOp2.GeoM.Translate(float64(secondary.X)+float64(uiPad*0.6), float64(secondary.Y+uiLineH*0.9))
+	infoOp2.ColorScale.ScaleWithColor(color.RGBA{R: 220, G: 220, B: 220, A: 255})
 
 	active := battle.ActiveUnit()
 	activeLabel := "-"
+	sideLabel := ""
 	if active != nil {
 		activeLabel = fmt.Sprintf("%s (#%d)", active.Name(), active.ID)
 		if active.Side == battlepkg.TeamPlayer {
-			activeLabel += " [PLAYER]"
+			sideLabel = "PLAYER"
 		} else {
-			activeLabel += " [ENEMY]"
+			sideLabel = "ENEMY"
 		}
 	}
 	playerSub := ""
 	if active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
-		playerSub = fmt.Sprintf(" | player:%s", battle.PlayerTurn.PhaseString())
+		playerSub = fmt.Sprintf("Player: %s", battle.PlayerTurn.PhaseString())
 	}
-	text.Draw(screen, fmt.Sprintf("Round %d | phase:%s%s | active: %s", battle.Round, battle.PhaseString(), playerSub, activeLabel), hudFace, infoOp)
+	line2 := fmt.Sprintf("Active: %s", activeLabel)
+	if sideLabel != "" {
+		line2 = fmt.Sprintf("%s [%s]", line2, sideLabel)
+	}
+	if playerSub != "" {
+		line2 = fmt.Sprintf("%s | %s", line2, playerSub)
+	}
+	text.Draw(screen, line2, hudFace, infoOp2)
 
 	// Vertical packing: info row + formation + middle + footer — из layout.
 	footerRect := toRect(layout.Footer)
@@ -374,15 +392,18 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		prefix := " "
 		col := color.RGBA{R: 220, G: 220, B: 220, A: 255}
 		bg := color.RGBA{R: 35, G: 35, B: 35, A: 255}
+		border := color.RGBA{R: 70, G: 70, B: 70, A: 255}
 		if id == sel && battle.PlayerTurn.Phase == battlepkg.PlayerChooseAbility {
 			prefix = "▶"
 			bg = color.RGBA{R: 60, G: 60, B: 30, A: 255}
 			col = color.RGBA{R: 255, G: 235, B: 120, A: 255}
+			border = color.RGBA{R: 200, G: 200, B: 120, A: 255}
 		} else if hoverIdx == i && battle.PlayerTurn.Phase == battlepkg.PlayerChooseAbility {
 			// Hover highlight (mouse-driven).
 			bg = color.RGBA{R: 40, G: 55, B: 70, A: 255}
 			col = color.RGBA{R: 180, G: 220, B: 255, A: 255}
 			hoveredAbility = &a
+			border = color.RGBA{R: 140, G: 190, B: 255, A: 255}
 		}
 		rule := ""
 		switch a.TargetRule {
@@ -396,6 +417,7 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 			rule = "none"
 		}
 		vector.FillRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, bg, false)
+		vector.StrokeRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, 1, border, false)
 
 		line := fmt.Sprintf("%s %s [%s]", prefix, a.Name, rule)
 		op := &text.DrawOptions{}
@@ -407,10 +429,13 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 
 	// Very simple tooltip for hovered ability (inside the panel, under list).
 	if hoveredAbility != nil {
-		inner := inset(r, uiPad*0.6)
-		infoY := inner.Y + inner.H - uiLineH*3
+		tipRect := toRect(layout.AbilityTooltip)
+		if tipRect.W <= 0 || tipRect.H <= 0 {
+			tipRect = inset(r, uiPad*0.6)
+		}
+		infoY := tipRect.Y + uiLineH*0.9
 		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(inner.X), float64(infoY))
+		op.GeoM.Translate(float64(tipRect.X), float64(infoY))
 		op.ColorScale.ScaleWithColor(color.RGBA{R: 180, G: 220, B: 255, A: 255})
 
 		target := ""
@@ -470,33 +495,23 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		targetStr = "none"
 	}
 
-	lines := []string{}
-
-	// STEP / actor summary.
+	// STEP / main summary.
+	summaryLines := []string{}
 	switch pt.Phase {
 	case battlepkg.PlayerChooseAbility:
-		lines = append(lines, "STEP: Choose ability")
+		summaryLines = append(summaryLines, "STEP: Choose ability")
 	case battlepkg.PlayerChooseTarget:
-		lines = append(lines, "STEP: Choose target")
+		summaryLines = append(summaryLines, "STEP: Choose target")
 	case battlepkg.PlayerConfirmAction:
-		lines = append(lines, "STEP: Confirm action")
+		summaryLines = append(summaryLines, "STEP: Confirm action")
 	default:
-		lines = append(lines, fmt.Sprintf("STEP: %s", pt.PhaseString()))
+		summaryLines = append(summaryLines, fmt.Sprintf("STEP: %s", pt.PhaseString()))
 	}
 
-	actor := battle.ActiveUnit()
-	if actor != nil {
-		roleStr := fmt.Sprintf("%v", actor.Def.Role)
-		atkKind := "melee"
-		if actor.IsRanged() {
-			atkKind = "ranged"
-		}
-		lines = append(lines, fmt.Sprintf("Actor: %s (%s, %s)", actor.Name(), roleStr, atkKind))
-		lines = append(lines, fmt.Sprintf("HP: %d/%d", actor.State.HP, actor.MaxHP()))
-	}
-
-	lines = append(lines, fmt.Sprintf("Ability: %s", a.Name))
-	lines = append(lines, fmt.Sprintf("Target: %s", targetStr))
+	// Ability / target.
+	abilityLine := fmt.Sprintf("Ability: %s", a.Name)
+	summaryLines = append(summaryLines, abilityLine)
+	summaryLines = append(summaryLines, fmt.Sprintf("Target: %s", targetStr))
 
 	// Preview (UI only reads PreviewAction API).
 	req := pt.Pending
@@ -505,49 +520,90 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	}
 	if prev, v := battlepkg.PreviewAction(battle, req); v.OK {
 		if prev.HasDamage() {
-			lines = append(lines, fmt.Sprintf("damage: ~%d-%d", prev.DamageMin, prev.DamageMax))
+			summaryLines = append(summaryLines, fmt.Sprintf("Preview: dmg ~%d-%d", prev.DamageMin, prev.DamageMax))
 		} else if prev.HasHeal() {
-			lines = append(lines, fmt.Sprintf("heal: ~%d-%d", prev.HealMin, prev.HealMax))
+			summaryLines = append(summaryLines, fmt.Sprintf("Preview: heal ~%d-%d", prev.HealMin, prev.HealMax))
 		}
 	}
 
 	if pt.Phase == battlepkg.PlayerConfirmAction {
-		lines = append(lines, "Hint: Click CONFIRM or RMB to go back")
+		summaryLines = append(summaryLines, "Hint: Confirm or RMB to go back")
 	} else if pt.Phase == battlepkg.PlayerChooseTarget {
-		lines = append(lines, fmt.Sprintf("Hint: Click a highlighted enemy; %d valid targets", len(pt.ValidTargets)))
+		summaryLines = append(summaryLines, fmt.Sprintf("Hint: Click highlighted target (%d options)", len(pt.ValidTargets)))
 	} else if pt.Phase == battlepkg.PlayerChooseAbility {
-		lines = append(lines, "Hint: Left-click ability, then target")
+		summaryLines = append(summaryLines, "Hint: Left-click ability, then choose target")
 	}
 
-	inner := inset(r, uiPad*0.6)
-	y := inner.Y + uiLineH*1.6
-	for _, line := range lines {
+	// Summary block: STEP / Ability / Target / Preview / Hint.
+	summaryRect := toRect(layout.ActionMain)
+	summaryInner := inset(summaryRect, uiPad*0.3)
+	y := summaryInner.Y + uiLineH*0.9
+	for _, line := range summaryLines {
 		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(inner.X), float64(y))
+		op.GeoM.Translate(float64(summaryInner.X), float64(y))
 		op.ColorScale.ScaleWithColor(color.White)
 		text.Draw(screen, line, hudFace, op)
-		y += uiLineH * 1.1
+		y += uiLineH * 1.05
 	}
 
-	// Unit hover info block.
-	hoverID := battle.PlayerTurn.HoverTargetUnitID
-	if hoverID != 0 {
-		if hu := battle.Units[hoverID]; hu != nil {
-			infoY := inner.Y + inner.H - uiLineH*3.0
-			op := &text.DrawOptions{}
-			op.GeoM.Translate(float64(inner.X), float64(infoY))
-			op.ColorScale.ScaleWithColor(color.RGBA{R: 180, G: 220, B: 255, A: 255})
+	// Compact current actor info block.
+	actorRect := toRect(layout.ActorInfo)
+	actor := battle.ActiveUnit()
+	if actor != nil && actorRect.W > 0 && actorRect.H > 0 {
+		infoInner := inset(actorRect, uiPad*0.3)
+		roleStr := fmt.Sprintf("%v", actor.Def.Role)
+		atkKind := "melee"
+		if actor.IsRanged() {
+			atkKind = "ranged"
+		}
+		line1 := fmt.Sprintf("Actor: %s (%s, %s)", actor.Name(), roleStr, atkKind)
+		line2 := fmt.Sprintf("HP %d/%d", actor.State.HP, actor.MaxHP())
+
+		op1 := &text.DrawOptions{}
+		op1.GeoM.Translate(float64(infoInner.X), float64(infoInner.Y+uiLineH*0.9))
+		op1.ColorScale.ScaleWithColor(color.RGBA{R: 220, G: 220, B: 220, A: 255})
+		text.Draw(screen, line1, hudFace, op1)
+
+		op2 := &text.DrawOptions{}
+		op2.GeoM.Translate(float64(infoInner.X), float64(infoInner.Y+uiLineH*1.9))
+		op2.ColorScale.ScaleWithColor(color.RGBA{R: 200, G: 230, B: 200, A: 255})
+		text.Draw(screen, line2, hudFace, op2)
+	}
+
+	// Compact hovered/target unit info block.
+	hoverRect := toRect(layout.HoverInfo)
+	if hoverRect.W > 0 && hoverRect.H > 0 {
+		infoInner := inset(hoverRect, uiPad*0.3)
+		hoverID := battle.PlayerTurn.HoverTargetUnitID
+
+		var hu *battlepkg.BattleUnit
+		if hoverID != 0 {
+			hu = battle.Units[hoverID]
+		} else if pt.SelectedTarget.Kind == battlepkg.TargetKindUnit {
+			hu = battle.Units[pt.SelectedTarget.UnitID]
+		}
+
+		if hu != nil {
 			roleStr := fmt.Sprintf("%v", hu.Def.Role)
 			atkKind := "melee"
 			if hu.IsRanged() {
 				atkKind = "ranged"
 			}
-			text.Draw(screen, fmt.Sprintf("Hover: %s (%s, %s)", hu.Name(), roleStr, atkKind), hudFace, op)
+
+			label := "Target"
+			if hoverID != 0 {
+				label = "Hover"
+			}
+
+			op1 := &text.DrawOptions{}
+			op1.GeoM.Translate(float64(infoInner.X), float64(infoInner.Y+uiLineH*0.9))
+			op1.ColorScale.ScaleWithColor(color.RGBA{R: 180, G: 220, B: 255, A: 255})
+			text.Draw(screen, fmt.Sprintf("%s: %s (%s, %s)", label, hu.Name(), roleStr, atkKind), hudFace, op1)
 
 			op2 := &text.DrawOptions{}
-			op2.GeoM.Translate(float64(inner.X), float64(infoY+uiLineH))
+			op2.GeoM.Translate(float64(infoInner.X), float64(infoInner.Y+uiLineH*1.9))
 			op2.ColorScale.ScaleWithColor(color.RGBA{R: 200, G: 240, B: 255, A: 255})
-			text.Draw(screen, fmt.Sprintf("HP: %d/%d", hu.State.HP, hu.MaxHP()), hudFace, op2)
+			text.Draw(screen, fmt.Sprintf("HP %d/%d", hu.State.HP, hu.MaxHP()), hudFace, op2)
 		}
 	}
 

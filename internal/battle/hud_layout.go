@@ -13,7 +13,10 @@ type BattleHUDLayout struct {
 	Overlay HUDRect // main battle panel within the darkened screen
 	Content HUDRect // inner content area inside overlay (after title/banner)
 
-	InfoLine HUDRect // one-line "Round / phase / active" text area
+	// Top info area (two lines for readability).
+	TopInfoPrimary   HUDRect // Round / Battle phase
+	TopInfoSecondary HUDRect // Active unit / side / player turn subphase
+	InfoLine         HUDRect // legacy: combined top info area (both lines)
 
 	Formation HUDRect // combined formation area (player+enemy)
 	Middle    HUDRect // abilities + action panel row
@@ -24,6 +27,17 @@ type BattleHUDLayout struct {
 
 	Abilities HUDRect
 	Action    HUDRect
+
+	// Ability panel sub-areas.
+	AbilityHeader  HUDRect // area under the panel title and before the list
+	AbilityList    HUDRect // scroll-free list area for abilities
+	AbilityTooltip HUDRect // compact tooltip/info area at the bottom of the panel
+
+	// Action panel sub-areas.
+	ActionMain    HUDRect // step/ability/target/preview summary
+	ActorInfo     HUDRect // compact current actor info
+	HoverInfo     HUDRect // compact hovered/target unit info
+	ActionButtons HUDRect // row that contains Back/Confirm buttons
 
 	BackButton    HUDRect
 	ConfirmButton HUDRect
@@ -111,20 +125,33 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 	}
 	layout.Content = content
 
-	// 3) Info line at top of content.
-	layout.InfoLine = HUDRect{
+	// 3) Top info area: two lines (primary / secondary).
+	layout.TopInfoPrimary = HUDRect{
 		X: content.X,
 		Y: content.Y,
 		W: content.W,
 		H: hudLineH,
 	}
+	layout.TopInfoSecondary = HUDRect{
+		X: content.X,
+		Y: content.Y + hudLineH,
+		W: content.W,
+		H: hudLineH,
+	}
+	// Legacy combined rect for compatibility with any existing users.
+	layout.InfoLine = HUDRect{
+		X: content.X,
+		Y: content.Y,
+		W: content.W,
+		H: hudLineH * 2,
+	}
 
-	// 4) Vertical packing: info row + formation + middle + footer.
+	// 4) Vertical packing: top info (2 lines) + formation + middle + footer.
 	afterInfo := HUDRect{
 		X: content.X,
-		Y: content.Y + hudLineH + hudGap,
+		Y: content.Y + hudLineH*2 + hudGap,
 		W: content.W,
-		H: content.H - hudLineH - hudGap,
+		H: content.H - hudLineH*2 - hudGap,
 	}
 	if afterInfo.H < 0 {
 		afterInfo.H = 0
@@ -232,44 +259,119 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 		}
 	}
 
-	// 8) Action panel: confirm/back buttons.
-	if layout.Action.W > 0 && layout.Action.H > 0 {
-		inner := hudInset(layout.Action, hudPad*0.6)
-		btnH := hudLineH * 1.2
-		btnW := inner.W * 0.45
-		btnY := inner.Y + inner.H - btnH - hudPad*0.3
-		layout.BackButton = HUDRect{X: inner.X, Y: btnY, W: btnW, H: btnH}
-		layout.ConfirmButton = HUDRect{X: inner.X + inner.W - btnW, Y: btnY, W: btnW, H: btnH}
+	// 8) Ability panel sub-areas: header, list, tooltip.
+	if layout.Abilities.W > 0 && layout.Abilities.H > 0 {
+		inner := hudInset(layout.Abilities, hudPad*0.6)
+		headerH := hudLineH * 1.6
+		tooltipH := hudLineH * 2.4
+
+		availableH := inner.H - headerH - tooltipH - hudGap*0.4
+		if availableH < hudLineH*2 {
+			availableH = hudLineH * 2
+			// Allow tooltip to shrink a bit on very small panels.
+			maxTooltip := inner.H - headerH - availableH - hudGap*0.4
+			if maxTooltip < tooltipH && maxTooltip > hudLineH*1.4 {
+				tooltipH = maxTooltip
+			}
+		}
+		if availableH < 0 {
+			availableH = 0
+		}
+
+		listTop := inner.Y + headerH
+		listH := availableH
+		tooltipY := listTop + listH + hudGap*0.2
+
+		layout.AbilityHeader = HUDRect{X: inner.X, Y: inner.Y, W: inner.W, H: headerH}
+		layout.AbilityList = HUDRect{X: inner.X, Y: listTop, W: inner.W, H: listH}
+		layout.AbilityTooltip = HUDRect{X: inner.X, Y: tooltipY, W: inner.W, H: tooltipH}
 	}
 
-	// 9) Ability item rects (only meaningful on player turn).
+	// 9) Action panel: main content, compact info blocks, confirm/back buttons.
+	if layout.Action.W > 0 && layout.Action.H > 0 {
+		inner := hudInset(layout.Action, hudPad*0.6)
+
+		// Buttons row at the bottom with a bit more presence.
+		btnH := hudLineH * 1.4
+		buttonsGap := hudPad * 0.4
+		buttonsY := inner.Y + inner.H - btnH
+
+		layout.ActionButtons = HUDRect{
+			X: inner.X,
+			Y: buttonsY,
+			W: inner.W,
+			H: btnH,
+		}
+
+		btnW := (inner.W - hudGap) / 2
+		if btnW < inner.W*0.3 {
+			btnW = inner.W * 0.3
+		}
+		layout.BackButton = HUDRect{X: inner.X, Y: buttonsY, W: btnW, H: btnH}
+		layout.ConfirmButton = HUDRect{X: inner.X + inner.W - btnW, Y: buttonsY, W: btnW, H: btnH}
+
+		// Above buttons: clean action summary + compact actor/hover info.
+		topAreaBottom := buttonsY - buttonsGap
+		topAreaH := topAreaBottom - inner.Y
+		if topAreaH < hudLineH*3 {
+			topAreaH = hudLineH * 3
+		}
+
+		actorH := hudLineH * 2.4
+		hoverH := hudLineH * 2.4
+		summaryH := topAreaH - actorH - hoverH - hudGap*0.4
+		if summaryH < hudLineH*2 {
+			summaryH = hudLineH * 2
+			// Allow info blocks to shrink on small panels.
+			actorH = hudLineH * 1.8
+			hoverH = hudLineH * 1.8
+		}
+
+		layout.ActionMain = HUDRect{X: inner.X, Y: inner.Y, W: inner.W, H: summaryH}
+		actorY := inner.Y + summaryH + hudGap*0.2
+		layout.ActorInfo = HUDRect{X: inner.X, Y: actorY, W: inner.W, H: actorH}
+		hoverY := actorY + actorH + hudGap*0.2
+		layout.HoverInfo = HUDRect{X: inner.X, Y: hoverY, W: inner.W, H: hoverH}
+	}
+
+	// 10) Ability item rects (only meaningful on player turn).
 	layout.AbilityItemRects = nil
 	active := b.ActiveUnit()
 	if active != nil && active.Side == TeamPlayer && b.Phase == PhaseAwaitAction {
 		abs := active.Abilities()
 		if len(abs) > 0 {
-			inner := hudInset(layout.Abilities, hudPad*0.6)
-			y := inner.Y + hudLineH*2
-			maxY := inner.Y + inner.H - hudLineH*2.5
+			list := layout.AbilityList
+			if list.W <= 0 || list.H <= 0 {
+				// Fallback: simple inset when sub-areas are not available.
+				list = hudInset(layout.Abilities, hudPad*0.6)
+				list.Y += hudLineH * 2
+				list.H -= hudLineH * 2
+				if list.H < 0 {
+					list.H = 0
+				}
+			}
+
+			y := list.Y + hudLineH*0.1
+			maxY := list.Y + list.H - hudLineH*1.3
 			rects := make([]HUDRect, 0, len(abs))
 			for range abs {
 				if y > maxY {
 					break
 				}
 				row := HUDRect{
-					X: inner.X,
+					X: list.X,
 					Y: y - hudLineH*0.2,
-					W: inner.W,
+					W: list.W,
 					H: hudLineH * 1.4,
 				}
 				rects = append(rects, row)
-				y += hudLineH * 1.3
+				y += hudLineH * 1.25
 			}
 			layout.AbilityItemRects = rects
 		}
 	}
 
-	// 10) Unit rects in formation (only living units).
+	// 11) Unit rects in formation (only living units).
 	layout.UnitRects = map[UnitID]HUDRect{}
 	if b != nil {
 		// Helper: compute slot rects inside a formation panel.
