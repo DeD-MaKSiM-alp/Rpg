@@ -7,6 +7,16 @@ type HUDRect struct {
 	X, Y, W, H float32
 }
 
+// HUDMetrics describes adaptive HUD metrics derived from screen size.
+type HUDMetrics struct {
+	LineH    float32
+	Pad      float32
+	Gap      float32
+	SmallGap float32
+	ButtonH  float32
+	TitleH   float32
+}
+
 // BattleHUDLayout describes all major areas of the battle HUD.
 type BattleHUDLayout struct {
 	// High-level containers.
@@ -54,12 +64,7 @@ type BattleHUDLayout struct {
 	UnitRects map[UnitID]HUDRect
 }
 
-// HUD layout constants, shared between render and mouse logic.
-const (
-	hudLineH = float32(18)
-	hudPad   = float32(12)
-	hudGap   = float32(10)
-)
+// hudClamp clamps v into [lo, hi].
 
 func hudClamp(v, lo, hi float32) float32 {
 	if v < lo {
@@ -82,30 +87,77 @@ func hudInset(r HUDRect, pad float32) HUDRect {
 	return n
 }
 
+// computeHUDMetrics derives adaptive HUD metrics from the current screen size.
+// It uses the smaller screen dimension to compute a scale factor and then
+// clamps each metric into a sensible range so that the HUD remains legible
+// on both small and large resolutions.
+func computeHUDMetrics(screenW, screenH int) HUDMetrics {
+	sw := float32(screenW)
+	sh := float32(screenH)
+	minDim := sw
+	if sh < minDim {
+		minDim = sh
+	}
+
+	// Baseline around a 720p-ish resolution.
+	base := minDim / 720.0
+	if base < 0.75 {
+		base = 0.75
+	}
+	if base > 1.4 {
+		base = 1.4
+	}
+
+	var m HUDMetrics
+
+	// Line height: around 18 at baseline, clamped into [14..24].
+	m.LineH = hudClamp(18*base, 14, 24)
+	// General padding: around 12 at baseline, [8..18].
+	m.Pad = hudClamp(12*base, 8, 18)
+	// Standard gap between blocks: around 10 at baseline, [6..14].
+	m.Gap = hudClamp(10*base, 6, 14)
+	// Smaller gap for tighter vertical groupings.
+	m.SmallGap = hudClamp(6*base, 4, 10)
+	// Button height: around 26 at baseline, [20..36].
+	m.ButtonH = hudClamp(26*base, 20, 36)
+	// Title line height (overlay title / banner).
+	m.TitleH = hudClamp(20*base, 16, 28)
+
+	return m
+}
+
 // ComputeBattleHUDLayout builds a battle HUD layout for the given screen size and
 // current battle state. It is the single source of truth for all major HUD rects.
 func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLayout {
 	sw := float32(screenW)
 	sh := float32(screenH)
 
+	metrics := computeHUDMetrics(screenW, screenH)
+
 	var layout BattleHUDLayout
 
 	// 1) Overlay panel.
-	marginX := hudClamp(sw*0.08, 12, 80)
-	marginY := hudClamp(sh*0.08, 12, 80)
-	panelW := sw - marginX*2
-	panelH := sh - marginY*2
-	panelW = hudClamp(panelW, 520, 760)
-	panelH = hudClamp(panelH, 360, 540)
+	// Use a percentage of screen size, with gentle safety clamps, so that the
+	// panel grows on large resolutions and shrinks on small ones, but never
+	// touches the screen edges.
+	targetPanelW := sw * 0.86
+	targetPanelH := sh * 0.82
+	minPanelW := hudClamp(sw*0.55, 440, sw-2*metrics.Pad-8)
+	minPanelH := hudClamp(sh*0.50, 300, sh-2*metrics.Pad-8)
+	maxPanelW := sw - 2*metrics.Pad
+	maxPanelH := sh - 2*metrics.Pad
+
+	panelW := hudClamp(targetPanelW, minPanelW, maxPanelW)
+	panelH := hudClamp(targetPanelH, minPanelH, maxPanelH)
 
 	panelX := (sw - panelW) / 2
 	panelY := (sh - panelH) / 2
 	layout.Overlay = HUDRect{X: panelX, Y: panelY, W: panelW, H: panelH}
 
 	// 2) Inner content area, accounting for title and possible result banner.
-	content := hudInset(layout.Overlay, hudPad)
-	content.Y += hudLineH // title line
-	content.H -= hudLineH
+	content := hudInset(layout.Overlay, metrics.Pad)
+	content.Y += metrics.TitleH // title line
+	content.H -= metrics.TitleH
 	if content.H < 0 {
 		content.H = 0
 	}
@@ -116,7 +168,7 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 		extraHeaderLines = 2
 	}
 	if extraHeaderLines > 0 {
-		used := extraHeaderLines * hudLineH
+		used := extraHeaderLines * metrics.LineH
 		content.Y += used
 		content.H -= used
 		if content.H < 0 {
@@ -130,41 +182,42 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 		X: content.X,
 		Y: content.Y,
 		W: content.W,
-		H: hudLineH,
+		H: metrics.LineH,
 	}
 	layout.TopInfoSecondary = HUDRect{
 		X: content.X,
-		Y: content.Y + hudLineH,
+		Y: content.Y + metrics.LineH,
 		W: content.W,
-		H: hudLineH,
+		H: metrics.LineH,
 	}
 	// Legacy combined rect for compatibility with any existing users.
 	layout.InfoLine = HUDRect{
 		X: content.X,
 		Y: content.Y,
 		W: content.W,
-		H: hudLineH * 2,
+		H: metrics.LineH * 2,
 	}
 
 	// 4) Vertical packing: top info (2 lines) + formation + middle + footer.
 	afterInfo := HUDRect{
 		X: content.X,
-		Y: content.Y + hudLineH*2 + hudGap,
+		Y: content.Y + metrics.LineH*2 + metrics.Gap,
 		W: content.W,
-		H: content.H - hudLineH*2 - hudGap,
+		H: content.H - metrics.LineH*2 - metrics.Gap,
 	}
 	if afterInfo.H < 0 {
 		afterInfo.H = 0
 	}
 
-	footerMin := hudLineH*4 + hudPad
-	middleMin := hudLineH*5 + hudPad
-	formationMin := hudLineH*7 + hudPad
+	// Minimal heights for key regions, driven by line height.
+	footerMin := metrics.LineH*3 + metrics.Pad
+	middleMin := metrics.LineH*4 + metrics.Pad
+	formationMin := metrics.LineH*6 + metrics.Pad
 
 	total := afterInfo.H
 	footerH := hudClamp(total*0.22, footerMin, total)
 	middleH := hudClamp(total*0.28, middleMin, total-footerH)
-	formationH := total - footerH - middleH - hudGap*2
+	formationH := total - footerH - middleH - metrics.Gap*2
 	if formationH < formationMin {
 		deficit := formationMin - formationH
 		take := hudClamp(deficit, 0, middleH-middleMin)
@@ -175,7 +228,7 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 			footerH -= take2
 			deficit -= take2
 		}
-		formationH = total - footerH - middleH - hudGap*2
+		formationH = total - footerH - middleH - metrics.Gap*2
 		if formationH < 0 {
 			formationH = 0
 		}
@@ -189,22 +242,22 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 	}
 	layout.Middle = HUDRect{
 		X: afterInfo.X,
-		Y: layout.Formation.Y + layout.Formation.H + hudGap,
+		Y: layout.Formation.Y + layout.Formation.H + metrics.Gap,
 		W: afterInfo.W,
 		H: hudClamp(middleH, 0, afterInfo.H),
 	}
 	layout.Footer = HUDRect{
 		X: afterInfo.X,
-		Y: layout.Middle.Y + layout.Middle.H + hudGap,
+		Y: layout.Middle.Y + layout.Middle.H + metrics.Gap,
 		W: afterInfo.W,
-		H: afterInfo.Y + afterInfo.H - (layout.Middle.Y + layout.Middle.H + hudGap),
+		H: afterInfo.Y + afterInfo.H - (layout.Middle.Y + layout.Middle.H + metrics.Gap),
 	}
 	if layout.Footer.H < 0 {
 		layout.Footer.H = 0
 	}
 
 	// 5) Split formation into player/enemy panels.
-	colW := (layout.Formation.W - hudGap) / 2
+	colW := (layout.Formation.W - metrics.Gap) / 2
 	layout.PlayerFormation = HUDRect{
 		X: layout.Formation.X,
 		Y: layout.Formation.Y,
@@ -212,9 +265,9 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 		H: layout.Formation.H,
 	}
 	layout.EnemyFormation = HUDRect{
-		X: layout.Formation.X + colW + hudGap,
+		X: layout.Formation.X + colW + metrics.Gap,
 		Y: layout.Formation.Y,
-		W: layout.Formation.W - colW - hudGap,
+		W: layout.Formation.W - colW - metrics.Gap,
 		H: layout.Formation.H,
 	}
 	if layout.EnemyFormation.W < 0 {
@@ -222,7 +275,7 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 	}
 
 	// 6) Middle split: abilities (left) + action (right).
-	mColW := (layout.Middle.W - hudGap) / 2
+	mColW := (layout.Middle.W - metrics.Gap) / 2
 	layout.Abilities = HUDRect{
 		X: layout.Middle.X,
 		Y: layout.Middle.Y,
@@ -230,9 +283,9 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 		H: layout.Middle.H,
 	}
 	layout.Action = HUDRect{
-		X: layout.Middle.X + mColW + hudGap,
+		X: layout.Middle.X + mColW + metrics.Gap,
 		Y: layout.Middle.Y,
-		W: layout.Middle.W - mColW - hudGap,
+		W: layout.Middle.W - mColW - metrics.Gap,
 		H: layout.Middle.H,
 	}
 	if layout.Action.W < 0 {
@@ -241,11 +294,11 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 
 	// 7) Footer sub-areas: combat log + hint line.
 	if layout.Footer.H > 0 {
-		inner := hudInset(layout.Footer, hudPad*0.6)
-		titleH := hudLineH * 2
-		controlsH := hudLineH
+		inner := hudInset(layout.Footer, metrics.Pad*0.6)
+		titleH := metrics.LineH * 2
+		controlsH := metrics.LineH
 		logTop := inner.Y + titleH
-		controlsPadBottom := hudPad * 0.65
+		controlsPadBottom := metrics.Pad * 0.65
 		logBottom := inner.Y + inner.H - controlsH - controlsPadBottom
 		if logBottom < logTop {
 			logBottom = logTop
@@ -261,16 +314,16 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 
 	// 8) Ability panel sub-areas: header, list, tooltip.
 	if layout.Abilities.W > 0 && layout.Abilities.H > 0 {
-		inner := hudInset(layout.Abilities, hudPad*0.6)
-		headerH := hudLineH * 1.6
-		tooltipH := hudLineH * 2.4
+		inner := hudInset(layout.Abilities, metrics.Pad*0.6)
+		headerH := metrics.LineH * 1.6
+		tooltipH := metrics.LineH * 2.4
 
-		availableH := inner.H - headerH - tooltipH - hudGap*0.4
-		if availableH < hudLineH*2 {
-			availableH = hudLineH * 2
+		availableH := inner.H - headerH - tooltipH - metrics.SmallGap
+		if availableH < metrics.LineH*2 {
+			availableH = metrics.LineH * 2
 			// Allow tooltip to shrink a bit on very small panels.
-			maxTooltip := inner.H - headerH - availableH - hudGap*0.4
-			if maxTooltip < tooltipH && maxTooltip > hudLineH*1.4 {
+			maxTooltip := inner.H - headerH - availableH - metrics.SmallGap
+			if maxTooltip < tooltipH && maxTooltip > metrics.LineH*1.4 {
 				tooltipH = maxTooltip
 			}
 		}
@@ -280,7 +333,7 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 
 		listTop := inner.Y + headerH
 		listH := availableH
-		tooltipY := listTop + listH + hudGap*0.2
+		tooltipY := listTop + listH + metrics.SmallGap*0.5
 
 		layout.AbilityHeader = HUDRect{X: inner.X, Y: inner.Y, W: inner.W, H: headerH}
 		layout.AbilityList = HUDRect{X: inner.X, Y: listTop, W: inner.W, H: listH}
@@ -289,11 +342,11 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 
 	// 9) Action panel: main content, compact info blocks, confirm/back buttons.
 	if layout.Action.W > 0 && layout.Action.H > 0 {
-		inner := hudInset(layout.Action, hudPad*0.6)
+		inner := hudInset(layout.Action, metrics.Pad*0.6)
 
 		// Buttons row at the bottom with a bit more presence.
-		btnH := hudLineH * 1.4
-		buttonsGap := hudPad * 0.4
+		btnH := metrics.ButtonH
+		buttonsGap := metrics.SmallGap
 		buttonsY := inner.Y + inner.H - btnH
 
 		layout.ActionButtons = HUDRect{
@@ -303,7 +356,7 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 			H: btnH,
 		}
 
-		btnW := (inner.W - hudGap) / 2
+		btnW := (inner.W - metrics.Gap) / 2
 		if btnW < inner.W*0.3 {
 			btnW = inner.W * 0.3
 		}
@@ -313,24 +366,24 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 		// Above buttons: clean action summary + compact actor/hover info.
 		topAreaBottom := buttonsY - buttonsGap
 		topAreaH := topAreaBottom - inner.Y
-		if topAreaH < hudLineH*3 {
-			topAreaH = hudLineH * 3
+		if topAreaH < metrics.LineH*3 {
+			topAreaH = metrics.LineH * 3
 		}
 
-		actorH := hudLineH * 2.4
-		hoverH := hudLineH * 2.4
-		summaryH := topAreaH - actorH - hoverH - hudGap*0.4
-		if summaryH < hudLineH*2 {
-			summaryH = hudLineH * 2
+		actorH := metrics.LineH * 2.2
+		hoverH := metrics.LineH * 2.2
+		summaryH := topAreaH - actorH - hoverH - metrics.SmallGap
+		if summaryH < metrics.LineH*2 {
+			summaryH = metrics.LineH * 2
 			// Allow info blocks to shrink on small panels.
-			actorH = hudLineH * 1.8
-			hoverH = hudLineH * 1.8
+			actorH = metrics.LineH * 1.8
+			hoverH = metrics.LineH * 1.8
 		}
 
 		layout.ActionMain = HUDRect{X: inner.X, Y: inner.Y, W: inner.W, H: summaryH}
-		actorY := inner.Y + summaryH + hudGap*0.2
+		actorY := inner.Y + summaryH + metrics.SmallGap*0.5
 		layout.ActorInfo = HUDRect{X: inner.X, Y: actorY, W: inner.W, H: actorH}
-		hoverY := actorY + actorH + hudGap*0.2
+		hoverY := actorY + actorH + metrics.SmallGap*0.5
 		layout.HoverInfo = HUDRect{X: inner.X, Y: hoverY, W: inner.W, H: hoverH}
 	}
 
@@ -343,16 +396,16 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 			list := layout.AbilityList
 			if list.W <= 0 || list.H <= 0 {
 				// Fallback: simple inset when sub-areas are not available.
-				list = hudInset(layout.Abilities, hudPad*0.6)
-				list.Y += hudLineH * 2
-				list.H -= hudLineH * 2
+				list = hudInset(layout.Abilities, metrics.Pad*0.6)
+				list.Y += metrics.LineH * 2
+				list.H -= metrics.LineH * 2
 				if list.H < 0 {
 					list.H = 0
 				}
 			}
 
-			y := list.Y + hudLineH*0.1
-			maxY := list.Y + list.H - hudLineH*1.3
+			y := list.Y + metrics.LineH*0.1
+			maxY := list.Y + list.H - metrics.LineH*1.3
 			rects := make([]HUDRect, 0, len(abs))
 			for range abs {
 				if y > maxY {
@@ -360,12 +413,12 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 				}
 				row := HUDRect{
 					X: list.X,
-					Y: y - hudLineH*0.2,
+					Y: y - metrics.LineH*0.2,
 					W: list.W,
-					H: hudLineH * 1.4,
+					H: metrics.LineH * 1.4,
 				}
 				rects = append(rects, row)
-				y += hudLineH * 1.25
+				y += metrics.LineH * 1.25
 			}
 			layout.AbilityItemRects = rects
 		}
@@ -376,17 +429,17 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 	if b != nil {
 		// Helper: compute slot rects inside a formation panel.
 		computeUnitRectsForSide := func(panel HUDRect, side BattleSide) {
-			inner := hudInset(panel, hudPad*0.6)
-			inner.Y += hudLineH
-			inner.H -= hudLineH
+			inner := hudInset(panel, metrics.Pad*0.6)
+			inner.Y += metrics.LineH
+			inner.H -= metrics.LineH
 			if inner.H < 0 {
 				inner.H = 0
 			}
-			cellW := (inner.W - hudGap*2) / 3
-			rowGap := hudGap * 0.6
-			labelH := hudLineH
+			cellW := (inner.W - metrics.Gap*2) / 3
+			rowGap := metrics.Gap * 0.6
+			labelH := metrics.LineH
 			rowAreaH := (inner.H - labelH*2 - rowGap) / 2
-			cellH := hudClamp(rowAreaH, hudLineH*2.4, hudLineH*3.5)
+			cellH := hudClamp(rowAreaH, metrics.LineH*2.4, metrics.LineH*3.5)
 
 			frontLabelY := inner.Y
 			frontSlotsY := frontLabelY + labelH
