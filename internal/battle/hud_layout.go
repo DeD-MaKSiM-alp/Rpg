@@ -19,6 +19,9 @@ type HUDMetrics struct {
 
 // BattleHUDLayout describes all major areas of the battle HUD.
 type BattleHUDLayout struct {
+	// Adaptive metrics used to build all rects below.
+	Metrics HUDMetrics
+
 	// High-level containers.
 	Overlay HUDRect // main battle panel within the darkened screen
 	Content HUDRect // inner content area inside overlay (after title/banner)
@@ -135,6 +138,7 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 	metrics := computeHUDMetrics(screenW, screenH)
 
 	var layout BattleHUDLayout
+	layout.Metrics = metrics
 
 	// 1) Overlay panel.
 	// Use a percentage of screen size, with gentle safety clamps, so that the

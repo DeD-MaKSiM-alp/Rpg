@@ -86,11 +86,12 @@ func toRect(hr battlepkg.HUDRect) rect {
 // drawBattleOverlayText рисует все текстовые блоки боевого overlay.
 func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, layout battlepkg.BattleHUDLayout) {
 	panel := toRect(layout.Overlay)
+	metrics := layout.Metrics
 	panelX := panel.X
 	panelY := panel.Y
 
 	titleOp := &text.DrawOptions{}
-	titleOp.GeoM.Translate(float64(panelX)+float64(uiPad), float64(panelY)+float64(uiPad)+float64(uiLineH))
+	titleOp.GeoM.Translate(float64(panelX)+float64(metrics.Pad), float64(panelY)+float64(metrics.Pad)+float64(metrics.LineH))
 	titleOp.ColorScale.ScaleWithColor(color.White)
 
 	title := "Battle mode"
@@ -105,9 +106,9 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	}
 
 	if battle.Result != battlepkg.ResultNone {
-		bannerY := float64(panelY) + float64(uiPad) + float64(uiLineH)*2
+		bannerY := float64(panelY) + float64(metrics.Pad) + float64(metrics.LineH)*2
 		bannerOp := &text.DrawOptions{}
-		bannerOp.GeoM.Translate(float64(panelX)+float64(uiPad), bannerY)
+		bannerOp.GeoM.Translate(float64(panelX)+float64(metrics.Pad), bannerY)
 		bannerOp.ColorScale.ScaleWithColor(color.White)
 		var banner string
 		switch battle.Result {
@@ -123,7 +124,7 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 		text.Draw(screen, banner, hudFace, bannerOp)
 
 		hintOp := &text.DrawOptions{}
-		hintOp.GeoM.Translate(float64(panelX)+float64(uiPad), bannerY+float64(uiLineH))
+		hintOp.GeoM.Translate(float64(panelX)+float64(metrics.Pad), bannerY+float64(metrics.LineH))
 		hintOp.ColorScale.ScaleWithColor(color.RGBA{R: 200, G: 200, B: 200, A: 255})
 		text.Draw(screen, "SPACE/ENTER: continue", hudFace, hintOp)
 	}
@@ -134,16 +135,23 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 
 	// Info line 1: Round / Battle phase.
 	infoOp1 := &text.DrawOptions{}
-	infoOp1.GeoM.Translate(float64(primary.X)+float64(uiPad*0.6), float64(primary.Y+uiLineH*0.9))
+	infoOp1.GeoM.Translate(float64(primary.X)+float64(metrics.Pad*0.6), singleLineBaselineY(primary, metrics))
 	infoOp1.ColorScale.ScaleWithColor(color.White)
 
+	compactTop := isCompactForRect(metrics, primary)
 	roundStr := fmt.Sprintf("Round %d", battle.Round)
 	phaseStr := fmt.Sprintf("Phase: %s", battle.PhaseString())
-	text.Draw(screen, fmt.Sprintf("%s | %s", roundStr, phaseStr), hudFace, infoOp1)
+	if compactTop {
+		roundStr = fmt.Sprintf("R %d", battle.Round)
+		phaseStr = fmt.Sprintf("Ph: %s", battle.PhaseString())
+	}
+	line1 := fmt.Sprintf("%s | %s", roundStr, phaseStr)
+	line1 = fitTextToWidth(hudFace, line1, primary.W-metrics.Pad*1.2)
+	text.Draw(screen, line1, hudFace, infoOp1)
 
 	// Info line 2: Active unit / side / player turn subphase.
 	infoOp2 := &text.DrawOptions{}
-	infoOp2.GeoM.Translate(float64(secondary.X)+float64(uiPad*0.6), float64(secondary.Y+uiLineH*0.9))
+	infoOp2.GeoM.Translate(float64(secondary.X)+float64(metrics.Pad*0.6), singleLineBaselineY(secondary, metrics))
 	infoOp2.ColorScale.ScaleWithColor(color.RGBA{R: 220, G: 220, B: 220, A: 255})
 
 	active := battle.ActiveUnit()
@@ -152,14 +160,26 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	if active != nil {
 		activeLabel = fmt.Sprintf("%s (#%d)", active.Name(), active.ID)
 		if active.Side == battlepkg.TeamPlayer {
-			sideLabel = "PLAYER"
+			if compactTop {
+				sideLabel = "P"
+			} else {
+				sideLabel = "PLAYER"
+			}
 		} else {
-			sideLabel = "ENEMY"
+			if compactTop {
+				sideLabel = "E"
+			} else {
+				sideLabel = "ENEMY"
+			}
 		}
 	}
 	playerSub := ""
 	if active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
-		playerSub = fmt.Sprintf("Player: %s", battle.PlayerTurn.PhaseString())
+		if compactTop {
+			playerSub = fmt.Sprintf("Pl: %s", battle.PlayerTurn.PhaseString())
+		} else {
+			playerSub = fmt.Sprintf("Player: %s", battle.PlayerTurn.PhaseString())
+		}
 	}
 	line2 := fmt.Sprintf("Active: %s", activeLabel)
 	if sideLabel != "" {
@@ -168,6 +188,7 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	if playerSub != "" {
 		line2 = fmt.Sprintf("%s | %s", line2, playerSub)
 	}
+	line2 = fitTextToWidth(hudFace, line2, secondary.W-metrics.Pad*1.2)
 	text.Draw(screen, line2, hudFace, infoOp2)
 
 	// Vertical packing: info row + formation + middle + footer — из layout.
@@ -185,7 +206,7 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	drawAbilityPanel(screen, hudFace, battle, abilitiesRect, layout)
 	drawConfirmPanel(screen, hudFace, battle, confirmRect, layout)
 
-	drawFooterPanel(screen, hudFace, battle, footerRect)
+	drawFooterPanel(screen, hudFace, battle, footerRect, layout)
 }
 
 // drawHUDText рисует текстовые блоки HUD (счётчик собранных предметов и т.п.).
@@ -207,7 +228,150 @@ func minF(a, b float32) float32 {
 	return b
 }
 
-func drawPanelBox(screen *ebiten.Image, r rect, title string, hudFace *text.GoTextFace) {
+// measureTextWidth returns the rendered width of a string for the given face.
+func measureTextWidth(face *text.GoTextFace, s string) float32 {
+	if s == "" || face == nil {
+		return 0
+	}
+	adv := text.Advance(s, face)
+	return float32(adv)
+}
+
+// trimTextToWidth returns a single-line string that fits into maxW pixels,
+// appending "..." when trimming is required.
+func trimTextToWidth(face *text.GoTextFace, s string, maxW float32) string {
+	if maxW <= 0 || s == "" || face == nil {
+		return ""
+	}
+	if measureTextWidth(face, s) <= maxW {
+		return s
+	}
+
+	const ellipsis = "..."
+	ellW := measureTextWidth(face, ellipsis)
+	if ellW >= maxW {
+		return ""
+	}
+
+	rs := []rune(s)
+	lo, hi := 0, len(rs)
+	best := ""
+	for lo <= hi {
+		mid := (lo + hi) / 2
+		cand := string(rs[:mid])
+		if measureTextWidth(face, cand)+ellW <= maxW {
+			best = cand
+			lo = mid + 1
+		} else {
+			hi = mid - 1
+		}
+	}
+	if best == "" {
+		return ellipsis
+	}
+	return best + ellipsis
+}
+
+// fitTextToWidth is a convenience alias for single-line trimming.
+func fitTextToWidth(face *text.GoTextFace, s string, maxW float32) string {
+	return trimTextToWidth(face, s, maxW)
+}
+
+// singleLineBaselineY computes a safe baseline Y for a single-line label
+// inside the given rect, using HUD metrics. It keeps the text comfortably
+// within the rect without touching the bottom border.
+func singleLineBaselineY(r rect, metrics battlepkg.HUDMetrics) float64 {
+	h := metrics.LineH
+	if h <= 0 || r.H <= 0 {
+		return float64(r.Y + r.H*0.8)
+	}
+	// Start from a slightly above-centered baseline.
+	base := r.Y + (r.H+h)*0.5 - h*0.15
+	minY := r.Y + h*0.7
+	maxY := r.Y + r.H - h*0.25
+	if base < minY {
+		base = minY
+	}
+	if base > maxY {
+		base = maxY
+	}
+	return float64(base)
+}
+
+// isCompactForRect decides whether a given rect should use compact wording
+// based on its width and the current HUD metrics.
+func isCompactForRect(metrics battlepkg.HUDMetrics, r rect) bool {
+	// Treat narrow panels or small line heights as candidates for compact text.
+	if r.W <= 0 {
+		return false
+	}
+	if r.W < 260 {
+		return true
+	}
+	if metrics.LineH <= 16 {
+		return true
+	}
+	return false
+}
+
+// maxLinesForRect returns how many lines (at the given lineStep) can fit
+// vertically into the rect, respecting top and bottom padding.
+func maxLinesForRect(metrics battlepkg.HUDMetrics, r rect, topPad, bottomPad, lineStep float32) int {
+	usableH := r.H - topPad - bottomPad
+	if usableH <= 0 || lineStep <= 0 {
+		return 0
+	}
+	n := int(usableH / lineStep)
+	if n < 0 {
+		return 0
+	}
+	return n
+}
+
+// drawLinesInRect draws up to maxLines (or as many as fit) from the given list
+// of lines inside the rect, using a fixed vertical step. Returns the number of
+// lines actually drawn.
+func drawLinesInRect(screen *ebiten.Image, face *text.GoTextFace, r rect, lines []string, metrics battlepkg.HUDMetrics, col color.Color, maxLines int) int {
+	if len(lines) == 0 || r.W <= 0 || r.H <= 0 || face == nil {
+		return 0
+	}
+	lineStep := metrics.LineH * 1.05
+	// Slightly smaller top padding so that compact blocks (like ActionMain /
+	// ActorInfo / HoverInfo) can use more of their vertical space.
+	topPad := metrics.LineH * 0.5
+	bottomPad := float32(0)
+	capacity := maxLinesForRect(metrics, r, topPad, bottomPad, lineStep)
+	if maxLines > 0 && maxLines < capacity {
+		capacity = maxLines
+	}
+	if capacity <= 0 {
+		return 0
+	}
+
+	linesToDraw := capacity
+	if linesToDraw > len(lines) {
+		linesToDraw = len(lines)
+	}
+
+	y := r.Y + topPad
+	drawn := 0
+	for i := 0; i < linesToDraw; i++ {
+		line := lines[i]
+		if line == "" {
+			y += lineStep
+			continue
+		}
+		op := &text.DrawOptions{}
+		op.GeoM.Translate(float64(r.X), float64(y))
+		op.ColorScale.ScaleWithColor(col)
+		text.Draw(screen, line, face, op)
+		drawn++
+		y += lineStep
+	}
+	return drawn
+}
+
+func drawPanelBox(screen *ebiten.Image, r rect, title string, hudFace *text.GoTextFace, metrics battlepkg.HUDMetrics) {
 	bg := color.RGBA{R: 28, G: 28, B: 28, A: 255}
 	border := color.RGBA{R: 120, G: 120, B: 120, A: 255}
 	vector.FillRect(screen, r.X, r.Y, r.W, r.H, bg, false)
@@ -217,19 +381,22 @@ func drawPanelBox(screen *ebiten.Image, r rect, title string, hudFace *text.GoTe
 		return
 	}
 	op := &text.DrawOptions{}
-	op.GeoM.Translate(float64(r.X)+float64(uiPad*0.6), float64(r.Y)+float64(uiLineH))
+	maxW := r.W - metrics.Pad*1.2
+	titleText := fitTextToWidth(hudFace, title, maxW)
+	op.GeoM.Translate(float64(r.X)+float64(metrics.Pad*0.6), singleLineBaselineY(r, metrics))
 	op.ColorScale.ScaleWithColor(color.RGBA{R: 200, G: 200, B: 200, A: 255})
-	text.Draw(screen, title, hudFace, op)
+	text.Draw(screen, titleText, hudFace, op)
 }
 
 func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, side battlepkg.BattleSide, title string, layout battlepkg.BattleHUDLayout) {
-	drawPanelBox(screen, r, title, hudFace)
+	metrics := layout.Metrics
+	drawPanelBox(screen, r, title, hudFace, metrics)
 	if battle == nil {
 		return
 	}
-	inner := inset(r, uiPad*0.6)
-	inner.Y += uiLineH
-	inner.H -= uiLineH
+	inner := inset(r, metrics.Pad*0.6)
+	inner.Y += metrics.LineH
+	inner.H -= metrics.LineH
 	if inner.H < 0 {
 		inner.H = 0
 	}
@@ -257,7 +424,7 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 	}
 
 	// Slot grid labels (approximate; per-unit rects come from shared layout).
-	labelH := uiLineH
+	labelH := metrics.LineH
 	drawRowLabel := func(label string, y float32) {
 		op := &text.DrawOptions{}
 		op.GeoM.Translate(float64(inner.X), float64(y+labelH))
@@ -317,8 +484,8 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		}
 		if w == 0 || h == 0 {
 			// Fallback to approximate grid when we don't have a unit rect (e.g. empty slot).
-			w = (inner.W - uiGap*2) / 3
-			h = clampF((inner.H-labelH*2-uiGap*0.6)/2, uiLineH*2.4, uiLineH*3.5)
+			w = (inner.W - metrics.Gap*2) / 3
+			h = clampF((inner.H-labelH*2-metrics.Gap*0.6)/2, metrics.LineH*2.4, metrics.LineH*3.5)
 		}
 		vector.FillRect(screen, x, y, w, h, fill, false)
 		vector.StrokeRect(screen, x, y, w, h, 2, border, false)
@@ -345,34 +512,40 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 
 		// Two separate text draws to keep line spacing predictable.
 		op1 := &text.DrawOptions{}
-		op1.GeoM.Translate(float64(x)+6, float64(y)+float64(uiLineH*0.95))
+		op1.GeoM.Translate(float64(x)+6, float64(y)+float64(metrics.LineH*0.95))
 		op1.ColorScale.ScaleWithColor(textCol)
 		text.Draw(screen, line1, hudFace, op1)
 
 		if line2 != "" {
 			op2 := &text.DrawOptions{}
-			op2.GeoM.Translate(float64(x)+6, float64(y)+float64(uiLineH*1.90))
+			op2.GeoM.Translate(float64(x)+6, float64(y)+float64(metrics.LineH*1.90))
 			op2.ColorScale.ScaleWithColor(textCol)
 			text.Draw(screen, line2, hudFace, op2)
 		}
 	}
 
 	for i := 0; i < 3; i++ {
-		x := inner.X + float32(i)*((inner.W - uiGap*2) / 3)
+		x := inner.X + float32(i)*((inner.W - metrics.Gap*2) / 3)
 		drawSlot(battlepkg.BattleRowFront, i, x, frontSlotsY)
 		drawSlot(battlepkg.BattleRowBack, i, x, backSlotsY)
 	}
 }
 
 func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, layout battlepkg.BattleHUDLayout) {
-	drawPanelBox(screen, r, "ABILITIES", hudFace)
+	metrics := layout.Metrics
+	drawPanelBox(screen, r, "ABILITIES", hudFace, metrics)
 	if battle == nil {
 		return
 	}
 	active := battle.ActiveUnit()
 	if active == nil || active.Side != battlepkg.TeamPlayer || battle.Phase != battlepkg.PhaseAwaitAction {
+		// Draw a compact "(waiting)" marker inside the ability header area.
+		headerRect := toRect(layout.AbilityHeader)
+		if headerRect.W <= 0 || headerRect.H <= 0 {
+			headerRect = inset(r, metrics.Pad*0.6)
+		}
 		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(r.X)+float64(uiPad*0.6), float64(r.Y)+float64(uiLineH*2))
+		op.GeoM.Translate(float64(headerRect.X), singleLineBaselineY(headerRect, metrics))
 		op.ColorScale.ScaleWithColor(color.RGBA{R: 150, G: 150, B: 150, A: 255})
 		text.Draw(screen, "(waiting)", hudFace, op)
 		return
@@ -419,9 +592,16 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		vector.FillRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, bg, false)
 		vector.StrokeRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, 1, border, false)
 
-		line := fmt.Sprintf("%s %s [%s]", prefix, a.Name, rule)
+		compactRow := isCompactForRect(metrics, rowRect)
+		line := ""
+		if compactRow {
+			line = fmt.Sprintf("%s %s", prefix, a.Name)
+		} else {
+			line = fmt.Sprintf("%s %s [%s]", prefix, a.Name, rule)
+		}
+		line = fitTextToWidth(hudFace, line, rowRect.W-8)
 		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(rowRect.X+4), float64(rowRect.Y+uiLineH*0.9))
+		op.GeoM.Translate(float64(rowRect.X+4), float64(rowRect.Y+metrics.LineH*0.9))
 		op.ColorScale.ScaleWithColor(col)
 		text.Draw(screen, line, hudFace, op)
 		// y increment is encoded into layout.AbilityItemRects; nothing to update here.
@@ -431,9 +611,9 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	if hoveredAbility != nil {
 		tipRect := toRect(layout.AbilityTooltip)
 		if tipRect.W <= 0 || tipRect.H <= 0 {
-			tipRect = inset(r, uiPad*0.6)
+			tipRect = inset(r, metrics.Pad*0.6)
 		}
-		infoY := tipRect.Y + uiLineH*0.9
+		infoY := tipRect.Y + metrics.LineH*0.9
 		op := &text.DrawOptions{}
 		op.GeoM.Translate(float64(tipRect.X), float64(infoY))
 		op.ColorScale.ScaleWithColor(color.RGBA{R: 180, G: 220, B: 255, A: 255})
@@ -458,23 +638,38 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		default:
 			rng = "—"
 		}
-		line := fmt.Sprintf("Target: %s | Range: %s", target, rng)
+		compactTip := isCompactForRect(metrics, tipRect)
+		line := ""
+		if compactTip {
+			line = fmt.Sprintf("T: %s | R: %s", target, rng)
+		} else {
+			line = fmt.Sprintf("Target: %s | Range: %s", target, rng)
+		}
+		line = fitTextToWidth(hudFace, line, tipRect.W)
 		text.Draw(screen, line, hudFace, op)
 	}
 }
 
 func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, layout battlepkg.BattleHUDLayout) {
-	drawPanelBox(screen, r, "ACTION", hudFace)
+	metrics := layout.Metrics
+	drawPanelBox(screen, r, "ACTION", hudFace, metrics)
 	if battle == nil {
 		return
 	}
 
 	active := battle.ActiveUnit()
 	if active == nil || active.Side != battlepkg.TeamPlayer || battle.Phase != battlepkg.PhaseAwaitAction {
+		// Enemy turn: use the main action summary rect for a compact status label.
+		mainRect := toRect(layout.ActionMain)
+		if mainRect.W <= 0 || mainRect.H <= 0 {
+			mainRect = inset(r, metrics.Pad*0.6)
+		}
+		label := "(enemy turn)"
+		label = fitTextToWidth(hudFace, label, mainRect.W-metrics.Pad*0.4)
 		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(r.X)+float64(uiPad*0.6), float64(r.Y)+float64(uiLineH*2))
+		op.GeoM.Translate(float64(mainRect.X), singleLineBaselineY(mainRect, metrics))
 		op.ColorScale.ScaleWithColor(color.RGBA{R: 150, G: 150, B: 150, A: 255})
-		text.Draw(screen, "(enemy turn)", hudFace, op)
+		text.Draw(screen, label, hudFace, op)
 		return
 	}
 
@@ -497,19 +692,42 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 
 	// STEP / main summary.
 	summaryLines := []string{}
+	summaryRect := toRect(layout.ActionMain)
+	summaryCompact := isCompactForRect(metrics, summaryRect)
 	switch pt.Phase {
 	case battlepkg.PlayerChooseAbility:
-		summaryLines = append(summaryLines, "STEP: Choose ability")
+		if summaryCompact {
+			summaryLines = append(summaryLines, "Step: ability")
+		} else {
+			summaryLines = append(summaryLines, "STEP: Choose ability")
+		}
 	case battlepkg.PlayerChooseTarget:
-		summaryLines = append(summaryLines, "STEP: Choose target")
+		if summaryCompact {
+			summaryLines = append(summaryLines, "Step: target")
+		} else {
+			summaryLines = append(summaryLines, "STEP: Choose target")
+		}
 	case battlepkg.PlayerConfirmAction:
-		summaryLines = append(summaryLines, "STEP: Confirm action")
+		if summaryCompact {
+			summaryLines = append(summaryLines, "Step: confirm")
+		} else {
+			summaryLines = append(summaryLines, "STEP: Confirm action")
+		}
 	default:
-		summaryLines = append(summaryLines, fmt.Sprintf("STEP: %s", pt.PhaseString()))
+		if summaryCompact {
+			summaryLines = append(summaryLines, fmt.Sprintf("Step: %s", pt.PhaseString()))
+		} else {
+			summaryLines = append(summaryLines, fmt.Sprintf("STEP: %s", pt.PhaseString()))
+		}
 	}
 
 	// Ability / target.
-	abilityLine := fmt.Sprintf("Ability: %s", a.Name)
+	abilityLine := ""
+	if summaryCompact {
+		abilityLine = fmt.Sprintf("Abil: %s", a.Name)
+	} else {
+		abilityLine = fmt.Sprintf("Ability: %s", a.Name)
+	}
 	summaryLines = append(summaryLines, abilityLine)
 	summaryLines = append(summaryLines, fmt.Sprintf("Target: %s", targetStr))
 
@@ -520,60 +738,77 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	}
 	if prev, v := battlepkg.PreviewAction(battle, req); v.OK {
 		if prev.HasDamage() {
-			summaryLines = append(summaryLines, fmt.Sprintf("Preview: dmg ~%d-%d", prev.DamageMin, prev.DamageMax))
+			if summaryCompact {
+				summaryLines = append(summaryLines, fmt.Sprintf("Dmg: %d-%d", prev.DamageMin, prev.DamageMax))
+			} else {
+				summaryLines = append(summaryLines, fmt.Sprintf("Preview: dmg ~%d-%d", prev.DamageMin, prev.DamageMax))
+			}
 		} else if prev.HasHeal() {
-			summaryLines = append(summaryLines, fmt.Sprintf("Preview: heal ~%d-%d", prev.HealMin, prev.HealMax))
+			if summaryCompact {
+				summaryLines = append(summaryLines, fmt.Sprintf("Heal: %d-%d", prev.HealMin, prev.HealMax))
+			} else {
+				summaryLines = append(summaryLines, fmt.Sprintf("Preview: heal ~%d-%d", prev.HealMin, prev.HealMax))
+			}
 		}
 	}
 
 	if pt.Phase == battlepkg.PlayerConfirmAction {
-		summaryLines = append(summaryLines, "Hint: Confirm or RMB to go back")
+		if summaryCompact {
+			summaryLines = append(summaryLines, "Enter confirm | RMB back")
+		} else {
+			summaryLines = append(summaryLines, "Hint: Confirm or RMB to go back")
+		}
 	} else if pt.Phase == battlepkg.PlayerChooseTarget {
-		summaryLines = append(summaryLines, fmt.Sprintf("Hint: Click highlighted target (%d options)", len(pt.ValidTargets)))
+		if summaryCompact {
+			summaryLines = append(summaryLines, fmt.Sprintf("Click target (%d)", len(pt.ValidTargets)))
+		} else {
+			summaryLines = append(summaryLines, fmt.Sprintf("Hint: Click highlighted target (%d options)", len(pt.ValidTargets)))
+		}
 	} else if pt.Phase == battlepkg.PlayerChooseAbility {
-		summaryLines = append(summaryLines, "Hint: Left-click ability, then choose target")
+		if summaryCompact {
+			summaryLines = append(summaryLines, "LMB: ability -> target")
+		} else {
+			summaryLines = append(summaryLines, "Hint: Left-click ability, then choose target")
+		}
 	}
 
 	// Summary block: STEP / Ability / Target / Preview / Hint.
-	summaryRect := toRect(layout.ActionMain)
-	summaryInner := inset(summaryRect, uiPad*0.3)
-	y := summaryInner.Y + uiLineH*0.9
-	for _, line := range summaryLines {
-		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(summaryInner.X), float64(y))
-		op.ColorScale.ScaleWithColor(color.White)
-		text.Draw(screen, line, hudFace, op)
-		y += uiLineH * 1.05
+	summaryInner := inset(summaryRect, metrics.Pad*0.3)
+	maxSummaryW := summaryInner.W
+	for i := range summaryLines {
+		summaryLines[i] = fitTextToWidth(hudFace, summaryLines[i], maxSummaryW)
 	}
+	// Respect vertical capacity: highest priority lines идут первыми, поэтому
+	// при дефиците высоты будут отброшены Hint/Preview.
+	_ = drawLinesInRect(screen, hudFace, summaryInner, summaryLines, metrics, color.White, 0)
 
 	// Compact current actor info block.
 	actorRect := toRect(layout.ActorInfo)
 	actor := battle.ActiveUnit()
 	if actor != nil && actorRect.W > 0 && actorRect.H > 0 {
-		infoInner := inset(actorRect, uiPad*0.3)
+		infoInner := inset(actorRect, metrics.Pad*0.3)
 		roleStr := fmt.Sprintf("%v", actor.Def.Role)
 		atkKind := "melee"
 		if actor.IsRanged() {
 			atkKind = "ranged"
 		}
-		line1 := fmt.Sprintf("Actor: %s (%s, %s)", actor.Name(), roleStr, atkKind)
-		line2 := fmt.Sprintf("HP %d/%d", actor.State.HP, actor.MaxHP())
+		nameLine := fmt.Sprintf("Actor: %s (%s, %s)", actor.Name(), roleStr, atkKind)
+		hpLine := fmt.Sprintf("HP %d/%d", actor.State.HP, actor.MaxHP())
+		nameLine = fitTextToWidth(hudFace, nameLine, infoInner.W)
+		hpLine = fitTextToWidth(hudFace, hpLine, infoInner.W)
 
-		op1 := &text.DrawOptions{}
-		op1.GeoM.Translate(float64(infoInner.X), float64(infoInner.Y+uiLineH*0.9))
-		op1.ColorScale.ScaleWithColor(color.RGBA{R: 220, G: 220, B: 220, A: 255})
-		text.Draw(screen, line1, hudFace, op1)
-
-		op2 := &text.DrawOptions{}
-		op2.GeoM.Translate(float64(infoInner.X), float64(infoInner.Y+uiLineH*1.9))
-		op2.ColorScale.ScaleWithColor(color.RGBA{R: 200, G: 230, B: 200, A: 255})
-		text.Draw(screen, line2, hudFace, op2)
+		lines := []string{nameLine, hpLine}
+		// Prefer dropping HP line before name when there is not enough height.
+		if maxLinesForRect(metrics, infoInner, metrics.LineH*0.8, 0, metrics.LineH*1.05) < 2 {
+			lines = lines[:1]
+		}
+		_ = drawLinesInRect(screen, hudFace, infoInner, lines, metrics, color.RGBA{R: 220, G: 220, B: 220, A: 255}, 0)
 	}
 
 	// Compact hovered/target unit info block.
 	hoverRect := toRect(layout.HoverInfo)
 	if hoverRect.W > 0 && hoverRect.H > 0 {
-		infoInner := inset(hoverRect, uiPad*0.3)
+		infoInner := inset(hoverRect, metrics.Pad*0.3)
 		hoverID := battle.PlayerTurn.HoverTargetUnitID
 
 		var hu *battlepkg.BattleUnit
@@ -595,15 +830,16 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 				label = "Hover"
 			}
 
-			op1 := &text.DrawOptions{}
-			op1.GeoM.Translate(float64(infoInner.X), float64(infoInner.Y+uiLineH*0.9))
-			op1.ColorScale.ScaleWithColor(color.RGBA{R: 180, G: 220, B: 255, A: 255})
-			text.Draw(screen, fmt.Sprintf("%s: %s (%s, %s)", label, hu.Name(), roleStr, atkKind), hudFace, op1)
+			nameLine := fmt.Sprintf("%s: %s (%s, %s)", label, hu.Name(), roleStr, atkKind)
+			hpLine := fmt.Sprintf("HP %d/%d", hu.State.HP, hu.MaxHP())
+			nameLine = fitTextToWidth(hudFace, nameLine, infoInner.W)
+			hpLine = fitTextToWidth(hudFace, hpLine, infoInner.W)
 
-			op2 := &text.DrawOptions{}
-			op2.GeoM.Translate(float64(infoInner.X), float64(infoInner.Y+uiLineH*1.9))
-			op2.ColorScale.ScaleWithColor(color.RGBA{R: 200, G: 240, B: 255, A: 255})
-			text.Draw(screen, fmt.Sprintf("HP %d/%d", hu.State.HP, hu.MaxHP()), hudFace, op2)
+			lines := []string{nameLine, hpLine}
+			if maxLinesForRect(metrics, infoInner, metrics.LineH*0.8, 0, metrics.LineH*1.05) < 2 {
+				lines = lines[:1]
+			}
+			_ = drawLinesInRect(screen, hudFace, infoInner, lines, metrics, color.RGBA{R: 180, G: 220, B: 255, A: 255}, 0)
 		}
 	}
 
@@ -630,8 +866,10 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 
 		op := &text.DrawOptions{}
 		// Roughly center text.
-		textX := r.X + r.W*0.5 - float32(len(label))*uiLineH*0.22
-		textY := r.Y + r.H*0.5 + uiLineH*0.15
+		// Approximate centering based on adaptive line height and label length.
+		textWApprox := float32(len(label)) * metrics.LineH * 0.4
+		textX := r.X + (r.W-textWApprox)/2
+		textY := r.Y + r.H*0.5 + metrics.LineH*0.15
 		op.GeoM.Translate(float64(textX), float64(textY))
 		op.ColorScale.ScaleWithColor(textCol)
 		text.Draw(screen, label, hudFace, op)
@@ -642,38 +880,24 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	drawButton(confirmR, "Confirm", canConfirm, pt.HoverConfirmButton && canConfirm)
 }
 
-func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect) {
-	drawPanelBox(screen, r, "COMBAT LOG", hudFace)
+func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, layout battlepkg.BattleHUDLayout) {
+	metrics := layout.Metrics
+	drawPanelBox(screen, r, "COMBAT LOG", hudFace, metrics)
 	if battle == nil {
 		return
 	}
 	active := battle.ActiveUnit()
 	isPlayerTurn := active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction
 
-	controls := "Esc: retreat"
-	if isPlayerTurn {
-		switch battle.PlayerTurn.Phase {
-		case battlepkg.PlayerChooseAbility:
-			controls = "Mouse: ability/target/confirm | RMB: back | Esc: retreat"
-		case battlepkg.PlayerChooseTarget:
-			controls = "Mouse: target/confirm | RMB: back | Esc: retreat"
-		case battlepkg.PlayerConfirmAction:
-			controls = "Mouse: confirm/back | RMB: back | Esc: retreat"
-		default:
-			controls = "Mouse: select | Keyboard: still works | Esc: retreat"
-		}
-	}
+	// Combat log area and controls area come from shared layout.
+	logRect := toRect(layout.CombatLog)
+	controlsRect := toRect(layout.HintLine)
 
-	inner := inset(r, uiPad*0.6)
-	titleH := uiLineH * 2
-	controlsH := uiLineH
-	logTop := inner.Y + titleH
-	controlsPadBottom := uiPad * 0.65
-	logBottom := inner.Y + inner.H - controlsH - controlsPadBottom
-	if logBottom < logTop {
-		logBottom = logTop
+	if logRect.W <= 0 || logRect.H <= 0 {
+		// Fallback to an inset region if combat log rect is unavailable.
+		logRect = inset(r, metrics.Pad*0.6)
 	}
-	availableLines := int((logBottom - logTop) / uiLineH)
+	availableLines := int(logRect.H / metrics.LineH)
 	if availableLines < 1 {
 		availableLines = 1
 	}
@@ -681,7 +905,7 @@ func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *bat
 	availableLines = minInt(availableLines, 4)
 
 	// Log lines (last N that fits).
-	y := logTop
+	y := logRect.Y + metrics.LineH*0.9
 	maxLines := availableLines
 	start := 0
 	if len(battle.BattleLog) > maxLines {
@@ -689,20 +913,49 @@ func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *bat
 	}
 	for i := start; i < len(battle.BattleLog); i++ {
 		line := strings.TrimSpace(battle.BattleLog[i])
-		if len([]rune(line)) > 80 {
-			rs := []rune(line)
-			line = string(rs[:77]) + "..."
-		}
+		line = fitTextToWidth(hudFace, line, logRect.W)
 		op := &text.DrawOptions{}
-		op.GeoM.Translate(float64(inner.X), float64(y))
+		op.GeoM.Translate(float64(logRect.X), float64(y))
 		op.ColorScale.ScaleWithColor(color.RGBA{R: 220, G: 220, B: 220, A: 255})
 		text.Draw(screen, line, hudFace, op)
-		y += uiLineH
+		y += metrics.LineH
 	}
 
 	op2 := &text.DrawOptions{}
-	// Raise baseline so glyph descenders aren't clipped by the panel border.
-	op2.GeoM.Translate(float64(inner.X), float64(inner.Y+inner.H-controlsPadBottom))
+	// Place controls/hint text inside the reserved controls rect with
+	// normal/compact wording based on available width.
+	compactControls := isCompactForRect(metrics, controlsRect)
+	controls := "Esc: retreat"
+	if isPlayerTurn {
+		switch battle.PlayerTurn.Phase {
+		case battlepkg.PlayerChooseAbility:
+			if compactControls {
+				controls = "LMB ability/target | RMB back | Esc retreat"
+			} else {
+				controls = "Mouse: ability/target/confirm | RMB: back | Esc: retreat"
+			}
+		case battlepkg.PlayerChooseTarget:
+			if compactControls {
+				controls = "LMB target | RMB back | Esc retreat"
+			} else {
+				controls = "Mouse: target/confirm | RMB: back | Esc: retreat"
+			}
+		case battlepkg.PlayerConfirmAction:
+			if compactControls {
+				controls = "LMB confirm | RMB back | Esc retreat"
+			} else {
+				controls = "Mouse: confirm/back | RMB: back | Esc: retreat"
+			}
+		default:
+			if compactControls {
+				controls = "LMB select | Esc retreat"
+			} else {
+				controls = "Mouse: select | Keyboard: still works | Esc: retreat"
+			}
+		}
+	}
+	controlsText := fitTextToWidth(hudFace, controls, controlsRect.W)
+	op2.GeoM.Translate(float64(controlsRect.X), singleLineBaselineY(controlsRect, metrics))
 	op2.ColorScale.ScaleWithColor(color.RGBA{R: 170, G: 170, B: 170, A: 255})
-	text.Draw(screen, controls, hudFace, op2)
+	text.Draw(screen, controlsText, hudFace, op2)
 }
