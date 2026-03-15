@@ -42,11 +42,13 @@ var ResolutionPresets = []ResolutionPreset{
 	{1280, 720},
 	{1366, 768},
 	{1600, 900},
+	{1920, 1080},
+	{2560, 1440},
 }
 
 // ActivePresetIndex — индекс активного пресета разрешения. Меняется в runtime по F6/F7.
 // 0=800x600, 1=1024x768, 2=1280x720, 3=1366x768, 4=1600x900.
-var ActivePresetIndex = 0
+var ActivePresetIndex = 6
 
 // Viewport задаёт логический размер видимой области мира в тайлах (не пиксели окна).
 type Viewport struct {
