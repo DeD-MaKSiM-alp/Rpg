@@ -19,13 +19,23 @@ import (
 // DefaultWindowTitle — заголовок окна по умолчанию.
 const DefaultWindowTitle = "My Game"
 
+// --- Разрешение и viewport: одна точка правды ---
+//
+// Активное разрешение задаётся только через applyResolutionPreset(), которая вызывается из Run().
+// ScreenWidth/ScreenHeight — текущее logical/game resolution; задаются только из пресета.
+// Layout() возвращает именно их. Никаких ручных присваиваний ScreenWidth/ScreenHeight вне applyResolutionPreset().
+//
+// Viewport мира отделён от размера окна: WorldViewport (WidthTiles, HeightTiles) задаёт видимую область мира в тайлах.
+// Камера, drawGrid и world.Draw опираются на WorldViewport; размер окна нужен только для Layout и UI (HUD).
+// Так проще тестировать HUD на разных разрешениях и в будущем добавить resize/scale.
+
 // ResolutionPreset задаёт один пресет разрешения окна.
 type ResolutionPreset struct {
 	Width  int
 	Height int
 }
 
-// Пресеты разрешения. Переключение: поменять ActivePresetIndex ниже.
+// ResolutionPresets — список пресетов. Активный выбирается через ActivePresetIndex.
 var ResolutionPresets = []ResolutionPreset{
 	{800, 600},
 	{1024, 768},
@@ -34,35 +44,38 @@ var ResolutionPresets = []ResolutionPreset{
 	{1600, 900},
 }
 
-// ActivePresetIndex — единственное место выбора разрешения перед запуском.
+// ActivePresetIndex — единственная точка выбора разрешения перед запуском.
 // 0=800x600, 1=1024x768, 2=1280x720, 3=1366x768, 4=1600x900.
-// Для resizable window в будущем: подставлять сюда индекс по умолчанию, а фактические размеры брать из Layout(w,h).
 const ActivePresetIndex = 0
 
-// Viewport задаёт логический размер видимой области мира в тайлах.
-// Игровая логика (камера, мир, сетка) опирается на viewport; размер окна в пикселях — отдельно (ScreenWidth/ScreenHeight).
+// Viewport задаёт логический размер видимой области мира в тайлах (не пиксели окна).
 type Viewport struct {
 	WidthTiles  int
 	HeightTiles int
 }
 
-// WorldViewport — текущий viewport мира. Задаётся в applyResolutionPreset() из выбранного пресета.
+// WorldViewport — текущая видимая область мира. Задаётся только в applyResolutionPreset().
 var WorldViewport Viewport
 
-// Текущие размеры экрана в пикселях. Задаются только в applyResolutionPreset().
-// Используются только: Layout(), ebiten.SetWindowSize, UI (HUD, battle overlay).
+// ScreenWidth, ScreenHeight — текущее logical resolution. Задаются только в applyResolutionPreset().
+// Используются: Layout(), ebiten.SetWindowSize, UI (HUD, battle overlay). World/camera используют WorldViewport.
 var (
 	ScreenWidth  int
 	ScreenHeight int
 )
 
-// applyResolutionPreset применяет активный пресет: задаёт ScreenWidth/ScreenHeight, Viewport и размер окна.
+// applyResolutionPreset — единственное место применения размеров окна и viewport.
+// Берёт пресет по ActivePresetIndex, выставляет ScreenWidth/ScreenHeight, WorldViewport и ebiten.SetWindowSize.
 func applyResolutionPreset() {
-	p := ResolutionPresets[ActivePresetIndex]
-	ScreenWidth = p.Width
-	ScreenHeight = p.Height
-	WorldViewport.WidthTiles = ScreenWidth / tileSize
-	WorldViewport.HeightTiles = ScreenHeight / tileSize
+	idx := ActivePresetIndex
+	if idx < 0 || idx >= len(ResolutionPresets) {
+		idx = 0
+	}
+	preset := ResolutionPresets[idx]
+	ScreenWidth = preset.Width
+	ScreenHeight = preset.Height
+	WorldViewport.WidthTiles = preset.Width / tileSize
+	WorldViewport.HeightTiles = preset.Height / tileSize
 	ebiten.SetWindowSize(ScreenWidth, ScreenHeight)
 }
 

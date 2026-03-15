@@ -18,22 +18,20 @@ type HUDMetrics struct {
 }
 
 // BattleHUDLayout describes all major areas of the battle HUD.
+// v1 render uses only "v1 core" and "shared interactive"; "compatibility" exists for legacy/alias only.
 type BattleHUDLayout struct {
-	// Adaptive metrics used to build all rects below.
 	Metrics HUDMetrics
 
-	// High-level containers.
-	Overlay HUDRect // main battle panel within the darkened screen
-	Content HUDRect // inner content area inside overlay (after title/banner)
+	// --- v1 core layout (used by battle HUD v1 render) ---
+	Overlay  HUDRect // main panel
+	Content  HUDRect // inner area after TitleRow and optional result banner
+	TitleRow HUDRect // overlay title, 1 line (LineH)
+	InfoRow1 HUDRect // Round | Phase
+	InfoRow2 HUDRect // Active unit
 
-	// Top info area (two lines for readability).
-	TopInfoPrimary   HUDRect // Round / Battle phase
-	TopInfoSecondary HUDRect // Active unit / side / player turn subphase
-	InfoLine         HUDRect // legacy: combined top info area (both lines)
-
-	Formation HUDRect // combined formation area (player+enemy)
-	Middle    HUDRect // abilities + action panel row
-	Footer    HUDRect // combat log + controls
+	Formation HUDRect
+	Middle    HUDRect
+	Footer    HUDRect
 
 	PlayerFormation HUDRect
 	EnemyFormation  HUDRect
@@ -41,38 +39,35 @@ type BattleHUDLayout struct {
 	Abilities HUDRect
 	Action    HUDRect
 
-	// Ability panel: strict text grid.
-	AbilitiesTitleRow HUDRect // one line for panel title
-	AbilityList       HUDRect // content area (abilities list)
-	AbilityHeader     HUDRect // deprecated: same as AbilitiesTitleRow
-	AbilityTooltip    HUDRect // unused in simplified HUD
+	AbilitiesTitleRow HUDRect
+	AbilityList       HUDRect
 
-	// Action panel: strict text grid.
-	ActionTitleRow   HUDRect // one line for panel title
-	ActionSummary    HUDRect // content: step / ability / target
-	ActionButtons    HUDRect // row with Back/Confirm
-	ActionMain       HUDRect // deprecated: same as ActionSummary
-	ActorInfo        HUDRect // unused
-	HoverInfo        HUDRect // unused
+	ActionTitleRow   HUDRect
+	ActionSummary    HUDRect
+	ActionButtons    HUDRect
 
-	BackButton    HUDRect
-	ConfirmButton HUDRect
+	FooterTitleRow HUDRect
+	CombatLog      HUDRect
+	HintLine       HUDRect
 
-	// Footer: strict text grid.
-	FooterTitleRow HUDRect // one line for "COMBAT LOG"
-	CombatLog      HUDRect // content area (log lines)
-	HintLine       HUDRect // one line for controls
-
-	// Formation panels: title row per side (one line each).
 	PlayerFormationTitleRow HUDRect
 	EnemyFormationTitleRow  HUDRect
 
-	// Per-ability item rectangles (only meaningful on player turn).
+	// --- shared interactive rects (render + mouse) ---
+	BackButton    HUDRect
+	ConfirmButton HUDRect
 	AbilityItemRects []HUDRect
+	UnitRects     map[UnitID]HUDRect
 
-	// Per-unit rectangles for formation slots that currently contain a unit.
-	// Used for both rendering and hit-testing.
-	UnitRects map[UnitID]HUDRect
+	// --- compatibility / legacy (not used by v1 render; set in one place at end of Compute) ---
+	TopInfoPrimary   HUDRect // alias InfoRow1
+	TopInfoSecondary HUDRect // alias InfoRow2
+	InfoLine         HUDRect // InfoRow1+2 combined
+	AbilityHeader    HUDRect // alias AbilitiesTitleRow
+	AbilityTooltip   HUDRect // unused
+	ActionMain       HUDRect // alias ActionSummary
+	ActorInfo        HUDRect // unused
+	HoverInfo        HUDRect // unused
 }
 
 // hudClamp clamps v into [lo, hi].
@@ -131,7 +126,7 @@ func computeHUDMetrics(screenW, screenH int) HUDMetrics {
 	m.SmallGap = hudClamp(6*base, 4, 10)
 	// Button height: around 26 at baseline, [20..36].
 	m.ButtonH = hudClamp(26*base, 20, 36)
-	// Title line height (overlay title / banner).
+	// TitleH kept for compatibility; v1 overlay uses LineH for title row only.
 	m.TitleH = hudClamp(20*base, 16, 28)
 
 	return m
@@ -166,21 +161,17 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 	panelY := (sh - panelH) / 2
 	layout.Overlay = HUDRect{X: panelX, Y: panelY, W: panelW, H: panelH}
 
-	// 2) Inner content area, accounting for title and possible result banner.
+	// 2) Rigid grid v1: TitleRow (1 line) then Content. No TitleH — use LineH everywhere.
 	content := hudInset(layout.Overlay, metrics.Pad)
-	content.Y += metrics.TitleH // title line
-	content.H -= metrics.TitleH
+	layout.TitleRow = HUDRect{X: content.X, Y: content.Y, W: content.W, H: metrics.LineH}
+	content.Y += metrics.LineH
+	content.H -= metrics.LineH
 	if content.H < 0 {
 		content.H = 0
 	}
 
-	extraHeaderLines := float32(0)
 	if b != nil && b.Result != ResultNone {
-		// When battle is finished, we reserve 2 extra lines for banner + hint.
-		extraHeaderLines = 2
-	}
-	if extraHeaderLines > 0 {
-		used := extraHeaderLines * metrics.LineH
+		used := metrics.LineH * 2
 		content.Y += used
 		content.H -= used
 		if content.H < 0 {
@@ -189,26 +180,12 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 	}
 	layout.Content = content
 
-	// 3) Top info area: two lines (primary / secondary).
-	layout.TopInfoPrimary = HUDRect{
-		X: content.X,
-		Y: content.Y,
-		W: content.W,
-		H: metrics.LineH,
-	}
-	layout.TopInfoSecondary = HUDRect{
-		X: content.X,
-		Y: content.Y + metrics.LineH,
-		W: content.W,
-		H: metrics.LineH,
-	}
-	// Legacy combined rect for compatibility with any existing users.
-	layout.InfoLine = HUDRect{
-		X: content.X,
-		Y: content.Y,
-		W: content.W,
-		H: metrics.LineH * 2,
-	}
+	// 3) Info rows: fixed LineH each.
+	layout.TopInfoPrimary = HUDRect{X: content.X, Y: content.Y, W: content.W, H: metrics.LineH}
+	layout.TopInfoSecondary = HUDRect{X: content.X, Y: content.Y + metrics.LineH, W: content.W, H: metrics.LineH}
+	layout.InfoRow1 = layout.TopInfoPrimary
+	layout.InfoRow2 = layout.TopInfoSecondary
+	layout.InfoLine = HUDRect{X: content.X, Y: content.Y, W: content.W, H: metrics.LineH * 2}
 
 	// 4) Vertical packing: top info (2 lines) + formation + middle + footer.
 	afterInfo := HUDRect{
@@ -341,9 +318,7 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 			listH = 0
 		}
 		layout.AbilitiesTitleRow = HUDRect{X: inner.X, Y: inner.Y, W: inner.W, H: titleH}
-		layout.AbilityHeader = layout.AbilitiesTitleRow
 		layout.AbilityList = HUDRect{X: inner.X, Y: listTop, W: inner.W, H: listH}
-		layout.AbilityTooltip = HUDRect{}
 	}
 
 	// 9) Action panel: ActionTitleRow (one line) + ActionSummary + ActionButtons.
@@ -374,9 +349,6 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 		}
 		layout.ActionTitleRow = HUDRect{X: inner.X, Y: inner.Y, W: inner.W, H: titleH}
 		layout.ActionSummary = HUDRect{X: inner.X, Y: summaryTop, W: inner.W, H: summaryH}
-		layout.ActionMain = layout.ActionSummary
-		layout.ActorInfo = HUDRect{}
-		layout.HoverInfo = HUDRect{}
 	}
 
 	// 10) Ability item rects (only meaningful on player turn).
@@ -462,6 +434,13 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 		computeUnitRectsForSide(layout.PlayerFormation, BattleSidePlayer)
 		computeUnitRectsForSide(layout.EnemyFormation, BattleSideEnemy)
 	}
+
+	// Legacy compatibility: aliases and unused rects. v1 render does not use these.
+	layout.AbilityHeader = layout.AbilitiesTitleRow
+	layout.AbilityTooltip = HUDRect{}
+	layout.ActionMain = layout.ActionSummary
+	layout.ActorInfo = HUDRect{}
+	layout.HoverInfo = HUDRect{}
 
 	return layout
 }
