@@ -12,11 +12,11 @@ import (
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.Black)
 
-	g.world.Draw(screen, g.cameraX, g.cameraY, visibleTilesX, visibleTilesY, tileSize)
+	g.world.Draw(screen, g.cameraX, g.cameraY, WorldViewport.WidthTiles, WorldViewport.HeightTiles, tileSize)
 	g.drawGrid(screen)
 
 	if debugShowChunkOverlay {
-		g.world.DrawChunkDebugOverlay(screen, g.cameraX, g.cameraY, visibleTilesX, visibleTilesY, tileSize, ScreenWidth, ScreenHeight)
+		g.world.DrawChunkDebugOverlay(screen, g.cameraX, g.cameraY, WorldViewport.WidthTiles, WorldViewport.HeightTiles, tileSize, ScreenWidth, ScreenHeight)
 	}
 
 	g.player.Draw(screen, g.cameraX, g.cameraY, tileSize)

@@ -41,23 +41,31 @@ type BattleHUDLayout struct {
 	Abilities HUDRect
 	Action    HUDRect
 
-	// Ability panel sub-areas.
-	AbilityHeader  HUDRect // area under the panel title and before the list
-	AbilityList    HUDRect // scroll-free list area for abilities
-	AbilityTooltip HUDRect // compact tooltip/info area at the bottom of the panel
+	// Ability panel: strict text grid.
+	AbilitiesTitleRow HUDRect // one line for panel title
+	AbilityList       HUDRect // content area (abilities list)
+	AbilityHeader     HUDRect // deprecated: same as AbilitiesTitleRow
+	AbilityTooltip    HUDRect // unused in simplified HUD
 
-	// Action panel sub-areas.
-	ActionMain    HUDRect // step/ability/target/preview summary
-	ActorInfo     HUDRect // compact current actor info
-	HoverInfo     HUDRect // compact hovered/target unit info
-	ActionButtons HUDRect // row that contains Back/Confirm buttons
+	// Action panel: strict text grid.
+	ActionTitleRow   HUDRect // one line for panel title
+	ActionSummary    HUDRect // content: step / ability / target
+	ActionButtons    HUDRect // row with Back/Confirm
+	ActionMain       HUDRect // deprecated: same as ActionSummary
+	ActorInfo        HUDRect // unused
+	HoverInfo        HUDRect // unused
 
 	BackButton    HUDRect
 	ConfirmButton HUDRect
 
-	// Optional / more detailed areas.
-	CombatLog HUDRect
-	HintLine  HUDRect
+	// Footer: strict text grid.
+	FooterTitleRow HUDRect // one line for "COMBAT LOG"
+	CombatLog      HUDRect // content area (log lines)
+	HintLine       HUDRect // one line for controls
+
+	// Formation panels: title row per side (one line each).
+	PlayerFormationTitleRow HUDRect
+	EnemyFormationTitleRow  HUDRect
 
 	// Per-ability item rectangles (only meaningful on player turn).
 	AbilityItemRects []HUDRect
@@ -277,6 +285,9 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 	if layout.EnemyFormation.W < 0 {
 		layout.EnemyFormation.W = 0
 	}
+	titleRowH := metrics.LineH
+	layout.PlayerFormationTitleRow = HUDRect{X: layout.PlayerFormation.X, Y: layout.PlayerFormation.Y, W: layout.PlayerFormation.W, H: titleRowH}
+	layout.EnemyFormationTitleRow = HUDRect{X: layout.EnemyFormation.X, Y: layout.EnemyFormation.Y, W: layout.EnemyFormation.W, H: titleRowH}
 
 	// 6) Middle split: abilities (left) + action (right).
 	mColW := (layout.Middle.W - metrics.Gap) / 2
@@ -296,17 +307,18 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 		layout.Action.W = 0
 	}
 
-	// 7) Footer sub-areas: combat log + hint line.
+	// 7) Footer: FooterTitleRow (one line) + CombatLog + HintLine (one line).
 	if layout.Footer.H > 0 {
 		inner := hudInset(layout.Footer, metrics.Pad*0.6)
-		titleH := metrics.LineH * 2
+		titleH := metrics.LineH
 		controlsH := metrics.LineH
-		logTop := inner.Y + titleH
-		controlsPadBottom := metrics.Pad * 0.65
+		logTop := inner.Y + titleH + metrics.SmallGap
+		controlsPadBottom := metrics.Pad * 0.5
 		logBottom := inner.Y + inner.H - controlsH - controlsPadBottom
 		if logBottom < logTop {
 			logBottom = logTop
 		}
+		layout.FooterTitleRow = HUDRect{X: inner.X, Y: inner.Y, W: inner.W, H: titleH}
 		layout.CombatLog = HUDRect{X: inner.X, Y: logTop, W: inner.W, H: logBottom - logTop}
 		layout.HintLine = HUDRect{
 			X: inner.X,
@@ -316,49 +328,32 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 		}
 	}
 
-	// 8) Ability panel sub-areas: header, list, tooltip.
+	// 8) Ability panel: AbilitiesTitleRow (one line) + AbilityList.
 	if layout.Abilities.W > 0 && layout.Abilities.H > 0 {
 		inner := hudInset(layout.Abilities, metrics.Pad*0.6)
-		headerH := metrics.LineH * 1.6
-		tooltipH := metrics.LineH * 2.4
-
-		availableH := inner.H - headerH - tooltipH - metrics.SmallGap
-		if availableH < metrics.LineH*2 {
-			availableH = metrics.LineH * 2
-			// Allow tooltip to shrink a bit on very small panels.
-			maxTooltip := inner.H - headerH - availableH - metrics.SmallGap
-			if maxTooltip < tooltipH && maxTooltip > metrics.LineH*1.4 {
-				tooltipH = maxTooltip
-			}
+		titleH := metrics.LineH
+		listTop := inner.Y + titleH + metrics.SmallGap*0.5
+		listH := inner.Y + inner.H - listTop
+		if listH < metrics.LineH*2 {
+			listH = metrics.LineH * 2
 		}
-		if availableH < 0 {
-			availableH = 0
+		if listH < 0 {
+			listH = 0
 		}
-
-		listTop := inner.Y + headerH
-		listH := availableH
-		tooltipY := listTop + listH + metrics.SmallGap*0.5
-
-		layout.AbilityHeader = HUDRect{X: inner.X, Y: inner.Y, W: inner.W, H: headerH}
+		layout.AbilitiesTitleRow = HUDRect{X: inner.X, Y: inner.Y, W: inner.W, H: titleH}
+		layout.AbilityHeader = layout.AbilitiesTitleRow
 		layout.AbilityList = HUDRect{X: inner.X, Y: listTop, W: inner.W, H: listH}
-		layout.AbilityTooltip = HUDRect{X: inner.X, Y: tooltipY, W: inner.W, H: tooltipH}
+		layout.AbilityTooltip = HUDRect{}
 	}
 
-	// 9) Action panel: main content, compact info blocks, confirm/back buttons.
+	// 9) Action panel: ActionTitleRow (one line) + ActionSummary + ActionButtons.
 	if layout.Action.W > 0 && layout.Action.H > 0 {
 		inner := hudInset(layout.Action, metrics.Pad*0.6)
 
-		// Buttons row at the bottom with a bit more presence.
 		btnH := metrics.ButtonH
 		buttonsGap := metrics.SmallGap
 		buttonsY := inner.Y + inner.H - btnH
-
-		layout.ActionButtons = HUDRect{
-			X: inner.X,
-			Y: buttonsY,
-			W: inner.W,
-			H: btnH,
-		}
+		layout.ActionButtons = HUDRect{X: inner.X, Y: buttonsY, W: inner.W, H: btnH}
 
 		btnW := (inner.W - metrics.Gap) / 2
 		if btnW < inner.W*0.3 {
@@ -367,28 +362,21 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 		layout.BackButton = HUDRect{X: inner.X, Y: buttonsY, W: btnW, H: btnH}
 		layout.ConfirmButton = HUDRect{X: inner.X + inner.W - btnW, Y: buttonsY, W: btnW, H: btnH}
 
-		// Above buttons: clean action summary + compact actor/hover info.
-		topAreaBottom := buttonsY - buttonsGap
-		topAreaH := topAreaBottom - inner.Y
-		if topAreaH < metrics.LineH*3 {
-			topAreaH = metrics.LineH * 3
-		}
-
-		actorH := metrics.LineH * 2.2
-		hoverH := metrics.LineH * 2.2
-		summaryH := topAreaH - actorH - hoverH - metrics.SmallGap
+		titleH := metrics.LineH
+		summaryTop := inner.Y + titleH + metrics.SmallGap*0.5
+		summaryBottom := buttonsY - buttonsGap
+		summaryH := summaryBottom - summaryTop
 		if summaryH < metrics.LineH*2 {
 			summaryH = metrics.LineH * 2
-			// Allow info blocks to shrink on small panels.
-			actorH = metrics.LineH * 1.8
-			hoverH = metrics.LineH * 1.8
 		}
-
-		layout.ActionMain = HUDRect{X: inner.X, Y: inner.Y, W: inner.W, H: summaryH}
-		actorY := inner.Y + summaryH + metrics.SmallGap*0.5
-		layout.ActorInfo = HUDRect{X: inner.X, Y: actorY, W: inner.W, H: actorH}
-		hoverY := actorY + actorH + metrics.SmallGap*0.5
-		layout.HoverInfo = HUDRect{X: inner.X, Y: hoverY, W: inner.W, H: hoverH}
+		if summaryH < 0 {
+			summaryH = 0
+		}
+		layout.ActionTitleRow = HUDRect{X: inner.X, Y: inner.Y, W: inner.W, H: titleH}
+		layout.ActionSummary = HUDRect{X: inner.X, Y: summaryTop, W: inner.W, H: summaryH}
+		layout.ActionMain = layout.ActionSummary
+		layout.ActorInfo = HUDRect{}
+		layout.HoverInfo = HUDRect{}
 	}
 
 	// 10) Ability item rects (only meaningful on player turn).

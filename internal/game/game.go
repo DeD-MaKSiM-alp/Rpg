@@ -39,11 +39,32 @@ var ResolutionPresets = []ResolutionPreset{
 // Для resizable window в будущем: подставлять сюда индекс по умолчанию, а фактические размеры брать из Layout(w,h).
 const ActivePresetIndex = 0
 
-// Текущие размеры экрана (задаются в Run из выбранного пресета). Используются Layout, Draw и HUD.
+// Viewport задаёт логический размер видимой области мира в тайлах.
+// Игровая логика (камера, мир, сетка) опирается на viewport; размер окна в пикселях — отдельно (ScreenWidth/ScreenHeight).
+type Viewport struct {
+	WidthTiles  int
+	HeightTiles int
+}
+
+// WorldViewport — текущий viewport мира. Задаётся в applyResolutionPreset() из выбранного пресета.
+var WorldViewport Viewport
+
+// Текущие размеры экрана в пикселях. Задаются только в applyResolutionPreset().
+// Используются только: Layout(), ebiten.SetWindowSize, UI (HUD, battle overlay).
 var (
 	ScreenWidth  int
 	ScreenHeight int
 )
+
+// applyResolutionPreset применяет активный пресет: задаёт ScreenWidth/ScreenHeight, Viewport и размер окна.
+func applyResolutionPreset() {
+	p := ResolutionPresets[ActivePresetIndex]
+	ScreenWidth = p.Width
+	ScreenHeight = p.Height
+	WorldViewport.WidthTiles = ScreenWidth / tileSize
+	WorldViewport.HeightTiles = ScreenHeight / tileSize
+	ebiten.SetWindowSize(ScreenWidth, ScreenHeight)
+}
 
 const (
 	tileSize                = 48
@@ -52,9 +73,6 @@ const (
 	chunkPreloadRadius      = 1
 	chunkUnloadRadius       = 2
 )
-
-// visibleTilesX/Y зависят от разрешения; задаются в Run().
-var visibleTilesX, visibleTilesY int
 
 // GameMode представляет состояние игры.
 type GameMode int
@@ -95,7 +113,7 @@ func NewGame(worldSeed, playerGridX, playerGridY int) *Game {
 // Run настраивает окно, создаёт игру и запускает главный цикл ebiten.
 // Точка входа для запуска из main. Возвращает ошибку от ebiten.RunGame.
 func Run(worldSeed, playerGridX, playerGridY int, windowTitle string) error {
-	ebiten.SetWindowSize(ScreenWidth, ScreenHeight)
+	applyResolutionPreset()
 	if windowTitle != "" {
 		ebiten.SetWindowTitle(windowTitle)
 	} else {
@@ -128,19 +146,15 @@ func (g *Game) drawDebugInfo(screen *ebiten.Image) {
 
 func (g *Game) drawGrid(screen *ebiten.Image) {
 	gridColor := color.RGBA{R: 60, G: 60, B: 60, A: 255}
-	for x := 0; x <= ScreenWidth; x += tileSize {
-		screenX := float32(x)
-		vector.StrokeLine(screen, screenX, 0, screenX, float32(ScreenHeight), 1, gridColor, false)
+	wPx := WorldViewport.WidthTiles * tileSize
+	hPx := WorldViewport.HeightTiles * tileSize
+	for x := 0; x <= WorldViewport.WidthTiles; x++ {
+		screenX := float32(x * tileSize)
+		vector.StrokeLine(screen, screenX, 0, screenX, float32(hPx), 1, gridColor, false)
 	}
-	if ScreenWidth%tileSize != 0 {
-		vector.StrokeLine(screen, float32(ScreenWidth), 0, float32(ScreenWidth), float32(ScreenHeight), 1, gridColor, false)
-	}
-	for y := 0; y <= ScreenHeight; y += tileSize {
-		screenY := float32(y)
-		vector.StrokeLine(screen, 0, screenY, float32(ScreenWidth), screenY, 1, gridColor, false)
-	}
-	if ScreenHeight%tileSize != 0 {
-		vector.StrokeLine(screen, 0, float32(ScreenHeight), float32(ScreenWidth), float32(ScreenHeight), 1, gridColor, false)
+	for y := 0; y <= WorldViewport.HeightTiles; y++ {
+		screenY := float32(y * tileSize)
+		vector.StrokeLine(screen, 0, screenY, float32(wPx), screenY, 1, gridColor, false)
 	}
 }
 
@@ -159,6 +173,6 @@ func (g *Game) endBattle() {
 }
 
 func (g *Game) updateCamera() {
-	g.cameraX = g.player.GridX - visibleTilesX/2
-	g.cameraY = g.player.GridY - visibleTilesY/2
+	g.cameraX = g.player.GridX - WorldViewport.WidthTiles/2
+	g.cameraY = g.player.GridY - WorldViewport.HeightTiles/2
 }
