@@ -227,7 +227,7 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 	}
 
 	for i := 0; i < 3; i++ {
-		x := inner.X + float32(i)*((inner.W - metrics.Gap*2) / 3)
+		x := inner.X + float32(i)*((inner.W-metrics.Gap*2)/3)
 		drawSlot(battlepkg.BattleRowFront, i, x, frontSlotsY)
 		drawSlot(battlepkg.BattleRowBack, i, x, backSlotsY)
 	}
@@ -344,8 +344,6 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	_ = drawLinesInRect(screen, hudFace, summaryRect, summaryLines, metrics, color.White, 0)
 
 	backR := battleToRect(layout.BackButton)
-	confirmR := battleToRect(layout.ConfirmButton)
-
 	drawButton := func(r rect, label string, enabled, hovered bool) {
 		baseFill := color.RGBA{R: 40, G: 40, B: 40, A: 255}
 		baseBorder := color.RGBA{R: 140, G: 140, B: 140, A: 255}
@@ -364,10 +362,10 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 
 		drawSingleLineInRect(screen, hudFace, r, label, metrics, textCol)
 	}
-
-	canConfirm := pt.Phase == battlepkg.PlayerConfirmAction
-	drawButton(backR, "Back", true, pt.HoverBackButton)
-	drawButton(confirmR, "Confirm", canConfirm, pt.HoverConfirmButton && canConfirm)
+	// Back only (Confirm removed from battle UX)
+	if backR.W > 0 && backR.H > 0 {
+		drawButton(backR, "Back", true, pt.HoverBackButton)
+	}
 }
 
 func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, layout battlepkg.BattleHUDLayout) {
@@ -400,7 +398,16 @@ func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *bat
 	}
 
 	if controlsRect.W > 0 && controlsRect.H > 0 {
-		controls := "LMB/RMB: action | Esc: retreat"
+		controls := "LMB/RMB · Esc: retreat"
+		if active := battle.ActiveUnit(); active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
+			if battle.PlayerTurn.SelectedAbilityID == battlepkg.AbilityBasicAttack {
+				controls = "Arrows+Enter or click enemy · Esc: retreat"
+			} else if battle.PlayerTurn.Phase == battlepkg.PlayerChooseTarget {
+				controls = "Arrows+Enter or click target · Back/Esc: cancel"
+			} else {
+				controls = "Arrows+Enter or click ability · Back/Esc: cancel"
+			}
+		}
 		drawSingleLineInRect(screen, hudFace, controlsRect, controls, metrics, color.RGBA{R: 155, G: 155, B: 155, A: 255})
 	}
 }
@@ -460,7 +467,7 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		}
 		pt := &battle.PlayerTurn
 		if pt.HoverTargetUnitID == u.ID {
-			border = color.RGBA{R: 100, G: 170, B: 255, A: 255}
+			border = color.RGBA{R: 115, G: 185, B: 255, A: 255}
 		}
 		if pt.SelectedTarget.Kind == battlepkg.TargetKindUnit && pt.SelectedTarget.UnitID == u.ID {
 			border = color.RGBA{R: 235, G: 70, B: 70, A: 255}
@@ -500,8 +507,11 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 	targetR := battleToRect(layout.V2BottomTarget)
 	if targetR.W > 0 && targetR.H > 0 && battle != nil {
 		pt := &battle.PlayerTurn
+		isDefaultAttack := pt.Phase == battlepkg.PlayerChooseAbility && pt.SelectedAbilityID == battlepkg.AbilityBasicAttack
 		s := "—"
-		if pt.SelectedTarget.Kind == battlepkg.TargetKindUnit && battle.Units[pt.SelectedTarget.UnitID] != nil {
+		if isDefaultAttack && pt.HoverTargetUnitID != 0 && battle.Units[pt.HoverTargetUnitID] != nil {
+			s = battle.Units[pt.HoverTargetUnitID].Name()
+		} else if pt.SelectedTarget.Kind == battlepkg.TargetKindUnit && battle.Units[pt.SelectedTarget.UnitID] != nil {
 			s = battle.Units[pt.SelectedTarget.UnitID].Name()
 		} else if pt.SelectedTarget.Kind == battlepkg.TargetKindSelf {
 			s = "self"
@@ -576,26 +586,35 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		}
 		_ = drawLinesInRect(screen, hudFace, summaryR, lines, metrics, color.RGBA{R: 240, G: 240, B: 240, A: 255}, 2)
 	}
-	// Hint — в default attack: "Click enemy to attack"; иначе последняя строка лога или управление
+	// Hint — default: "Click enemy to attack"; special: phase-specific
 	logR := battleToRect(layout.V2BottomLog)
 	if logR.W > 0 && logR.H > 0 && battle != nil {
 		hint := ""
 		active := battle.ActiveUnit()
-		if active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction && battle.PlayerTurn.SelectedAbilityID == battlepkg.AbilityBasicAttack {
-			hint = "Click enemy to attack · RMB / Esc cancel"
+		pt := &battle.PlayerTurn
+		isDefaultAttack := active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction && pt.SelectedAbilityID == battlepkg.AbilityBasicAttack
+		if isDefaultAttack {
+			hint = "Enter: target mode · Arrows · Enter: attack · Esc: retreat"
+		} else if active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
+			switch pt.Phase {
+			case battlepkg.PlayerChooseTarget:
+				hint = "Arrows: target · Enter: execute · Back/Esc: cancel"
+			default:
+				hint = "Arrows: ability · Enter: choose · Back/Esc: cancel"
+			}
 		} else {
 			if len(battle.BattleLog) > 0 {
 				hint = strings.TrimSpace(battle.BattleLog[len(battle.BattleLog)-1])
 			}
 			if hint == "" {
-				hint = "LMB/RMB · Esc retreat"
+				hint = "Esc: retreat"
 			}
 		}
 		drawSingleLineInRect(screen, hudFace, logR, fitTextToWidth(hudFace, hint, logR.W), metrics, color.RGBA{R: 145, G: 145, B: 150, A: 255})
 	}
-	// Buttons
+	// Buttons — Back only (Confirm removed from battle UX)
 	backR := battleToRect(layout.BackButton)
-	confirmR := battleToRect(layout.ConfirmButton)
+	pt := &battle.PlayerTurn
 	drawButton := func(r rect, label string, enabled, hovered bool) {
 		fill := color.RGBA{R: 38, G: 38, B: 44, A: 255}
 		brd := color.RGBA{R: 125, G: 125, B: 138, A: 255}
@@ -612,9 +631,9 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 2, brd, false)
 		drawSingleLineInRect(screen, hudFace, r, label, metrics, tcol)
 	}
-	pt := &battle.PlayerTurn
-	drawButton(backR, "Back", true, pt.HoverBackButton)
-	drawButton(confirmR, "Confirm", pt.Phase == battlepkg.PlayerConfirmAction, pt.HoverConfirmButton && pt.Phase == battlepkg.PlayerConfirmAction)
+	if backR.W > 0 && backR.H > 0 {
+		drawButton(backR, "Back", true, pt.HoverBackButton)
+	}
 
 	// 5) TopBar — лёгкая status line, не перебивает сцену
 	tb := layout.TopBar

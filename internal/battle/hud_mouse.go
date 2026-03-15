@@ -115,14 +115,24 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 
 					case TargetSelf:
 						pt.SelectedTarget = SelfTarget()
-						pt.Pending = ActionRequest{Actor: actor.ID, Ability: abilID, Target: pt.SelectedTarget}
-						pt.Phase = PlayerConfirmAction
+						req := ActionRequest{Actor: actor.ID, Ability: abilID, Target: pt.SelectedTarget}
+						if ValidateAction(b, req).OK {
+							if act, v2 := ToBattleAction(b, req); v2.OK {
+								pt.Phase = PlayerResolveAction
+								return act, true
+							}
+						}
 						return BattleAction{}, false
 
 					default:
 						pt.SelectedTarget = NoTarget()
-						pt.Pending = ActionRequest{Actor: actor.ID, Ability: abilID, Target: pt.SelectedTarget}
-						pt.Phase = PlayerConfirmAction
+						req := ActionRequest{Actor: actor.ID, Ability: abilID, Target: pt.SelectedTarget}
+						if ValidateAction(b, req).OK {
+							if act, v2 := ToBattleAction(b, req); v2.OK {
+								pt.Phase = PlayerResolveAction
+								return act, true
+							}
+						}
 						return BattleAction{}, false
 					}
 				}
@@ -131,8 +141,8 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 		}
 	}
 
-	// 2) Formation slots hit-test for targets (only in target-related phases; not used for default attack).
-	if pt.Phase == PlayerChooseTarget || pt.Phase == PlayerConfirmAction {
+	// 2) Formation slots hit-test for targets (only when choosing target for special ability).
+	if pt.Phase == PlayerChooseTarget {
 		// Precompute valid target set for quick lookup.
 		validSet := map[UnitID]bool{}
 		for _, td := range pt.ValidTargets {
@@ -166,14 +176,19 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 				if pointInRect(mxf, myf, r) {
 					pt.HoverTargetUnitID = u.ID
 					if leftClick && validSet[u.ID] && pt.Phase == PlayerChooseTarget {
-						// Select this target and move to confirm phase.
+						// Click on valid target = execute immediately (no Confirm phase).
 						pt.SelectedTarget = UnitTarget(u.ID)
-						pt.Pending = ActionRequest{
+						req := ActionRequest{
 							Actor:   actor.ID,
 							Ability: pt.SelectedAbilityID,
 							Target:  pt.SelectedTarget,
 						}
-						pt.Phase = PlayerConfirmAction
+						if ValidateAction(b, req).OK {
+							if act, v2 := ToBattleAction(b, req); v2.OK {
+								pt.Phase = PlayerResolveAction
+								return act, true
+							}
+						}
 					}
 					break
 				}
@@ -181,73 +196,22 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 		}
 	}
 
-	// 3) Action panel buttons (Confirm / Back) hit-test.
-	if pt.Phase == PlayerConfirmAction || pt.Phase == PlayerChooseTarget {
-		backBtn := layout.BackButton
-		confirmBtn := layout.ConfirmButton
-
-		hasBack := pt.Phase == PlayerChooseTarget || pt.Phase == PlayerConfirmAction
-		canConfirm := pt.Phase == PlayerConfirmAction
-
-		if pointInRect(mxf, myf, backBtn) && hasBack {
+	// 3) Action panel: Back button only (Confirm removed from UX). Back = cancel special ability / return to default attack.
+	backBtn := layout.BackButton
+	if backBtn.W > 0 && backBtn.H > 0 && (pt.Phase == PlayerChooseTarget || (pt.Phase == PlayerChooseAbility && pt.SelectedAbilityID != AbilityBasicAttack)) {
+		if pointInRect(mxf, myf, backBtn) {
 			pt.HoverBackButton = true
 		}
-		if pointInRect(mxf, myf, confirmBtn) && canConfirm {
-			pt.HoverConfirmButton = true
-		}
-
-		if leftClick {
-			ability := GetAbility(pt.SelectedAbilityID)
-			if hasBack && pointInRect(mxf, myf, backBtn) {
-				if ability.TargetRule == TargetEnemySingle || ability.TargetRule == TargetAllySingle {
-					pt.Phase = PlayerChooseTarget
-				} else {
-					pt.Phase = PlayerChooseAbility
-					if HasBasicAttack(actor) {
-						pt.SelectedAbilityID = AbilityBasicAttack
-						pt.SelectedAbilityIndex = 0
-					}
-				}
-				pt.Pending = ActionRequest{}
-			} else if canConfirm && pointInRect(mxf, myf, confirmBtn) {
-				// Confirm: mirror keyboard confirm behavior with defensive Pending handling.
-				req := pt.Pending
-				if req.Actor == 0 || req.Ability == 0 {
-					// Defensive fallback: reconstruct from current selection.
-					req = ActionRequest{
-						Actor:   actor.ID,
-						Ability: pt.SelectedAbilityID,
-						Target:  pt.SelectedTarget,
-					}
-				}
-
-				v := ValidateAction(b, req)
-				if !v.OK {
-					if v.Message != "" {
-						b.AddBattleLog("Cannot confirm action: " + v.Message)
-					} else {
-						b.AddBattleLog("Cannot confirm action: invalid action")
-					}
-
-					// Send the player back to a recoverable step, same as keyboard path.
-					if ability.TargetRule == TargetEnemySingle || ability.TargetRule == TargetAllySingle {
-						pt.Phase = PlayerChooseTarget
-					} else {
-						pt.Phase = PlayerChooseAbility
-					}
-					pt.Pending = ActionRequest{}
-				} else {
-					act, v2 := ToBattleAction(b, req)
-					if v2.OK {
-						action = act
-						performed = true
-						pt.Pending = req
-						pt.Phase = PlayerResolveAction
-					} else if v2.Message != "" {
-						b.AddBattleLog("Cannot confirm action: " + v2.Message)
-					}
-				}
+		if leftClick && pointInRect(mxf, myf, backBtn) {
+			pt.Phase = PlayerChooseAbility
+			if HasBasicAttack(actor) {
+				pt.SelectedAbilityID = AbilityBasicAttack
+				pt.SelectedAbilityIndex = 0
 			}
+			pt.ValidTargets = nil
+			pt.SelectedTargetIdx = 0
+			pt.SelectedTarget = NoTarget()
+			pt.Pending = ActionRequest{}
 		}
 	}
 

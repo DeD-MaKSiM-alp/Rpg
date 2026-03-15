@@ -7,6 +7,7 @@ import (
 
 const actionPauseFrames = 30
 
+// justConfirmPressed: Space/Enter — execute current action (choose target or execute ability). No longer "confirm" semantics.
 func justConfirmPressed() bool {
 	return inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter)
 }
@@ -81,6 +82,17 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 
 	switch p.Phase {
 	case PlayerChooseAbility:
+		if justBackPressed() {
+			// Return to default attack mode (cancel special ability selection).
+			if HasBasicAttack(actor) && p.SelectedAbilityID != AbilityBasicAttack {
+				p.SelectedAbilityID = AbilityBasicAttack
+				p.SelectedAbilityIndex = 0
+				p.ValidTargets = nil
+				p.SelectedTargetIdx = 0
+				p.SelectedTarget = NoTarget()
+				p.Pending = ActionRequest{}
+			}
+		}
 		if justPrevPressed() {
 			p.SelectedAbilityIndex = wrapIndex(p.SelectedAbilityIndex-1, len(abilities))
 			p.SelectedAbilityID = abilities[p.SelectedAbilityIndex]
@@ -97,7 +109,7 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 		}
 
 		if justConfirmPressed() {
-			// If ability requires a target, enumerate.
+			// If ability requires a target, go to target selection; otherwise execute immediately.
 			switch ability.TargetRule {
 			case TargetEnemySingle, TargetAllySingle:
 				targets, v := ListValidTargets(b, actor.ID, p.SelectedAbilityID)
@@ -117,16 +129,34 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 
 			case TargetSelf:
 				p.SelectedTarget = SelfTarget()
-				p.Pending = ActionRequest{Actor: actor.ID, Ability: p.SelectedAbilityID, Target: p.SelectedTarget}
-				p.Phase = PlayerConfirmAction
-				return BattleAction{}, false
+				req := ActionRequest{Actor: actor.ID, Ability: p.SelectedAbilityID, Target: p.SelectedTarget}
+				if v := ValidateAction(b, req); !v.OK {
+					b.AddBattleLog(v.Message)
+					return BattleAction{}, false
+				}
+				act, v2 := ToBattleAction(b, req)
+				if !v2.OK {
+					b.AddBattleLog(v2.Message)
+					return BattleAction{}, false
+				}
+				p.Phase = PlayerResolveAction
+				return act, true
 
 			default:
-				// Groundwork for no-target abilities.
+				// No-target abilities: execute immediately.
 				p.SelectedTarget = NoTarget()
-				p.Pending = ActionRequest{Actor: actor.ID, Ability: p.SelectedAbilityID, Target: p.SelectedTarget}
-				p.Phase = PlayerConfirmAction
-				return BattleAction{}, false
+				req := ActionRequest{Actor: actor.ID, Ability: p.SelectedAbilityID, Target: p.SelectedTarget}
+				if v := ValidateAction(b, req); !v.OK {
+					b.AddBattleLog(v.Message)
+					return BattleAction{}, false
+				}
+				act, v2 := ToBattleAction(b, req)
+				if !v2.OK {
+					b.AddBattleLog(v2.Message)
+					return BattleAction{}, false
+				}
+				p.Phase = PlayerResolveAction
+				return act, true
 			}
 		}
 
@@ -167,12 +197,23 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 			p.SelectedTarget = p.ValidTargets[p.SelectedTargetIdx]
 		}
 		if justConfirmPressed() {
-			p.Pending = ActionRequest{Actor: actor.ID, Ability: p.SelectedAbilityID, Target: p.SelectedTarget}
-			p.Phase = PlayerConfirmAction
-			return BattleAction{}, false
+			// Click on target = execute immediately (no Confirm phase).
+			req := ActionRequest{Actor: actor.ID, Ability: p.SelectedAbilityID, Target: p.SelectedTarget}
+			if v := ValidateAction(b, req); !v.OK {
+				b.AddBattleLog(v.Message)
+				return BattleAction{}, false
+			}
+			act, v2 := ToBattleAction(b, req)
+			if !v2.OK {
+				b.AddBattleLog(v2.Message)
+				return BattleAction{}, false
+			}
+			p.Phase = PlayerResolveAction
+			return act, true
 		}
 
 	case PlayerConfirmAction:
+		// Legacy: no longer entered in normal UX; only Back to recover.
 		if justBackPressed() {
 			if ability.TargetRule == TargetEnemySingle || ability.TargetRule == TargetAllySingle {
 				p.Phase = PlayerChooseTarget
@@ -185,28 +226,6 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 			}
 			p.Pending = ActionRequest{}
 			return BattleAction{}, false
-		}
-		if justConfirmPressed() {
-			// Re-validate on confirm.
-			v := ValidateAction(b, p.Pending)
-			if !v.OK {
-				b.AddBattleLog(v.Message)
-				// Send user back to a recoverable step.
-				if ability.TargetRule == TargetEnemySingle || ability.TargetRule == TargetAllySingle {
-					p.Phase = PlayerChooseTarget
-				} else {
-					p.Phase = PlayerChooseAbility
-				}
-				return BattleAction{}, false
-			}
-			act, v2 := ToBattleAction(b, p.Pending)
-			if !v2.OK {
-				b.AddBattleLog(v2.Message)
-				p.Phase = PlayerChooseAbility
-				return BattleAction{}, false
-			}
-			p.Phase = PlayerResolveAction
-			return act, true
 		}
 
 	case PlayerResolveAction:
@@ -235,6 +254,27 @@ func (b *BattleContext) Update() BattleOutcome {
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		// During player turn in special/target mode: Esc cancels to default attack. In default mode or other phases: retreat.
+		if b.Phase == PhaseAwaitAction {
+			if active := b.ActiveUnit(); active != nil && active.IsAlive() && active.Side == TeamPlayer {
+				b.ensurePlayerTurnInitialized(active)
+				pt := &b.PlayerTurn
+				inSpecialOrTarget := pt.Phase == PlayerChooseTarget ||
+					(pt.Phase == PlayerChooseAbility && HasBasicAttack(active) && pt.SelectedAbilityID != AbilityBasicAttack)
+				if inSpecialOrTarget {
+					pt.Phase = PlayerChooseAbility
+					if HasBasicAttack(active) {
+						pt.SelectedAbilityID = AbilityBasicAttack
+						pt.SelectedAbilityIndex = 0
+					}
+					pt.ValidTargets = nil
+					pt.SelectedTargetIdx = 0
+					pt.SelectedTarget = NoTarget()
+					pt.Pending = ActionRequest{}
+					return BattleOutcomeNone
+				}
+			}
+		}
 		b.Result = ResultEscape
 		b.AddBattleLog("Отступление.")
 		b.Phase = PhaseFinishedWaitInput

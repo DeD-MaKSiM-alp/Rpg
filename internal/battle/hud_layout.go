@@ -246,10 +246,10 @@ func (b *BattleContext) computeLayoutV2(screenW, screenH int) BattleHUDLayout {
 	layout.V2BottomLog = HUDRect{X: inner.X, Y: y, W: inner.W, H: lineH}
 	y += lineH + gap
 
-	// Buttons at bottom
+	// Buttons at bottom: Back only (Confirm removed from UX; ConfirmButton kept as zero for legacy)
 	buttonsY := inner.Y + inner.H - btnH
-	layout.BackButton = HUDRect{X: inner.X, Y: buttonsY, W: (inner.W - gap) / 2, H: btnH}
-	layout.ConfirmButton = HUDRect{X: inner.X + inner.W - layout.BackButton.W, Y: buttonsY, W: layout.BackButton.W, H: btnH}
+	layout.BackButton = HUDRect{X: inner.X, Y: buttonsY, W: inner.W, H: btnH}
+	layout.ConfirmButton = HUDRect{}
 
 	// UnitRects: vertical cards with clearer spacing (Gap between cards).
 	layout.UnitRects = map[UnitID]HUDRect{}
@@ -493,12 +493,9 @@ func (b *BattleContext) computeLayoutV1(screenW, screenH int) BattleHUDLayout {
 		buttonsY := inner.Y + inner.H - btnH
 		layout.ActionButtons = HUDRect{X: inner.X, Y: buttonsY, W: inner.W, H: btnH}
 
-		btnW := (inner.W - metrics.Gap) / 2
-		if btnW < inner.W*0.3 {
-			btnW = inner.W * 0.3
-		}
-		layout.BackButton = HUDRect{X: inner.X, Y: buttonsY, W: btnW, H: btnH}
-		layout.ConfirmButton = HUDRect{X: inner.X + inner.W - btnW, Y: buttonsY, W: btnW, H: btnH}
+		// Back only (Confirm removed from UX; ConfirmButton kept as zero for legacy)
+		layout.BackButton = HUDRect{X: inner.X, Y: buttonsY, W: inner.W, H: btnH}
+		layout.ConfirmButton = HUDRect{}
 
 		titleH := metrics.LineH
 		summaryTop := inner.Y + titleH + metrics.SmallGap
