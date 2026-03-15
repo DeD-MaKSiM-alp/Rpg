@@ -39,7 +39,8 @@ type BattleContext struct {
 
 // BuildBattleContextFromEncounter создаёт BattleContext из Encounter.
 // playerSeed: если не nil, используется для игрока (persistent progression); иначе DefaultPlayerCombatUnitSeed().
-func BuildBattleContextFromEncounter(enc Encounter, playerSeed *CombatUnitSeed) *BattleContext {
+// escalationLevel: 0 = базовая сложность; 1+ = усиление врагов (по числу выигранных боёв).
+func BuildBattleContextFromEncounter(enc Encounter, playerSeed *CombatUnitSeed, escalationLevel int) *BattleContext {
 	if len(enc.Enemies) == 0 {
 		return nil
 	}
@@ -84,7 +85,7 @@ func BuildBattleContextFromEncounter(enc Encounter, playerSeed *CombatUnitSeed) 
 		if i >= MaxFrontRowUnits+MaxBackRowUnits {
 			break
 		}
-		seed := BuildEnemyCombatUnitSeed(e)
+		seed := BuildEnemyCombatUnitSeed(e, escalationLevel)
 		uid := UnitID(2 + i)
 		u := spawnUnit(uid, BattleSideEnemy, seed)
 		ctx.Units[uid] = u

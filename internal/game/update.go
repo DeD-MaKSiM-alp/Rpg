@@ -135,6 +135,7 @@ func (g *Game) updateBattleMode() {
 	switch outcome {
 	case battlepkg.BattleOutcomeVictory:
 		g.resolveBattleResult(outcome)
+		g.BattlesWon++
 		g.postBattleOutcome = outcome
 		g.postBattleStep = PostBattleStepResult
 		return
@@ -154,7 +155,7 @@ func (g *Game) updateBattleMode() {
 }
 
 func (g *Game) updatePostBattle() {
-	n := len(RewardOptions)
+	n := len(g.rewardOffer)
 	if n == 0 {
 		n = 1
 	}
@@ -164,8 +165,13 @@ func (g *Game) updatePostBattle() {
 	case PostBattleStepResult:
 		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 			if g.postBattleOutcome == battlepkg.BattleOutcomeVictory {
-				g.postBattleStep = PostBattleStepReward
-				g.rewardSelectedIndex = 0
+				g.rewardOffer = GenerateRewardOffer(&g.progression, rewardOfferCount)
+				if len(g.rewardOffer) == 0 {
+					g.endBattle()
+				} else {
+					g.postBattleStep = PostBattleStepReward
+					g.rewardSelectedIndex = 0
+				}
 			} else {
 				g.endBattle()
 			}
@@ -178,14 +184,14 @@ func (g *Game) updatePostBattle() {
 			g.rewardSelectedIndex = wrapRewardIndex(g.rewardSelectedIndex+1, n)
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-			ApplyReward(&g.progression, RewardOptions[g.rewardSelectedIndex])
+			ApplyReward(&g.progression, g.rewardOffer[g.rewardSelectedIndex])
 			g.endBattle()
 			return
 		}
 		// Mouse: click on reward option (layout matches ui/postbattle.go)
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 			if idx := g.rewardOptionAtCursor(); idx >= 0 && idx < n {
-				ApplyReward(&g.progression, RewardOptions[idx])
+				ApplyReward(&g.progression, g.rewardOffer[idx])
 				g.endBattle()
 			}
 		}
@@ -201,8 +207,8 @@ func (g *Game) rewardOptionAtCursor() int {
 	}
 	panelX := (w - panelW) / 2
 	panelH := 220
-	if len(RewardOptions) > 0 {
-		panelH = 120 + len(RewardOptions)*36
+	if len(g.rewardOffer) > 0 {
+		panelH = 120 + len(g.rewardOffer)*36
 	}
 	panelY := (h - panelH) / 2
 	innerX := panelX + postBattlePad
@@ -211,7 +217,7 @@ func (g *Game) rewardOptionAtCursor() int {
 		return -1
 	}
 	optionY := panelY + postBattlePad + postBattleOptionStartY
-	for i := 0; i < len(RewardOptions); i++ {
+	for i := 0; i < len(g.rewardOffer); i++ {
 		if my >= optionY && my < optionY+postBattleOptionH+postBattleOptionGap {
 			return i
 		}

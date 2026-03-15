@@ -60,3 +60,24 @@ func GetEnemyTemplate(kind entity.EnemyKind) EnemyTemplate {
 		}
 	}
 }
+
+// ScaleEnemyTemplate применяет эскалацию сложности к шаблону врага (по числу выигранных боёв).
+func ScaleEnemyTemplate(tpl EnemyTemplate, level int) EnemyTemplate {
+	if level <= 0 {
+		return tpl
+	}
+	// +2 HP и +1 Attack за каждый уровень эскалации; +1 Defense каждые 2 уровня
+	tpl.HP += level * 2
+	if tpl.HP < 1 {
+		tpl.HP = 1
+	}
+	tpl.Attack += level
+	if tpl.Attack < 1 {
+		tpl.Attack = 1
+	}
+	tpl.Defense += level / 2
+	if tpl.Initiative < 3 && level >= 2 {
+		tpl.Initiative++
+	}
+	return tpl
+}

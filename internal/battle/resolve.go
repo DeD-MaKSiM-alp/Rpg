@@ -60,7 +60,7 @@ func ResolveAbility(ctx *BattleContext, action BattleAction) ActionResult {
 		if target == nil || !target.IsAlive() {
 			return ActionResult{}
 		}
-		amount := healAmount
+		amount := actor.HealPower()
 		target.State.HP += amount
 		if target.State.HP > target.MaxHP() {
 			target.State.HP = target.MaxHP()

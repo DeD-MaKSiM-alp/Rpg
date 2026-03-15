@@ -38,8 +38,10 @@ type CombatUnitSeed struct {
 }
 
 // BuildEnemyCombatUnitSeed преобразует EncounterEnemy в CombatUnitSeed.
-func BuildEnemyCombatUnitSeed(e EncounterEnemy) CombatUnitSeed {
+// escalationLevel: 0 = без усиления; 1+ = масштабирование статов (эскалация по выигранным боям).
+func BuildEnemyCombatUnitSeed(e EncounterEnemy, escalationLevel int) CombatUnitSeed {
 	tpl := GetEnemyTemplate(e.Kind)
+	tpl = ScaleEnemyTemplate(tpl, escalationLevel)
 	abils := GetRoleAbilities(tpl.Role)
 	if len(abils) == 0 {
 		abils = []AbilityID{AbilityBasicAttack}
@@ -64,11 +66,11 @@ func BuildEnemyCombatUnitSeed(e EncounterEnemy) CombatUnitSeed {
 
 // DefaultPlayerCombatUnitSeed — seed игрока по умолчанию (до прогрессии).
 func DefaultPlayerCombatUnitSeed() CombatUnitSeed {
-	return BuildPlayerCombatSeed(10, 2, 0, 2, []AbilityID{AbilityBasicAttack})
+	return BuildPlayerCombatSeed(10, 2, 0, 2, []AbilityID{AbilityBasicAttack}, 0, 0)
 }
 
 // BuildPlayerCombatSeed строит CombatUnitSeed игрока по статам и способностям (для persistent progression).
-func BuildPlayerCombatSeed(maxHP, attack, defense, initiative int, abilities []AbilityID) CombatUnitSeed {
+func BuildPlayerCombatSeed(maxHP, attack, defense, initiative int, abilities []AbilityID, healPower, basicAttackBonus int) CombatUnitSeed {
 	if len(abilities) == 0 {
 		abilities = []AbilityID{AbilityBasicAttack}
 	}
@@ -78,10 +80,12 @@ func BuildPlayerCombatSeed(maxHP, attack, defense, initiative int, abilities []A
 			DisplayName: "Игрок",
 			Role:        RoleFighter,
 			Base: UnitBaseStats{
-				MaxHP:      maxHP,
-				Attack:     attack,
-				Defense:    defense,
-				Initiative: initiative,
+				MaxHP:            maxHP,
+				Attack:           attack,
+				Defense:          defense,
+				Initiative:       initiative,
+				HealPower:        healPower,
+				BasicAttackBonus: basicAttackBonus,
 			},
 			IsRanged: false,
 			Loadout:  AbilityLoadout{Abilities: abilities},

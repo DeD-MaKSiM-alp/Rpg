@@ -123,9 +123,13 @@ type Game struct {
 	// Persistent progression between battles (source for next battle player unit).
 	progression PlayerProgression
 
+	// BattlesWon — число выигранных боёв за сессию; используется для эскалации сложности врагов и генерации оффера наград.
+	BattlesWon int
+
 	// Post-battle flow: после Victory/Defeat/Retreat не сразу endBattle, а result → (reward при победе) → endBattle.
-	postBattleStep     PostBattleStep
-	postBattleOutcome  battlepkg.BattleOutcome
+	postBattleStep      PostBattleStep
+	postBattleOutcome   battlepkg.BattleOutcome
+	rewardOffer         []RewardKind // текущий набор наград на выбор (2–3 из пула)
 	rewardSelectedIndex int
 
 	// BattleHUDStyle: 0 = v1 table (fallback/debug), 1 = v2 Disciples-like. Used to set battle.LayoutStyle each frame.
@@ -206,14 +210,17 @@ func (g *Game) startBattle(enemyID world.EntityID) {
 	}
 	g.mode = ModeBattle
 	g.postBattleStep = PostBattleStepNone
+	g.rewardOffer = nil
 	playerSeed := battlepkg.BuildPlayerCombatSeed(
 		g.progression.MaxHP,
 		g.progression.Attack,
 		g.progression.Defense,
 		g.progression.Initiative,
 		g.progression.Abilities,
+		g.progression.HealPower,
+		g.progression.BasicAttackBonus,
 	)
-	g.battle = battlepkg.BuildBattleContextFromEncounter(enc, &playerSeed)
+	g.battle = battlepkg.BuildBattleContextFromEncounter(enc, &playerSeed, g.BattlesWon)
 }
 
 func (g *Game) endBattle() {
@@ -221,6 +228,7 @@ func (g *Game) endBattle() {
 	g.battle = nil
 	g.postBattleStep = PostBattleStepNone
 	g.postBattleOutcome = battlepkg.BattleOutcomeNone
+	g.rewardOffer = nil
 }
 
 func (g *Game) updateCamera() {

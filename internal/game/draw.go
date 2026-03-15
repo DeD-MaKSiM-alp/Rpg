@@ -65,12 +65,12 @@ func (g *Game) drawPostBattleOverlay(screen *ebiten.Image) {
 		ScreenWidth:   ScreenWidth,
 		ScreenHeight:  ScreenHeight,
 	}
-	if params.IsRewardStep {
-		params.OptionLabels = make([]string, len(RewardOptions))
-		params.OptionDescs = make([]string, len(RewardOptions))
-		for i := range RewardOptions {
-			params.OptionLabels[i] = RewardLabel(RewardOptions[i])
-			params.OptionDescs[i] = RewardDescription(RewardOptions[i])
+	if params.IsRewardStep && len(g.rewardOffer) > 0 {
+		params.OptionLabels = make([]string, len(g.rewardOffer))
+		params.OptionDescs = make([]string, len(g.rewardOffer))
+		for i := range g.rewardOffer {
+			params.OptionLabels[i] = RewardLabel(g.rewardOffer[i])
+			params.OptionDescs[i] = RewardDescription(g.rewardOffer[i])
 		}
 	}
 	ui.DrawPostBattleOverlay(screen, g.hudFace, params)

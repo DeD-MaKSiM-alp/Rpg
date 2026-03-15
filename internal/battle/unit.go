@@ -31,10 +31,12 @@ type UnitRole = Role
 
 // UnitBaseStats — базовые статы архетипа/шаблона (definition layer).
 type UnitBaseStats struct {
-	MaxHP      int
-	Attack     int
-	Defense    int
-	Initiative int
+	MaxHP            int
+	Attack           int
+	Defense          int
+	Initiative       int
+	HealPower        int // 0 = use default 2 in resolve
+	BasicAttackBonus int // extra damage for basic attack only
 }
 
 // AbilityLoadout — базовый набор способностей юнита (definition layer).
@@ -122,7 +124,13 @@ func (u *CombatUnit) IsAlive() bool {
 func (u *CombatUnit) Name() string { return u.Def.DisplayName }
 func (u *CombatUnit) MaxHP() int   { return u.Def.Base.MaxHP }
 func (u *CombatUnit) Attack() int {
-	return u.Def.Base.Attack + u.State.Modifiers.AttackBonus
+	return u.Def.Base.Attack + u.Def.Base.BasicAttackBonus + u.State.Modifiers.AttackBonus
+}
+func (u *CombatUnit) HealPower() int {
+	if u == nil || u.Def.Base.HealPower <= 0 {
+		return 2
+	}
+	return u.Def.Base.HealPower
 }
 func (u *CombatUnit) Defense() int {
 	return u.Def.Base.Defense + u.State.Modifiers.DefenseBonus
