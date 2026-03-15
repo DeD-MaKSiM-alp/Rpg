@@ -127,7 +127,7 @@ func NewGame(worldSeed, playerGridX, playerGridY int) *Game {
 		hudFace:        ui.LoadHUDFace(),
 		mode:           ModeExplore,
 		battle:         nil,
-		BattleHUDStyle: 0, // 0 = v1 table, 1 = v2 Disciples-like
+		BattleHUDStyle: 1, // 1 = v2 Disciples-like (default), 0 = v1 table (debug fallback)
 	}
 }
 

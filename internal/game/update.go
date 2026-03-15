@@ -24,6 +24,13 @@ func (g *Game) Update() error {
 	}
 
 	if g.mode == ModeBattle {
+		if inpututil.IsKeyJustPressed(ebiten.KeyF8) {
+			if g.BattleHUDStyle == 0 {
+				g.BattleHUDStyle = 1
+			} else {
+				g.BattleHUDStyle = 0
+			}
+		}
 		g.updateBattleMode()
 		return nil
 	}

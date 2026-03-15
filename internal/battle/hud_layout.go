@@ -157,6 +157,7 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 }
 
 // computeLayoutV2 builds Disciples-like layout: TopBar, LeftRoster, RightRoster, Battlefield, BottomPanel.
+// Proportions tuned so battlefield is the visual center; rosters and bottom panel frame it.
 func (b *BattleContext) computeLayoutV2(screenW, screenH int) BattleHUDLayout {
 	sw := float32(screenW)
 	sh := float32(screenH)
@@ -166,11 +167,19 @@ func (b *BattleContext) computeLayoutV2(screenW, screenH int) BattleHUDLayout {
 	layout.Metrics = metrics
 	layout.Style = LayoutStyleV2Disciples
 
-	// Proportions: TopBar ~5%, BottomPanel ~22%, Left/Right roster ~18% width each, rest = Battlefield.
-	topBarH := hudClamp(sh*0.05, metrics.LineH*1.5, metrics.LineH*2)
-	bottomPanelH := hudClamp(sh*0.22, metrics.LineH*4, sh*0.28)
-	rosterW := hudClamp(sw*0.18, 140, sw*0.22)
+	// TopBar: one status line only (minimal).
+	topBarH := metrics.LineH + metrics.Pad*0.5
+	if topBarH < metrics.LineH+4 {
+		topBarH = metrics.LineH + 4
+	}
+	// BottomPanel: ~18% height — control panel, not a second table.
+	bottomPanelH := hudClamp(sh*0.18, metrics.LineH*5, sh*0.22)
+	// Rosters: ~16% width each so battlefield dominates.
+	rosterW := hudClamp(sw*0.16, 130, sw*0.2)
 	pad := metrics.Pad
+	gap := metrics.Gap
+	lineH := metrics.LineH
+	btnH := metrics.ButtonH
 
 	layout.TopBar = HUDRect{X: 0, Y: 0, W: sw, H: topBarH}
 	layout.BottomPanel = HUDRect{X: 0, Y: sh - bottomPanelH, W: sw, H: bottomPanelH}
@@ -188,50 +197,28 @@ func (b *BattleContext) computeLayoutV2(screenW, screenH int) BattleHUDLayout {
 
 	layout.V2TopBarLine = hudInset(layout.TopBar, pad*0.5)
 
-	// BottomPanel sub-areas: active (left), target (right), summary (center), log line, buttons.
+	// BottomPanel: clear vertical order — Active|Target → Ability row → Summary → Hint → Buttons.
 	inner := hudInset(layout.BottomPanel, pad)
-	btnH := metrics.ButtonH
-	lineH := metrics.LineH
-	gap := metrics.Gap
-	// Buttons at bottom of panel
-	buttonsY := inner.Y + inner.H - btnH
-	layout.BackButton = HUDRect{X: inner.X, Y: buttonsY, W: (inner.W - gap) / 2, H: btnH}
-	layout.ConfirmButton = HUDRect{X: inner.X + inner.W - layout.BackButton.W, Y: buttonsY, W: layout.BackButton.W, H: btnH}
-	summaryToButtonsGap := gap
-	summaryBottom := buttonsY - summaryToButtonsGap
-	// Summary block (ability + target + preview)
-	summaryH := lineH * 3
-	if summaryH > summaryBottom-inner.Y {
-		summaryH = summaryBottom - inner.Y
-	}
-	if summaryH < lineH {
-		summaryH = lineH
-	}
-	layout.V2BottomSummary = HUDRect{X: inner.X, Y: summaryBottom - summaryH, W: inner.W, H: summaryH}
-	// Log line above summary
-	logH := lineH
-	layout.V2BottomLog = HUDRect{X: inner.X, Y: layout.V2BottomSummary.Y - logH - metrics.SmallGap, W: inner.W, H: logH}
-	// Active (left) and Target (right) - narrow strips above log
-	infoY := inner.Y
-	infoH := lineH * 2
-	colW := (inner.W - gap) / 2
-	layout.V2BottomActive = HUDRect{X: inner.X, Y: infoY, W: colW, H: infoH}
-	layout.V2BottomTarget = HUDRect{X: inner.X + colW + gap, Y: infoY, W: inner.W - colW - gap, H: infoH}
+	y := inner.Y
 
-	// Ability item rects in BottomPanel: above summary, horizontal or short list
+	// Row 1: Active (left) | Target (right), one line each
+	infoH := lineH
+	colW := (inner.W - gap) / 2
+	layout.V2BottomActive = HUDRect{X: inner.X, Y: y, W: colW, H: infoH}
+	layout.V2BottomTarget = HUDRect{X: inner.X + colW + gap, Y: y, W: inner.W - colW - gap, H: infoH}
+	y += infoH + metrics.SmallGap
+
+	// Ability row
+	abilityRowH := lineH * 1.4
 	layout.AbilityItemRects = nil
 	if b != nil {
 		active := b.ActiveUnit()
 		if active != nil && active.Side == TeamPlayer && b.Phase == PhaseAwaitAction {
 			abs := active.Abilities()
 			if len(abs) > 0 {
-				abilityRowY := layout.V2BottomSummary.Y - metrics.LineH*1.5 - metrics.SmallGap
-				if abilityRowY < inner.Y {
-					abilityRowY = inner.Y
-				}
 				itemW := (inner.W - gap*float32(len(abs)-1)) / float32(len(abs))
-				if itemW < 60 {
-					itemW = 60
+				if itemW < 56 {
+					itemW = 56
 				}
 				rects := make([]HUDRect, 0, len(abs))
 				for i := range abs {
@@ -239,26 +226,46 @@ func (b *BattleContext) computeLayoutV2(screenW, screenH int) BattleHUDLayout {
 					if x+itemW > inner.X+inner.W {
 						break
 					}
-					rects = append(rects, HUDRect{X: x, Y: abilityRowY, W: itemW, H: metrics.LineH * 1.4})
+					rects = append(rects, HUDRect{X: x, Y: y, W: itemW, H: abilityRowH})
 				}
 				layout.AbilityItemRects = rects
 			}
 		}
 	}
+	y += abilityRowH + metrics.SmallGap
 
-	// UnitRects: left roster = player, right roster = enemy (vertical cards)
+	// Summary: up to 2 lines (ability → target | preview)
+	summaryH := lineH * 2
+	if summaryH > inner.Y+inner.H-y-btnH-gap-lineH-gap {
+		summaryH = lineH
+	}
+	layout.V2BottomSummary = HUDRect{X: inner.X, Y: y, W: inner.W, H: summaryH}
+	y += summaryH + metrics.SmallGap
+
+	// Hint line (secondary)
+	layout.V2BottomLog = HUDRect{X: inner.X, Y: y, W: inner.W, H: lineH}
+	y += lineH + gap
+
+	// Buttons at bottom
+	buttonsY := inner.Y + inner.H - btnH
+	layout.BackButton = HUDRect{X: inner.X, Y: buttonsY, W: (inner.W - gap) / 2, H: btnH}
+	layout.ConfirmButton = HUDRect{X: inner.X + inner.W - layout.BackButton.W, Y: buttonsY, W: layout.BackButton.W, H: btnH}
+
+	// UnitRects: vertical cards with clearer spacing (Gap between cards).
 	layout.UnitRects = map[UnitID]HUDRect{}
 	if b != nil {
-		cardPad := metrics.Pad * 0.6
+		cardPad := metrics.Pad
 		for _, side := range []BattleSide{BattleSidePlayer, BattleSideEnemy} {
 			roster := layout.LeftRoster
 			if side == BattleSideEnemy {
 				roster = layout.RightRoster
 			}
 			innerR := hudInset(roster, cardPad)
-			cardH := (innerR.H - metrics.Gap*5) / 6 // up to 6 units
-			if cardH < metrics.LineH*2 {
-				cardH = metrics.LineH * 2
+			cardGap := metrics.Gap
+			nSlots := 6
+			cardH := (innerR.H - float32(nSlots-1)*cardGap) / float32(nSlots)
+			if cardH < metrics.LineH*2.2 {
+				cardH = metrics.LineH * 2.2
 			}
 			idx := 0
 			for _, row := range []BattleRow{BattleRowFront, BattleRowBack} {
@@ -271,11 +278,11 @@ func (b *BattleContext) computeLayoutV2(screenW, screenH int) BattleHUDLayout {
 					if u == nil || !u.IsAlive() {
 						continue
 					}
-					y := innerR.Y + float32(idx)*(cardH+metrics.SmallGap)
-					if y+cardH > innerR.Y+innerR.H {
+					slotY := innerR.Y + float32(idx)*(cardH+cardGap)
+					if slotY+cardH > innerR.Y+innerR.H {
 						break
 					}
-					layout.UnitRects[u.ID] = HUDRect{X: innerR.X, Y: y, W: innerR.W, H: cardH}
+					layout.UnitRects[u.ID] = HUDRect{X: innerR.X, Y: slotY, W: innerR.W, H: cardH}
 					idx++
 				}
 			}
