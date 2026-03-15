@@ -214,7 +214,7 @@ func (b *BattleContext) computeLayoutV2(screenW, screenH int) BattleHUDLayout {
 	if b != nil {
 		active := b.ActiveUnit()
 		if active != nil && active.Side == TeamPlayer && b.Phase == PhaseAwaitAction {
-			abs := active.Abilities()
+			abs := SpecialAbilities(active)
 			if len(abs) > 0 {
 				itemW := (inner.W - gap*float32(len(abs)-1)) / float32(len(abs))
 				if itemW < 56 {
@@ -518,7 +518,7 @@ func (b *BattleContext) computeLayoutV1(screenW, screenH int) BattleHUDLayout {
 	layout.AbilityItemRects = nil
 	active := b.ActiveUnit()
 	if active != nil && active.Side == TeamPlayer && b.Phase == PhaseAwaitAction {
-		abs := active.Abilities()
+		abs := SpecialAbilities(active)
 		if len(abs) > 0 {
 			list := layout.AbilityList
 			if list.W <= 0 || list.H <= 0 {

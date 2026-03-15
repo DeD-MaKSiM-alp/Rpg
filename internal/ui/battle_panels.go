@@ -248,7 +248,7 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		return
 	}
 
-	abs := active.Abilities()
+	abs := battlepkg.SpecialAbilities(active)
 	sel := battle.PlayerTurn.SelectedAbilityID
 	hoverIdx := battle.PlayerTurn.HoverAbilityIndex
 
@@ -508,12 +508,12 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		}
 		drawSingleLineInRect(screen, hudFace, targetR, fitTextToWidth(hudFace, s, targetR.W), metrics, color.RGBA{R: 195, G: 195, B: 195, A: 255})
 	}
-	// Ability row
+	// Ability row (special abilities only; basic attack = default, click enemy)
 	for i, hr := range layout.AbilityItemRects {
 		rowRect := battleToRect(hr)
 		abs := []battlepkg.AbilityID{}
-		if battle.ActiveUnit() != nil {
-			abs = battle.ActiveUnit().Abilities()
+		if active := battle.ActiveUnit(); active != nil {
+			abs = battlepkg.SpecialAbilities(active)
 		}
 		if i >= len(abs) {
 			break
@@ -533,29 +533,39 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		vector.StrokeRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, 1, brd, false)
 		drawSingleLineInRect(screen, hudFace, rowRect, fitTextToWidth(hudFace, a.Name, rowRect.W-8), metrics, col)
 	}
-	// Summary — коротко: до 2 строк (ability → target | preview)
+	// Summary — коротко: default attack = "Attack · click enemy"; special = ability → target | preview
 	summaryR := battleToRect(layout.V2BottomSummary)
 	if summaryR.W > 0 && summaryR.H > 0 && battle != nil {
 		active := battle.ActiveUnit()
 		lines := []string{}
 		if active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
 			pt := &battle.PlayerTurn
-			a := battlepkg.GetAbility(pt.SelectedAbilityID)
-			targetStr := "—"
-			if pt.SelectedTarget.Kind == battlepkg.TargetKindUnit && battle.Units[pt.SelectedTarget.UnitID] != nil {
-				targetStr = battle.Units[pt.SelectedTarget.UnitID].Name()
-			} else if pt.SelectedTarget.Kind == battlepkg.TargetKindSelf {
-				targetStr = "self"
-			}
-			line1 := fmt.Sprintf("%s → %s", a.Name, targetStr)
-			lines = append(lines, fitTextToWidth(hudFace, line1, summaryR.W))
-			req := battlepkg.ActionRequest{Actor: active.ID, Ability: pt.SelectedAbilityID, Target: pt.SelectedTarget}
-			preview, v := battlepkg.PreviewAction(battle, req)
-			if v.OK && (preview.HasDamage() || preview.HasHeal()) {
-				if preview.HasDamage() {
-					lines = append(lines, fmt.Sprintf("dmg %d-%d", preview.DamageMin, preview.DamageMax))
-				} else {
-					lines = append(lines, fmt.Sprintf("heal %d-%d", preview.HealMin, preview.HealMax))
+			if pt.SelectedAbilityID == battlepkg.AbilityBasicAttack {
+				lines = append(lines, fitTextToWidth(hudFace, "Attack · click enemy", summaryR.W))
+				if pt.HoverTargetUnitID != 0 && battle.Units[pt.HoverTargetUnitID] != nil {
+					preview, v := battlepkg.PreviewAction(battle, battlepkg.ActionRequest{Actor: active.ID, Ability: battlepkg.AbilityBasicAttack, Target: battlepkg.UnitTarget(pt.HoverTargetUnitID)})
+					if v.OK && preview.HasDamage() {
+						lines = append(lines, fmt.Sprintf("dmg %d-%d", preview.DamageMin, preview.DamageMax))
+					}
+				}
+			} else {
+				a := battlepkg.GetAbility(pt.SelectedAbilityID)
+				targetStr := "—"
+				if pt.SelectedTarget.Kind == battlepkg.TargetKindUnit && battle.Units[pt.SelectedTarget.UnitID] != nil {
+					targetStr = battle.Units[pt.SelectedTarget.UnitID].Name()
+				} else if pt.SelectedTarget.Kind == battlepkg.TargetKindSelf {
+					targetStr = "self"
+				}
+				line1 := fmt.Sprintf("%s → %s", a.Name, targetStr)
+				lines = append(lines, fitTextToWidth(hudFace, line1, summaryR.W))
+				req := battlepkg.ActionRequest{Actor: active.ID, Ability: pt.SelectedAbilityID, Target: pt.SelectedTarget}
+				preview, v := battlepkg.PreviewAction(battle, req)
+				if v.OK && (preview.HasDamage() || preview.HasHeal()) {
+					if preview.HasDamage() {
+						lines = append(lines, fmt.Sprintf("dmg %d-%d", preview.DamageMin, preview.DamageMax))
+					} else {
+						lines = append(lines, fmt.Sprintf("heal %d-%d", preview.HealMin, preview.HealMax))
+					}
 				}
 			}
 		} else {
@@ -566,17 +576,22 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		}
 		_ = drawLinesInRect(screen, hudFace, summaryR, lines, metrics, color.RGBA{R: 240, G: 240, B: 240, A: 255}, 2)
 	}
-	// Hint — вторичная строка, не конкурирует с action summary
+	// Hint — в default attack: "Click enemy to attack"; иначе последняя строка лога или управление
 	logR := battleToRect(layout.V2BottomLog)
 	if logR.W > 0 && logR.H > 0 && battle != nil {
-		lastLog := ""
-		if len(battle.BattleLog) > 0 {
-			lastLog = strings.TrimSpace(battle.BattleLog[len(battle.BattleLog)-1])
+		hint := ""
+		active := battle.ActiveUnit()
+		if active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction && battle.PlayerTurn.SelectedAbilityID == battlepkg.AbilityBasicAttack {
+			hint = "Click enemy to attack · RMB / Esc cancel"
+		} else {
+			if len(battle.BattleLog) > 0 {
+				hint = strings.TrimSpace(battle.BattleLog[len(battle.BattleLog)-1])
+			}
+			if hint == "" {
+				hint = "LMB/RMB · Esc retreat"
+			}
 		}
-		if lastLog == "" {
-			lastLog = "LMB/RMB · Esc retreat"
-		}
-		drawSingleLineInRect(screen, hudFace, logR, fitTextToWidth(hudFace, lastLog, logR.W), metrics, color.RGBA{R: 145, G: 145, B: 150, A: 255})
+		drawSingleLineInRect(screen, hudFace, logR, fitTextToWidth(hudFace, hint, logR.W), metrics, color.RGBA{R: 145, G: 145, B: 150, A: 255})
 	}
 	// Buttons
 	backR := battleToRect(layout.BackButton)

@@ -46,9 +46,13 @@ func (b *BattleContext) ensurePlayerTurnInitialized(actor *BattleUnit) {
 	b.PlayerTurn.Reset()
 	b.PlayerTurn.Phase = PlayerChooseAbility
 	b.PlayerTurn.Actor = actor.ID
-	b.PlayerTurn.SelectedAbilityIndex = 0
-	if abs := actor.Abilities(); len(abs) > 0 {
+	// Default = basic attack (click enemy to attack); special abilities only in the list.
+	if HasBasicAttack(actor) {
+		b.PlayerTurn.SelectedAbilityID = AbilityBasicAttack
+		b.PlayerTurn.SelectedAbilityIndex = 0
+	} else if abs := actor.Abilities(); len(abs) > 0 {
 		b.PlayerTurn.SelectedAbilityID = abs[0]
+		b.PlayerTurn.SelectedAbilityIndex = 0
 	}
 	b.PlayerTurn.ValidTargets = nil
 	b.PlayerTurn.SelectedTargetIdx = 0
@@ -129,9 +133,14 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 	case PlayerChooseTarget:
 		if justBackPressed() {
 			p.Phase = PlayerChooseAbility
+			if HasBasicAttack(actor) {
+				p.SelectedAbilityID = AbilityBasicAttack
+				p.SelectedAbilityIndex = 0
+			}
 			p.ValidTargets = nil
 			p.SelectedTargetIdx = 0
 			p.SelectedTarget = NoTarget()
+			p.Pending = ActionRequest{}
 			return BattleAction{}, false
 		}
 		if len(p.ValidTargets) == 0 {
@@ -165,11 +174,14 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 
 	case PlayerConfirmAction:
 		if justBackPressed() {
-			// Back to previous step.
 			if ability.TargetRule == TargetEnemySingle || ability.TargetRule == TargetAllySingle {
 				p.Phase = PlayerChooseTarget
 			} else {
 				p.Phase = PlayerChooseAbility
+				if HasBasicAttack(actor) {
+					p.SelectedAbilityID = AbilityBasicAttack
+					p.SelectedAbilityIndex = 0
+				}
 			}
 			p.Pending = ActionRequest{}
 			return BattleAction{}, false

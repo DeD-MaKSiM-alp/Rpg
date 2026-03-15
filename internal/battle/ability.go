@@ -93,3 +93,36 @@ func GetRoleAbilities(role Role) []AbilityID {
 		return []AbilityID{AbilityBasicAttack}
 	}
 }
+
+// FilterBasicAttack возвращает срез способностей без базовой атаки (для списка «только специальные»).
+func FilterBasicAttack(abils []AbilityID) []AbilityID {
+	out := make([]AbilityID, 0, len(abils))
+	for _, id := range abils {
+		if id != AbilityBasicAttack {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// SpecialAbilities возвращает способности юнита без базовой атаки (только специальные: heal, buff и т.д.).
+// Используется для панели способностей: базовая атака = действие по умолчанию (клик по врагу).
+func SpecialAbilities(u *BattleUnit) []AbilityID {
+	if u == nil {
+		return nil
+	}
+	return FilterBasicAttack(u.Abilities())
+}
+
+// HasBasicAttack возвращает true, если у юнита есть базовая атака (для default attack mode).
+func HasBasicAttack(u *BattleUnit) bool {
+	if u == nil {
+		return false
+	}
+	for _, id := range u.Abilities() {
+		if id == AbilityBasicAttack {
+			return true
+		}
+	}
+	return false
+}

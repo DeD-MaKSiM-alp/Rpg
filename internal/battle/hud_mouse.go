@@ -36,24 +36,68 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 
 	action := BattleAction{}
 	var performed bool
+	pt := &b.PlayerTurn
 
-	// 1) Ability panel hit-test (only in PlayerChooseAbility; hover always).
-	abilities := actor.Abilities()
-	if len(abilities) > 0 && len(layout.AbilityItemRects) > 0 {
-		for i := 0; i < len(abilities) && i < len(layout.AbilityItemRects); i++ {
+	// 0) Default attack mode: click on valid enemy = immediate basic attack (no ability choice, no confirm).
+	if pt.Phase == PlayerChooseAbility && pt.SelectedAbilityID == AbilityBasicAttack && HasBasicAttack(actor) {
+		targets, v := ListValidTargets(b, actor.ID, AbilityBasicAttack)
+		if v.OK && len(targets) > 0 {
+			validSet := map[UnitID]bool{}
+			for _, td := range targets {
+				if td.Kind == TargetKindUnit {
+					validSet[td.UnitID] = true
+				}
+			}
+			for id, r := range layout.UnitRects {
+				if !validSet[id] {
+					continue
+				}
+				u := b.Units[id]
+				if u == nil || u.Side == actor.Side {
+					continue
+				}
+				if pointInRect(mxf, myf, r) {
+					pt.HoverTargetUnitID = id
+					if leftClick {
+						req := ActionRequest{Actor: actor.ID, Ability: AbilityBasicAttack, Target: UnitTarget(id)}
+						if ValidateAction(b, req).OK {
+							if act, v2 := ToBattleAction(b, req); v2.OK {
+								pt.Pending = req
+								pt.Phase = PlayerResolveAction
+								return act, true
+							}
+						}
+					}
+					break
+				}
+			}
+		}
+	}
+
+	// 1) Ability panel: only special abilities (list excludes basic attack).
+	specialAbs := SpecialAbilities(actor)
+	if len(specialAbs) > 0 && len(layout.AbilityItemRects) > 0 {
+		for i := 0; i < len(specialAbs) && i < len(layout.AbilityItemRects); i++ {
 			rowRect := layout.AbilityItemRects[i]
 			if pointInRect(mxf, myf, rowRect) {
-				b.PlayerTurn.HoverAbilityIndex = i
-				if leftClick && b.PlayerTurn.Phase == PlayerChooseAbility {
-					// Primary mouse flow: select ability and immediately advance subphase,
-					// mirroring the keyboard confirm behavior.
-					b.PlayerTurn.SelectedAbilityIndex = i
-					b.PlayerTurn.SelectedAbilityID = abilities[i]
+				pt.HoverAbilityIndex = i
+				if leftClick && pt.Phase == PlayerChooseAbility {
+					abilID := specialAbs[i]
+					pt.SelectedAbilityID = abilID
+					// Keep SelectedAbilityIndex in sync with full ability list for keyboard.
+					if full := actor.Abilities(); len(full) > 0 {
+						for j := range full {
+							if full[j] == abilID {
+								pt.SelectedAbilityIndex = j
+								break
+							}
+						}
+					}
 
-					ability := GetAbility(abilities[i])
+					ability := GetAbility(abilID)
 					switch ability.TargetRule {
 					case TargetEnemySingle, TargetAllySingle:
-						targets, v := ListValidTargets(b, actor.ID, abilities[i])
+						targets, v := ListValidTargets(b, actor.ID, abilID)
 						if !v.OK {
 							b.AddBattleLog(v.Message)
 							return BattleAction{}, false
@@ -62,32 +106,23 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 							b.AddBattleLog("Нет валидных целей.")
 							return BattleAction{}, false
 						}
-						b.PlayerTurn.ValidTargets = targets
-						b.PlayerTurn.SelectedTargetIdx = 0
-						b.PlayerTurn.SelectedTarget = targets[0]
-						b.PlayerTurn.Pending = ActionRequest{} // pending будет сформирован на target step
-						b.PlayerTurn.Phase = PlayerChooseTarget
+						pt.ValidTargets = targets
+						pt.SelectedTargetIdx = 0
+						pt.SelectedTarget = targets[0]
+						pt.Pending = ActionRequest{}
+						pt.Phase = PlayerChooseTarget
 						return BattleAction{}, false
 
 					case TargetSelf:
-						b.PlayerTurn.SelectedTarget = SelfTarget()
-						b.PlayerTurn.Pending = ActionRequest{
-							Actor:   actor.ID,
-							Ability: abilities[i],
-							Target:  b.PlayerTurn.SelectedTarget,
-						}
-						b.PlayerTurn.Phase = PlayerConfirmAction
+						pt.SelectedTarget = SelfTarget()
+						pt.Pending = ActionRequest{Actor: actor.ID, Ability: abilID, Target: pt.SelectedTarget}
+						pt.Phase = PlayerConfirmAction
 						return BattleAction{}, false
 
 					default:
-						// No-target ability: immediately prepare pending and go to confirm.
-						b.PlayerTurn.SelectedTarget = NoTarget()
-						b.PlayerTurn.Pending = ActionRequest{
-							Actor:   actor.ID,
-							Ability: abilities[i],
-							Target:  b.PlayerTurn.SelectedTarget,
-						}
-						b.PlayerTurn.Phase = PlayerConfirmAction
+						pt.SelectedTarget = NoTarget()
+						pt.Pending = ActionRequest{Actor: actor.ID, Ability: abilID, Target: pt.SelectedTarget}
+						pt.Phase = PlayerConfirmAction
 						return BattleAction{}, false
 					}
 				}
@@ -96,8 +131,7 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 		}
 	}
 
-	// 2) Formation slots hit-test for targets (only in target-related phases).
-	pt := &b.PlayerTurn
+	// 2) Formation slots hit-test for targets (only in target-related phases; not used for default attack).
 	if pt.Phase == PlayerChooseTarget || pt.Phase == PlayerConfirmAction {
 		// Precompute valid target set for quick lookup.
 		validSet := map[UnitID]bool{}
@@ -165,11 +199,14 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 		if leftClick {
 			ability := GetAbility(pt.SelectedAbilityID)
 			if hasBack && pointInRect(mxf, myf, backBtn) {
-				// Back: same semantics as keyboard Back.
 				if ability.TargetRule == TargetEnemySingle || ability.TargetRule == TargetAllySingle {
 					pt.Phase = PlayerChooseTarget
 				} else {
 					pt.Phase = PlayerChooseAbility
+					if HasBasicAttack(actor) {
+						pt.SelectedAbilityID = AbilityBasicAttack
+						pt.SelectedAbilityIndex = 0
+					}
 				}
 				pt.Pending = ActionRequest{}
 			} else if canConfirm && pointInRect(mxf, myf, confirmBtn) {
@@ -214,7 +251,7 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 		}
 	}
 
-	// 4) Right click = quick cancel/back.
+	// 4) Right click = quick cancel/back; return to default attack mode when going back to ChooseAbility.
 	if rightClick {
 		ability := GetAbility(pt.SelectedAbilityID)
 		switch pt.Phase {
@@ -223,10 +260,18 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 				pt.Phase = PlayerChooseTarget
 			} else {
 				pt.Phase = PlayerChooseAbility
+				if HasBasicAttack(actor) {
+					pt.SelectedAbilityID = AbilityBasicAttack
+					pt.SelectedAbilityIndex = 0
+				}
 			}
 			pt.Pending = ActionRequest{}
 		case PlayerChooseTarget:
 			pt.Phase = PlayerChooseAbility
+			if HasBasicAttack(actor) {
+				pt.SelectedAbilityID = AbilityBasicAttack
+				pt.SelectedAbilityIndex = 0
+			}
 			pt.ValidTargets = nil
 			pt.SelectedTargetIdx = 0
 			pt.SelectedTarget = NoTarget()
