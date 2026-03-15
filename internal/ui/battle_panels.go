@@ -38,6 +38,7 @@ func drawBattleOverlayPanel(screen *ebiten.Image, screenWidth, screenHeight int,
 func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, layout battlepkg.BattleHUDLayout) {
 	metrics := layout.Metrics
 
+	// Top block hierarchy: title primary, info rows secondary.
 	titleRow := battleToRect(layout.TitleRow)
 	if titleRow.W > 0 && titleRow.H > 0 {
 		title := "Battle"
@@ -64,13 +65,13 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 		default:
 			banner = battle.ResultString()
 		}
-		drawSingleLineInRect(screen, hudFace, info1, banner, metrics, color.White)
+		drawSingleLineInRect(screen, hudFace, info1, banner, metrics, color.RGBA{R: 200, G: 200, B: 200, A: 255})
 		info2 := battleToRect(layout.InfoRow2)
-		drawSingleLineInRect(screen, hudFace, info2, "SPACE/ENTER: continue", metrics, color.RGBA{R: 200, G: 200, B: 200, A: 255})
+		drawSingleLineInRect(screen, hudFace, info2, "SPACE/ENTER: continue", metrics, color.RGBA{R: 180, G: 180, B: 180, A: 255})
 	} else {
 		info1 := battleToRect(layout.InfoRow1)
 		line1 := fmt.Sprintf("Round %d | Phase: %s", battle.Round, battle.PhaseString())
-		drawSingleLineInRect(screen, hudFace, info1, line1, metrics, color.White)
+		drawSingleLineInRect(screen, hudFace, info1, line1, metrics, color.RGBA{R: 200, G: 200, B: 200, A: 255})
 
 		info2 := battleToRect(layout.InfoRow2)
 		active := battle.ActiveUnit()
@@ -81,7 +82,7 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 				activeStr = fmt.Sprintf("%s | %s", activeStr, battle.PlayerTurn.PhaseString())
 			}
 		}
-		drawSingleLineInRect(screen, hudFace, info2, activeStr, metrics, color.RGBA{R: 220, G: 220, B: 220, A: 255})
+		drawSingleLineInRect(screen, hudFace, info2, activeStr, metrics, color.RGBA{R: 180, G: 180, B: 180, A: 255})
 	}
 
 	footerRect := battleToRect(layout.Footer)
@@ -111,8 +112,8 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		return
 	}
 	inner := inset(r, metrics.Pad*0.6)
-	inner.Y += metrics.LineH
-	inner.H -= metrics.LineH
+	inner.Y += metrics.LineH + metrics.SmallGap*0.5
+	inner.H -= metrics.LineH + metrics.SmallGap*0.5
 	if inner.H < 0 {
 		inner.H = 0
 	}
@@ -263,9 +264,9 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		border := color.RGBA{R: 70, G: 70, B: 70, A: 255}
 		if id == sel && battle.PlayerTurn.Phase == battlepkg.PlayerChooseAbility {
 			prefix = "▶"
-			bg = color.RGBA{R: 60, G: 60, B: 30, A: 255}
-			col = color.RGBA{R: 255, G: 235, B: 120, A: 255}
-			border = color.RGBA{R: 200, G: 200, B: 120, A: 255}
+			bg = color.RGBA{R: 52, G: 52, B: 28, A: 255}
+			col = color.RGBA{R: 255, G: 230, B: 100, A: 255}
+			border = color.RGBA{R: 170, G: 170, B: 90, A: 255}
 		} else if hoverIdx == i && battle.PlayerTurn.Phase == battlepkg.PlayerChooseAbility {
 			bg = color.RGBA{R: 40, G: 55, B: 70, A: 255}
 			col = color.RGBA{R: 180, G: 220, B: 255, A: 255}
@@ -275,8 +276,8 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		vector.StrokeRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, 1, border, false)
 
 		line := fmt.Sprintf("%s %s", prefix, a.Name)
-		line = fitTextToWidth(hudFace, line, rowRect.W-8)
-		textRow := rect{X: rowRect.X + 4, Y: rowRect.Y, W: rowRect.W - 8, H: rowRect.H}
+		line = fitTextToWidth(hudFace, line, rowRect.W-12)
+		textRow := rect{X: rowRect.X + 6, Y: rowRect.Y, W: rowRect.W - 12, H: rowRect.H}
 		drawSingleLineInRect(screen, hudFace, textRow, line, metrics, col)
 	}
 }
@@ -319,6 +320,21 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		fmt.Sprintf("Step: %s", pt.PhaseString()),
 		fmt.Sprintf("Ability: %s", a.Name),
 		fmt.Sprintf("Target: %s", targetStr),
+	}
+
+	// Preview as 4th line only when ActionSummary fits at least 4 lines; otherwise omit to keep v1 layout stable.
+	if maxLinesForRect(metrics, summaryRect, 0, 0, metrics.LineH) >= 4 {
+		req := battlepkg.ActionRequest{Actor: active.ID, Ability: pt.SelectedAbilityID, Target: pt.SelectedTarget}
+		preview, v := battlepkg.PreviewAction(battle, req)
+		if v.OK && (preview.HasDamage() || preview.HasHeal()) {
+			var previewStr string
+			if preview.HasDamage() {
+				previewStr = fmt.Sprintf("Preview: dmg %d-%d", preview.DamageMin, preview.DamageMax)
+			} else {
+				previewStr = fmt.Sprintf("Preview: heal %d-%d", preview.HealMin, preview.HealMax)
+			}
+			summaryLines = append(summaryLines, previewStr)
+		}
 	}
 
 	maxSummaryW := summaryRect.W
@@ -385,6 +401,6 @@ func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *bat
 
 	if controlsRect.W > 0 && controlsRect.H > 0 {
 		controls := "LMB/RMB: action | Esc: retreat"
-		drawSingleLineInRect(screen, hudFace, controlsRect, controls, metrics, color.RGBA{R: 170, G: 170, B: 170, A: 255})
+		drawSingleLineInRect(screen, hudFace, controlsRect, controls, metrics, color.RGBA{R: 155, G: 155, B: 155, A: 255})
 	}
 }

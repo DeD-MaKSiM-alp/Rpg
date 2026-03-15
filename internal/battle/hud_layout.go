@@ -161,11 +161,11 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 	panelY := (sh - panelH) / 2
 	layout.Overlay = HUDRect{X: panelX, Y: panelY, W: panelW, H: panelH}
 
-	// 2) Rigid grid v1: TitleRow (1 line) then Content. No TitleH — use LineH everywhere.
+	// 2) Rigid grid v1: TitleRow (1 line), small gap, then Content. No TitleH — use LineH everywhere.
 	content := hudInset(layout.Overlay, metrics.Pad)
 	layout.TitleRow = HUDRect{X: content.X, Y: content.Y, W: content.W, H: metrics.LineH}
-	content.Y += metrics.LineH
-	content.H -= metrics.LineH
+	content.Y += metrics.LineH + metrics.SmallGap
+	content.H -= metrics.LineH + metrics.SmallGap
 	if content.H < 0 {
 		content.H = 0
 	}
@@ -290,7 +290,7 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 		titleH := metrics.LineH
 		controlsH := metrics.LineH
 		logTop := inner.Y + titleH + metrics.SmallGap
-		controlsPadBottom := metrics.Pad * 0.5
+		controlsPadBottom := metrics.SmallGap
 		logBottom := inner.Y + inner.H - controlsH - controlsPadBottom
 		if logBottom < logTop {
 			logBottom = logTop
@@ -309,7 +309,7 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 	if layout.Abilities.W > 0 && layout.Abilities.H > 0 {
 		inner := hudInset(layout.Abilities, metrics.Pad*0.6)
 		titleH := metrics.LineH
-		listTop := inner.Y + titleH + metrics.SmallGap*0.5
+		listTop := inner.Y + titleH + metrics.SmallGap
 		listH := inner.Y + inner.H - listTop
 		if listH < metrics.LineH*2 {
 			listH = metrics.LineH * 2
@@ -326,7 +326,7 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 		inner := hudInset(layout.Action, metrics.Pad*0.6)
 
 		btnH := metrics.ButtonH
-		buttonsGap := metrics.SmallGap
+		summaryToButtonsGap := metrics.Gap
 		buttonsY := inner.Y + inner.H - btnH
 		layout.ActionButtons = HUDRect{X: inner.X, Y: buttonsY, W: inner.W, H: btnH}
 
@@ -338,8 +338,8 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 		layout.ConfirmButton = HUDRect{X: inner.X + inner.W - btnW, Y: buttonsY, W: btnW, H: btnH}
 
 		titleH := metrics.LineH
-		summaryTop := inner.Y + titleH + metrics.SmallGap*0.5
-		summaryBottom := buttonsY - buttonsGap
+		summaryTop := inner.Y + titleH + metrics.SmallGap
+		summaryBottom := buttonsY - summaryToButtonsGap
 		summaryH := summaryBottom - summaryTop
 		if summaryH < metrics.LineH*2 {
 			summaryH = metrics.LineH * 2

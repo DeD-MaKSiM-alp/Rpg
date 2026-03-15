@@ -226,15 +226,21 @@ func drawLinesInRect(screen *ebiten.Image, face *text.GoTextFace, r rect, lines 
 	return drawn
 }
 
-// drawPanelBox draws panel background and border; title only in titleRow (strict text grid).
+// drawPanelBox draws panel background, border, optional title-row separator, and title text.
+// Title is drawn in a slightly brighter tone so it reads as header; a thin line under title separates it from content.
 func drawPanelBox(screen *ebiten.Image, panelRect rect, titleRow rect, title string, hudFace *text.GoTextFace, metrics battlepkg.HUDMetrics) {
 	bg := color.RGBA{R: 28, G: 28, B: 28, A: 255}
 	border := color.RGBA{R: 120, G: 120, B: 120, A: 255}
+	titleSepColor := color.RGBA{R: 55, G: 55, B: 55, A: 255}
 	vector.FillRect(screen, panelRect.X, panelRect.Y, panelRect.W, panelRect.H, bg, false)
 	vector.StrokeRect(screen, panelRect.X, panelRect.Y, panelRect.W, panelRect.H, 1, border, false)
 
 	if title != "" && titleRow.W > 0 && titleRow.H > 0 {
-		drawSingleLineInRect(screen, hudFace, titleRow, title, metrics, color.RGBA{R: 200, G: 200, B: 200, A: 255})
+		drawSingleLineInRect(screen, hudFace, titleRow, title, metrics, color.RGBA{R: 230, G: 230, B: 230, A: 255})
+		sepY := titleRow.Y + titleRow.H
+		if sepY < panelRect.Y+panelRect.H-1 {
+			vector.StrokeLine(screen, panelRect.X, sepY, panelRect.X+panelRect.W, sepY, 1, titleSepColor, false)
+		}
 	}
 }
 

@@ -1,12 +1,28 @@
 package game
 
 import (
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
+
 	battlepkg "mygame/internal/battle"
 	playerpkg "mygame/internal/player"
 )
 
 // Update обрабатывает один кадр игры.
 func (g *Game) Update() error {
+	// Runtime resolution switch: F6 = previous preset, F7 = next preset (cyclic).
+	n := len(ResolutionPresets)
+	if n > 0 {
+		if inpututil.IsKeyJustPressed(ebiten.KeyF6) {
+			ActivePresetIndex = (ActivePresetIndex - 1 + n) % n
+			applyResolutionPreset()
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyF7) {
+			ActivePresetIndex = (ActivePresetIndex + 1) % n
+			applyResolutionPreset()
+		}
+	}
+
 	if g.mode == ModeBattle {
 		g.updateBattleMode()
 		return nil

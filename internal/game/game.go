@@ -44,9 +44,9 @@ var ResolutionPresets = []ResolutionPreset{
 	{1600, 900},
 }
 
-// ActivePresetIndex — единственная точка выбора разрешения перед запуском.
+// ActivePresetIndex — индекс активного пресета разрешения. Меняется в runtime по F6/F7.
 // 0=800x600, 1=1024x768, 2=1280x720, 3=1366x768, 4=1600x900.
-const ActivePresetIndex = 0
+var ActivePresetIndex = 0
 
 // Viewport задаёт логический размер видимой области мира в тайлах (не пиксели окна).
 type Viewport struct {
@@ -66,10 +66,12 @@ var (
 
 // applyResolutionPreset — единственное место применения размеров окна и viewport.
 // Берёт пресет по ActivePresetIndex, выставляет ScreenWidth/ScreenHeight, WorldViewport и ebiten.SetWindowSize.
+// Можно вызывать в runtime (переключение по F6/F7).
 func applyResolutionPreset() {
 	idx := ActivePresetIndex
 	if idx < 0 || idx >= len(ResolutionPresets) {
 		idx = 0
+		ActivePresetIndex = idx
 	}
 	preset := ResolutionPresets[idx]
 	ScreenWidth = preset.Width

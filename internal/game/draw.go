@@ -38,4 +38,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	if g.mode == ModeBattle {
 		ui.DrawBattleOverlay(screen, g.hudFace, g.battle, ScreenWidth, ScreenHeight)
 	}
+
+	ui.DrawResolutionIndicator(screen, g.hudFace, ScreenWidth, ScreenHeight)
 }
