@@ -19,21 +19,42 @@ import (
 // DefaultWindowTitle — заголовок окна по умолчанию.
 const DefaultWindowTitle = "My Game"
 
-// Экспортируемые размеры экрана для настройки окна из main.
-const (
-	ScreenWidth  = 800
-	ScreenHeight = 600
+// ResolutionPreset задаёт один пресет разрешения окна.
+type ResolutionPreset struct {
+	Width  int
+	Height int
+}
+
+// Пресеты разрешения. Переключение: поменять ActivePresetIndex ниже.
+var ResolutionPresets = []ResolutionPreset{
+	{800, 600},
+	{1024, 768},
+	{1280, 720},
+	{1366, 768},
+	{1600, 900},
+}
+
+// ActivePresetIndex — единственное место выбора разрешения перед запуском.
+// 0=800x600, 1=1024x768, 2=1280x720, 3=1366x768, 4=1600x900.
+// Для resizable window в будущем: подставлять сюда индекс по умолчанию, а фактические размеры брать из Layout(w,h).
+const ActivePresetIndex = 0
+
+// Текущие размеры экрана (задаются в Run из выбранного пресета). Используются Layout, Draw и HUD.
+var (
+	ScreenWidth  int
+	ScreenHeight int
 )
 
 const (
-	tileSize             = 48
-	visibleTilesX        = ScreenWidth / tileSize
-	visibleTilesY        = ScreenHeight / tileSize
+	tileSize                = 48
 	debugShowChunkOverlay   = false
 	debugShowInputDirection = true // TODO: временный debug для проверки диагонали; удалить после проверки
-	chunkPreloadRadius   = 1
-	chunkUnloadRadius    = 2
+	chunkPreloadRadius      = 1
+	chunkUnloadRadius       = 2
 )
+
+// visibleTilesX/Y зависят от разрешения; задаются в Run().
+var visibleTilesX, visibleTilesY int
 
 // GameMode представляет состояние игры.
 type GameMode int
