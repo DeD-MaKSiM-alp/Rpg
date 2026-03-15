@@ -21,13 +21,17 @@ func DrawHUD(screen *ebiten.Image, pickupCount int, hudFace *text.GoTextFace) {
 	drawHUDText(screen, pickupCount, hudFace)
 }
 
-// DrawBattleOverlay рисует поверх кадра HUD для боевого режима:
-// затемнение фона, центральная панель и текстовые блоки.
+// DrawBattleOverlay рисует поверх кадра HUD для боевого режима.
+// Использует battle.LayoutStyle: v1 = табличный overlay, v2 = Disciples-like (сцена по центру, ростеры по бокам, панель внизу).
 func DrawBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, screenWidth, screenHeight int) {
 	if battle == nil {
 		return
 	}
 	layout := battle.ComputeBattleHUDLayout(screenWidth, screenHeight)
+	if layout.Style == battlepkg.LayoutStyleV2Disciples {
+		drawBattleScreenV2(screen, hudFace, battle, layout)
+		return
+	}
 	drawBattleOverlayPanel(screen, screenWidth, screenHeight, layout)
 	drawBattleOverlayText(screen, hudFace, battle, layout)
 }

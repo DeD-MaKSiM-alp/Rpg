@@ -92,6 +92,7 @@ func (g *Game) updateBattleMode() {
 		g.endBattle()
 		return
 	}
+	g.battle.LayoutStyle = g.BattleHUDStyle
 
 	outcome := g.battle.Update()
 

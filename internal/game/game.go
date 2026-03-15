@@ -111,6 +111,9 @@ type Game struct {
 	mode        GameMode
 	battle      *battlepkg.BattleContext
 
+	// BattleHUDStyle: 0 = v1 table (fallback/debug), 1 = v2 Disciples-like. Used to set battle.LayoutStyle each frame.
+	BattleHUDStyle int
+
 	// Временный debug: последнее направление, возвращённое ReadExploreInput (только для отрисовки).
 	debugInputDX, debugInputDY int
 }
@@ -118,12 +121,13 @@ type Game struct {
 // NewGame создаёт новый экземпляр игры (мир, игрок, UI-шрифт и т.д.).
 func NewGame(worldSeed, playerGridX, playerGridY int) *Game {
 	return &Game{
-		player:  *playerpkg.NewPlayer(playerGridX, playerGridY),
-		world:   world.NewWorld(worldSeed),
-		input:   inputpkg.New(),
-		hudFace: ui.LoadHUDFace(),
-		mode:    ModeExplore,
-		battle:  nil,
+		player:         *playerpkg.NewPlayer(playerGridX, playerGridY),
+		world:          world.NewWorld(worldSeed),
+		input:          inputpkg.New(),
+		hudFace:        ui.LoadHUDFace(),
+		mode:           ModeExplore,
+		battle:         nil,
+		BattleHUDStyle: 0, // 0 = v1 table, 1 = v2 Disciples-like
 	}
 }
 

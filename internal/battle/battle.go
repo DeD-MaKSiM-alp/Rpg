@@ -6,6 +6,12 @@ import (
 )
 
 // BattleContext хранит состояние одного активного боя.
+// LayoutStyle selects battle screen composition: 0 = v1 table, 1 = v2 Disciples-like (center battlefield, side rosters, bottom panel).
+const (
+	LayoutStyleV1Table       = 0
+	LayoutStyleV2Disciples   = 1
+)
+
 type BattleContext struct {
 	Encounter Encounter
 
@@ -26,6 +32,9 @@ type BattleContext struct {
 	BattleLog []string
 
 	LastMessage string
+
+	// LayoutStyle: 0 = v1 table HUD, 1 = v2 Disciples-like (set by game before Update/Draw).
+	LayoutStyle int
 }
 
 // BuildBattleContextFromEncounter создаёт BattleContext из Encounter.
