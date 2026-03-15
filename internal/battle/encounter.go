@@ -62,21 +62,29 @@ func BuildEnemyCombatUnitSeed(e EncounterEnemy) CombatUnitSeed {
 	}
 }
 
-// DefaultPlayerCombatUnitSeed — временный seed игрока до появления party/persistent snapshot.
+// DefaultPlayerCombatUnitSeed — seed игрока по умолчанию (до прогрессии).
 func DefaultPlayerCombatUnitSeed() CombatUnitSeed {
+	return BuildPlayerCombatSeed(10, 2, 0, 2, []AbilityID{AbilityBasicAttack})
+}
+
+// BuildPlayerCombatSeed строит CombatUnitSeed игрока по статам и способностям (для persistent progression).
+func BuildPlayerCombatSeed(maxHP, attack, defense, initiative int, abilities []AbilityID) CombatUnitSeed {
+	if len(abilities) == 0 {
+		abilities = []AbilityID{AbilityBasicAttack}
+	}
 	return CombatUnitSeed{
 		Def: CombatUnitDefinition{
-			ArchetypeID: "player:default",
+			ArchetypeID: "player",
 			DisplayName: "Игрок",
 			Role:        RoleFighter,
 			Base: UnitBaseStats{
-				MaxHP:      10,
-				Attack:     2,
-				Defense:    0,
-				Initiative: 2,
+				MaxHP:      maxHP,
+				Attack:     attack,
+				Defense:    defense,
+				Initiative: initiative,
 			},
 			IsRanged: false,
-			Loadout:  AbilityLoadout{Abilities: []AbilityID{AbilityBasicAttack}},
+			Loadout:  AbilityLoadout{Abilities: abilities},
 		},
 	}
 }

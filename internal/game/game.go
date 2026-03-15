@@ -48,7 +48,7 @@ var ResolutionPresets = []ResolutionPreset{
 
 // ActivePresetIndex — индекс активного пресета разрешения. Меняется в runtime по F6/F7.
 // 0=800x600, 1=1024x768, 2=1280x720, 3=1366x768, 4=1600x900.
-var ActivePresetIndex = 6
+var ActivePresetIndex = 2
 
 // Viewport задаёт логический размер видимой области мира в тайлах (не пиксели окна).
 type Viewport struct {
@@ -99,6 +99,15 @@ const (
 	ModeBattle
 )
 
+// PostBattleStep — шаг post-battle flow (result screen → reward → return to world).
+type PostBattleStep int
+
+const (
+	PostBattleStepNone PostBattleStep = iota
+	PostBattleStepResult
+	PostBattleStepReward
+)
+
 // Game — основная структура, описывающая состояние всей игры.
 type Game struct {
 	player      playerpkg.Player
@@ -111,6 +120,14 @@ type Game struct {
 	mode        GameMode
 	battle      *battlepkg.BattleContext
 
+	// Persistent progression between battles (source for next battle player unit).
+	progression PlayerProgression
+
+	// Post-battle flow: после Victory/Defeat/Retreat не сразу endBattle, а result → (reward при победе) → endBattle.
+	postBattleStep     PostBattleStep
+	postBattleOutcome  battlepkg.BattleOutcome
+	rewardSelectedIndex int
+
 	// BattleHUDStyle: 0 = v1 table (fallback/debug), 1 = v2 Disciples-like. Used to set battle.LayoutStyle each frame.
 	BattleHUDStyle int
 
@@ -121,13 +138,16 @@ type Game struct {
 // NewGame создаёт новый экземпляр игры (мир, игрок, UI-шрифт и т.д.).
 func NewGame(worldSeed, playerGridX, playerGridY int) *Game {
 	return &Game{
-		player:         *playerpkg.NewPlayer(playerGridX, playerGridY),
-		world:          world.NewWorld(worldSeed),
-		input:          inputpkg.New(),
-		hudFace:        ui.LoadHUDFace(),
-		mode:           ModeExplore,
-		battle:         nil,
-		BattleHUDStyle: 1, // 1 = v2 Disciples-like (default), 0 = v1 table (debug fallback)
+		player:              *playerpkg.NewPlayer(playerGridX, playerGridY),
+		world:               world.NewWorld(worldSeed),
+		input:               inputpkg.New(),
+		hudFace:              ui.LoadHUDFace(),
+		mode:                 ModeExplore,
+		battle:               nil,
+		progression:          DefaultProgression(),
+		postBattleStep:       PostBattleStepNone,
+		rewardSelectedIndex:  0,
+		BattleHUDStyle:       1, // 1 = v2 Disciples-like (default), 0 = v1 table (debug fallback)
 	}
 }
 
@@ -185,12 +205,22 @@ func (g *Game) startBattle(enemyID world.EntityID) {
 		return
 	}
 	g.mode = ModeBattle
-	g.battle = battlepkg.BuildBattleContextFromEncounter(enc)
+	g.postBattleStep = PostBattleStepNone
+	playerSeed := battlepkg.BuildPlayerCombatSeed(
+		g.progression.MaxHP,
+		g.progression.Attack,
+		g.progression.Defense,
+		g.progression.Initiative,
+		g.progression.Abilities,
+	)
+	g.battle = battlepkg.BuildBattleContextFromEncounter(enc, &playerSeed)
 }
 
 func (g *Game) endBattle() {
 	g.mode = ModeExplore
 	g.battle = nil
+	g.postBattleStep = PostBattleStepNone
+	g.postBattleOutcome = battlepkg.BattleOutcomeNone
 }
 
 func (g *Game) updateCamera() {

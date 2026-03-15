@@ -5,6 +5,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 
+	battlepkg "mygame/internal/battle"
 	"mygame/internal/ui"
 )
 
@@ -37,7 +38,40 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	if g.mode == ModeBattle {
 		ui.DrawBattleOverlay(screen, g.hudFace, g.battle, ScreenWidth, ScreenHeight)
+		if g.postBattleStep != PostBattleStepNone {
+			g.drawPostBattleOverlay(screen)
+		}
 	}
 
 	ui.DrawResolutionIndicator(screen, g.hudFace, ScreenWidth, ScreenHeight)
+}
+
+func (g *Game) drawPostBattleOverlay(screen *ebiten.Image) {
+	var resultText string
+	switch g.postBattleOutcome {
+	case battlepkg.BattleOutcomeVictory:
+		resultText = "Victory!"
+	case battlepkg.BattleOutcomeDefeat:
+		resultText = "Defeat"
+	case battlepkg.BattleOutcomeRetreat:
+		resultText = "Escaped"
+	default:
+		resultText = "Battle ended"
+	}
+	params := ui.PostBattleParams{
+		ResultText:    resultText,
+		IsRewardStep:  g.postBattleStep == PostBattleStepReward,
+		SelectedIndex: g.rewardSelectedIndex,
+		ScreenWidth:   ScreenWidth,
+		ScreenHeight:  ScreenHeight,
+	}
+	if params.IsRewardStep {
+		params.OptionLabels = make([]string, len(RewardOptions))
+		params.OptionDescs = make([]string, len(RewardOptions))
+		for i := range RewardOptions {
+			params.OptionLabels[i] = RewardLabel(RewardOptions[i])
+			params.OptionDescs[i] = RewardDescription(RewardOptions[i])
+		}
+	}
+	ui.DrawPostBattleOverlay(screen, g.hudFace, params)
 }

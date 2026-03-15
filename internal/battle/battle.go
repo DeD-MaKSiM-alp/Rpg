@@ -38,7 +38,8 @@ type BattleContext struct {
 }
 
 // BuildBattleContextFromEncounter создаёт BattleContext из Encounter.
-func BuildBattleContextFromEncounter(enc Encounter) *BattleContext {
+// playerSeed: если не nil, используется для игрока (persistent progression); иначе DefaultPlayerCombatUnitSeed().
+func BuildBattleContextFromEncounter(enc Encounter, playerSeed *CombatUnitSeed) *BattleContext {
 	if len(enc.Enemies) == 0 {
 		return nil
 	}
@@ -69,10 +70,12 @@ func BuildBattleContextFromEncounter(enc Encounter) *BattleContext {
 		return u
 	}
 
-	// Player team (temporary: single unit, front row).
-	// NOTE: canonical party composition will be introduced in the next steps.
-	playerSeed := DefaultPlayerCombatUnitSeed()
-	playerUnit := spawnUnit(UnitID(1), BattleSidePlayer, playerSeed)
+	// Player team: one unit, front row; seed from progression or default.
+	ps := DefaultPlayerCombatUnitSeed()
+	if playerSeed != nil {
+		ps = *playerSeed
+	}
+	playerUnit := spawnUnit(UnitID(1), BattleSidePlayer, ps)
 	ctx.Units[playerUnit.ID] = playerUnit
 	_ = ctx.PlaceUnit(playerUnit.ID, BattleSlotID{Side: BattleSidePlayer, Row: BattleRowFront, Index: 0})
 
