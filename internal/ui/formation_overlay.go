@@ -17,7 +17,8 @@ import (
 // selected — глобальный индекс: [0, len(Active)) строки строя, [len(Active), len(Active)+len(Reserve)) — резерв.
 // inspectOpen — открыта карточка бойца (I); подсказки сокращаются до навигации по карточке.
 // hoverGlobalIdx — строка под курсором (-1 = нет); подсветка для ПКМ-inspect.
-func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, selected int, screenW, screenH int, inspectOpen bool, hoverGlobalIdx int) {
+// promotionRowHints — короткие метки повышения по globalIdx (из game.PromotionFormationRowHints); nil или короче списка — без метки.
+func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, selected int, screenW, screenH int, inspectOpen bool, hoverGlobalIdx int, promotionRowHints []string) {
 	if hudFace == nil || p == nil {
 		return
 	}
@@ -70,7 +71,14 @@ func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *par
 
 	inspectPlan := BuildFormationInspectHighlightPlan(hoverGlobalIdx, selected, inspectOpen)
 
-	drawMemberRow := func(globalIdx int, h hero.Hero, slotCaption, roleCaption string, inReserve bool) {
+	promoHintAt := func(globalIdx int) string {
+		if globalIdx < 0 || globalIdx >= len(promotionRowHints) {
+			return ""
+		}
+		return promotionRowHints[globalIdx]
+	}
+
+	drawMemberRow := func(globalIdx int, h hero.Hero, slotCaption, roleCaption string, inReserve bool, promoHint string) {
 		ry := y
 		rowW := panelW - 32
 		fill := Theme.RosterCardContentWell
@@ -140,6 +148,20 @@ func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *par
 		}
 		drawSingleLineInRect(screen, hudFace, rect{X: innerX + 10, Y: ry + 6 + lineH*1.05, W: rowW - 100, H: lineH * 0.95}, slotShort, metrics, Theme.TextMuted)
 
+		if promoHint != "" {
+			hCol := Theme.TextMuted
+			switch promoHint {
+			case "Повышение!":
+				hCol = Theme.TextSuccess
+			case "Лагерь":
+				hCol = Theme.HoverTarget
+			case "Знаки", "Ветка":
+				hCol = Theme.ValidTarget
+			}
+			// Справа от подписи роли, левее блока HP (см. hpTxt ниже).
+			drawSingleLineInRect(screen, hudFace, rect{X: innerX + rowW - 230, Y: ry + 6, W: 100, H: lineH * 0.92}, promoHint, metrics, hCol)
+		}
+
 		hpTxt := fmt.Sprintf("%d/%d", h.CurrentHP, h.MaxHP)
 		if h.CurrentHP <= 0 {
 			hpTxt = "выбыл"
@@ -158,7 +180,7 @@ func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *par
 	for i := 0; i < na; i++ {
 		slot := party.FormationSlotCaption(i)
 		role := party.MemberRoleCaption(i)
-		drawMemberRow(i, p.Active[i], slot, role, false)
+		drawMemberRow(i, p.Active[i], slot, role, false, promoHintAt(i))
 	}
 
 	if nr > 0 {
@@ -167,7 +189,7 @@ func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *par
 		for j := 0; j < nr; j++ {
 			gidx := na + j
 			role := party.ReserveRowCaption(j)
-			drawMemberRow(gidx, p.Reserve[j], "не участвует в бою", role, true)
+			drawMemberRow(gidx, p.Reserve[j], "не участвует в бою", role, true, promoHintAt(gidx))
 		}
 	}
 

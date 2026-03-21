@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	text "github.com/hajimehoshi/ebiten/v2/text/v2"
@@ -22,7 +23,8 @@ func battleInspectPanelWidth(screenW int) float32 {
 }
 
 // DrawBattleInspectOverlay — карточка по ПКМ в бою: союзник (hero + текущее ОЗ) или враг.
-func DrawBattleInspectOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, u *battlepkg.CombatUnit, screenW, screenH int, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int) {
+// promotionHeadline — готовность повышения (в бою лагерь недоступен — строка обычно про «нужен лагерь»).
+func DrawBattleInspectOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, u *battlepkg.CombatUnit, screenW, screenH int, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int, promotionHeadline string) {
 	if hudFace == nil || p == nil || u == nil {
 		return
 	}
@@ -38,7 +40,7 @@ func DrawBattleInspectOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p 
 			return
 		}
 		snap := heroSnapshotBattleInspect(h, u)
-		m = buildBattleInspectAllyModel(&snap, u, idx, len(p.Active), trainingMarks, promoteTargets, promoteCosts, branchIdx)
+		m = buildBattleInspectAllyModel(&snap, u, idx, len(p.Active), trainingMarks, promoteTargets, promoteCosts, branchIdx, promotionHeadline)
 	} else {
 		m = buildBattleInspectEnemyModel(u)
 	}
@@ -116,7 +118,7 @@ func heroSnapshotBattleInspect(h *hero.Hero, u *battlepkg.CombatUnit) hero.Hero 
 	return snap
 }
 
-func buildBattleInspectAllyModel(h *hero.Hero, u *battlepkg.CombatUnit, idx, na int, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int) InspectCardModel {
+func buildBattleInspectAllyModel(h *hero.Hero, u *battlepkg.CombatUnit, idx, na int, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int, promotionHeadline string) InspectCardModel {
 	m := InspectCardModel{
 		BattlePortraitLayout: true,
 		BattlePortrait:       battlePortraitImageForInspectAlly(h),
@@ -139,7 +141,11 @@ func buildBattleInspectAllyModel(h *hero.Hero, u *battlepkg.CombatUnit, idx, na 
 	m.AbilityLines = abilityLinesBullet(h.Abilities)
 
 	atCamp := false
-	m.ProgressLines = battleInspectAllyProgressLines(h, atCamp, trainingMarks, promoteTargets, promoteCosts, branchIdx)
+	lines := battleInspectAllyProgressLines(h, atCamp, trainingMarks, promoteTargets, promoteCosts, branchIdx)
+	if strings.TrimSpace(promotionHeadline) != "" {
+		lines = append([]string{strings.TrimSpace(promotionHeadline)}, lines...)
+	}
+	m.ProgressLines = lines
 	return m
 }
 
@@ -277,14 +283,14 @@ func abilityLinesBullet(ids []battlepkg.AbilityID) []string {
 	return out
 }
 
-const maxBattleInspectProgressLines = 5
+const maxBattleInspectProgressLines = 7
 
 func battleInspectAllyProgressLines(h *hero.Hero, atCamp bool, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int) []string {
 	if h == nil {
 		return nil
 	}
 	var out []string
-	out = append(out, inspectCombatXPProgressLine(h))
+	out = append(out, FormatCombatXPInspectLines(h)...)
 	promo := inspectPromotionLines(h, atCamp, trainingMarks, promoteTargets, promoteCosts, branchIdx)
 	for _, ln := range promo {
 		out = append(out, ln)

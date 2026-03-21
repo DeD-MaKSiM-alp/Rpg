@@ -10,7 +10,7 @@ import (
 
 func TestInspectAndBattleUseSameAbilityLabels(t *testing.T) {
 	h := hero.DefaultHero()
-	m := buildFormationInspectCardModel(&h, 0, 1, false, false, 0, nil, nil, 0, "")
+	m := buildFormationInspectCardModel(&h, 0, 1, false, false, 0, nil, nil, 0, "", "")
 	flat := FlattenInspectCardText(m)
 	label := battlepkg.PlayerAbilityLabelRU(battlepkg.AbilityBasicAttack)
 	if !strings.Contains(flat, label) {

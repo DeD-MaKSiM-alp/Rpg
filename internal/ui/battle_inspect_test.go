@@ -74,12 +74,12 @@ func TestBuildBattleInspectAllyModel_hasProgressionSection(t *testing.T) {
 		},
 		Origin: battlepkg.CombatUnitOrigin{PartyActiveIndex: 0},
 	}
-	m := buildBattleInspectAllyModel(&h, u, 0, 1, 0, nil, nil, 0)
+	m := buildBattleInspectAllyModel(&h, u, 0, 1, 0, nil, nil, 0, "")
 	if len(m.ProgressLines) == 0 {
 		t.Fatal("ally should have progression lines")
 	}
 	joined := strings.Join(m.ProgressLines, " ")
-	if !strings.Contains(joined, "Опыт") {
+	if !strings.Contains(strings.ToLower(joined), "опыт") {
 		t.Fatalf("expected XP line, got %v", m.ProgressLines)
 	}
 }

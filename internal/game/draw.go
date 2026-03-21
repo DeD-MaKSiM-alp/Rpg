@@ -33,10 +33,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawDebugInfo(screen)
 	}
 
-	ui.DrawHUD(screen, g.pickupCount, g.TrainingMarks, g.hudFace)
+	atCamp := g.world.PlayerStandsOnActiveRecruitCamp(g.player.GridX, g.player.GridY)
+	promoHUD := PromotionExploreHUDLine(&g.party, atCamp, g.TrainingMarks)
+	ui.DrawHUD(screen, g.pickupCount, g.TrainingMarks, g.hudFace, g.party.Leader(), ScreenWidth, promoHUD)
 
 	if g.mode == ModeExplore || g.mode == ModeRecruitOffer {
-		ui.DrawExplorePartyStrip(screen, g.hudFace, &g.party, ScreenWidth)
+		promoStrip := PromotionExploreStripLine(&g.party, atCamp, g.TrainingMarks)
+		ui.DrawExplorePartyStrip(screen, g.hudFace, &g.party, ScreenWidth, promoStrip)
 	}
 	if g.mode == ModeExplore {
 		ui.DrawExploreFormationHint(screen, g.hudFace, ScreenWidth, ScreenHeight, g.exploreRestMsg, g.exploreRecruitMsg, g.world.ExploreHUDHintLine(g.player.GridX, g.player.GridY))
@@ -47,11 +50,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	if g.mode == ModeFormation {
-		ui.DrawFormationOverlay(screen, g.hudFace, &g.party, g.formationSel, ScreenWidth, ScreenHeight, g.formationInspectOpen, g.inspectHoverFormationGlobalIdx)
+		promoHints := PromotionFormationRowHints(&g.party, atCamp, g.TrainingMarks)
+		ui.DrawFormationOverlay(screen, g.hudFace, &g.party, g.formationSel, ScreenWidth, ScreenHeight, g.formationInspectOpen, g.inspectHoverFormationGlobalIdx, promoHints)
 		if g.formationInspectOpen {
-			atCamp := g.world.PlayerStandsOnActiveRecruitCamp(g.player.GridX, g.player.GridY)
 			var promoTargets []string
 			promoCosts := []int(nil)
+			var promoHead string
 			if h := g.party.HeroAtGlobalIndex(g.formationSel); h != nil {
 				promoTargets, _ = hero.PromotionTargetUnitIDs(h)
 				promoCosts = make([]int, len(promoTargets))
@@ -61,8 +65,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 						promoCosts[i] = c
 					}
 				}
+				promoHead = PromotionInspectHeadline(h, atCamp, g.TrainingMarks, promoTargets, g.formationPromoteBranchIdx)
 			}
-			ui.DrawCharacterInspectOverlay(screen, g.hudFace, &g.party, g.formationSel, ScreenWidth, ScreenHeight, g.formationMsg, atCamp, g.TrainingMarks, promoTargets, promoCosts, g.formationPromoteBranchIdx)
+			ui.DrawCharacterInspectOverlay(screen, g.hudFace, &g.party, g.formationSel, ScreenWidth, ScreenHeight, g.formationMsg, atCamp, g.TrainingMarks, promoTargets, promoCosts, g.formationPromoteBranchIdx, promoHead)
 		}
 	}
 
@@ -85,6 +90,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			if u != nil {
 				var promoTargets []string
 				promoCosts := []int(nil)
+				promoHead := ""
 				if u.Side == battlepkg.TeamPlayer && u.Origin.PartyActiveIndex >= 0 {
 					if h := g.party.HeroAtGlobalIndex(u.Origin.PartyActiveIndex); h != nil {
 						promoTargets, _ = hero.PromotionTargetUnitIDs(h)
@@ -95,9 +101,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 								promoCosts[i] = c
 							}
 						}
+						promoHead = PromotionInspectHeadline(h, false, g.TrainingMarks, promoTargets, g.formationPromoteBranchIdx)
 					}
 				}
-				ui.DrawBattleInspectOverlay(screen, g.hudFace, &g.party, u, ScreenWidth, ScreenHeight, g.TrainingMarks, promoTargets, promoCosts, g.formationPromoteBranchIdx)
+				ui.DrawBattleInspectOverlay(screen, g.hudFace, &g.party, u, ScreenWidth, ScreenHeight, g.TrainingMarks, promoTargets, promoCosts, g.formationPromoteBranchIdx, promoHead)
 			}
 		}
 	}

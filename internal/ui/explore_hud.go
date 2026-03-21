@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	text "github.com/hajimehoshi/ebiten/v2/text/v2"
@@ -11,8 +12,8 @@ import (
 	"mygame/internal/party"
 )
 
-// DrawExplorePartyStrip — компактная панель отряда в explore (канонический HP).
-func DrawExplorePartyStrip(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, screenW int) {
+// DrawExplorePartyStrip — компактная панель отряда в explore (канонический HP). promoStrip — короткая строка готовности повышения (может быть пустой).
+func DrawExplorePartyStrip(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, screenW int, promoStrip string) {
 	if hudFace == nil || p == nil || len(p.Active) == 0 {
 		return
 	}
@@ -28,7 +29,19 @@ func DrawExplorePartyStrip(screen *ebiten.Image, hudFace *text.GoTextFace, p *pa
 	if nr > 0 {
 		extraLines = 1
 	}
-	panelH := pad*2 + lineH*float32(n+extraLines) + float32(n)*6 + float32(extraLines)*4
+	var leaderProg string
+	if lh := p.Leader(); lh != nil {
+		leaderProg = FormatLeaderExploreStripLine(lh)
+	}
+	extraProg := 0
+	if leaderProg != "" {
+		extraProg = 1
+	}
+	extraPromo := 0
+	if strings.TrimSpace(promoStrip) != "" {
+		extraPromo = 1
+	}
+	panelH := pad*2 + lineH*float32(n+extraLines+extraProg+extraPromo) + float32(n)*6 + float32(extraLines)*4
 	x := float32(10)
 	y := float32(46)
 
@@ -46,6 +59,16 @@ func DrawExplorePartyStrip(screen *ebiten.Image, hudFace *text.GoTextFace, p *pa
 	drawSingleLineInRect(screen, hudFace, titleR, title, metrics, Theme.TextMuted)
 
 	rowY := y + 8 + lineH + 4
+	if leaderProg != "" {
+		pr := rect{X: x + 8, Y: rowY, W: maxW - 16, H: lineH * 1.05}
+		drawSingleLineInRect(screen, hudFace, pr, trimTextToWidth(hudFace, leaderProg, maxW-16), metrics, Theme.TextSecondary)
+		rowY += lineH + 2
+	}
+	if strings.TrimSpace(promoStrip) != "" {
+		pr := rect{X: x + 8, Y: rowY, W: maxW - 16, H: lineH * 1.05}
+		drawSingleLineInRect(screen, hudFace, pr, trimTextToWidth(hudFace, promoStrip, maxW-16), metrics, Theme.RecoveryBanner)
+		rowY += lineH + 2
+	}
 	for i := range p.Active {
 		h := &p.Active[i]
 		role := party.MemberRoleCaption(i)
@@ -129,7 +152,7 @@ func DrawExploreFormationHintLines(screen *ebiten.Image, hudFace *text.GoTextFac
 	op := &text.DrawOptions{}
 	op.GeoM.Translate(14, float64(y))
 	op.ColorScale.ScaleWithColor(Theme.TextSecondary)
-	text.Draw(screen, "F5 — состав (I — карточка бойца) · лагерь (лазурный) · F9 — демо-рекрут", hudFace, op)
+	text.Draw(screen, "F5 — состав (I: опыт, знаки, повышение) · лагерь · F9 — демо-рекрут", hudFace, op)
 }
 
 // DrawExploreFormationHint — подсказки F5/R/F9 и баннеры recovery/recruit; общий стиль с explore bar.

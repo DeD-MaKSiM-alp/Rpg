@@ -14,7 +14,8 @@ import (
 )
 
 // DrawCharacterInspectOverlay — карточка бойца (F5 → I / ПКМ); тот же визуальный шаблон, что и battle inspect.
-func DrawCharacterInspectOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, globalIdx int, screenW, screenH int, feedbackBanner string, atCamp bool, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int) {
+// promotionHeadline — первая строка блока «Развитие» (готовность повышения из game.PromotionInspectHeadline); может быть пустой.
+func DrawCharacterInspectOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, globalIdx int, screenW, screenH int, feedbackBanner string, atCamp bool, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int, promotionHeadline string) {
 	if hudFace == nil || p == nil {
 		return
 	}
@@ -28,7 +29,7 @@ func DrawCharacterInspectOverlay(screen *ebiten.Image, hudFace *text.GoTextFace,
 	na := len(p.Active)
 	inReserve := globalIdx >= na
 
-	m := buildFormationInspectCardModel(h, globalIdx, na, inReserve, atCamp, trainingMarks, promoteTargets, promoteCosts, branchIdx, feedbackBanner)
+	m := buildFormationInspectCardModel(h, globalIdx, na, inReserve, atCamp, trainingMarks, promoteTargets, promoteCosts, branchIdx, feedbackBanner, promotionHeadline)
 
 	panelW := DefaultInspectCardPanelWidth(screenW)
 	panelH := EstimateInspectCardHeight(m)
@@ -42,7 +43,7 @@ func DrawCharacterInspectOverlay(screen *ebiten.Image, hudFace *text.GoTextFace,
 	DrawInspectCardContent(screen, hudFace, px, py, panelW, m)
 }
 
-func buildFormationInspectCardModel(h *hero.Hero, globalIdx, na int, inReserve bool, atCamp bool, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int, feedbackBanner string) InspectCardModel {
+func buildFormationInspectCardModel(h *hero.Hero, globalIdx, na int, inReserve bool, atCamp bool, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int, feedbackBanner string, promotionHeadline string) InspectCardModel {
 	m := InspectCardModel{
 		RoleIcon:    InspectRoleIconFromHero(h),
 		Title:       inspectPrimaryTitle(h, globalIdx, na),
@@ -60,7 +61,11 @@ func buildFormationInspectCardModel(h *hero.Hero, globalIdx, na int, inReserve b
 	m.StatsLine = fmt.Sprintf("Атака %d · Защита %d · Инициатива %d · Лечение +%d", h.Attack, h.Defense, h.Initiative, healTotal)
 	m.ExtraStatLine = ""
 	m.AbilityLines = abilityLinesBullet(h.Abilities)
-	m.ProgressLines = formationInspectProgressLines(h, inReserve, atCamp, trainingMarks, promoteTargets, promoteCosts, branchIdx)
+	lines := formationInspectProgressLines(h, inReserve, atCamp, trainingMarks, promoteTargets, promoteCosts, branchIdx)
+	if strings.TrimSpace(promotionHeadline) != "" {
+		lines = append([]string{strings.TrimSpace(promotionHeadline)}, lines...)
+	}
+	m.ProgressLines = lines
 	return m
 }
 
@@ -71,14 +76,14 @@ func formationContextLine(globalIdx, na int, inReserve bool) string {
 	return party.FormationSlotCaption(globalIdx)
 }
 
-const maxFormationInspectProgressLines = 6
+const maxFormationInspectProgressLines = 8
 
 func formationInspectProgressLines(h *hero.Hero, inReserve bool, atCamp bool, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int) []string {
 	if h == nil {
 		return nil
 	}
 	var out []string
-	out = append(out, inspectCombatXPProgressLine(h))
+	out = append(out, FormatCombatXPInspectLines(h)...)
 	promo := inspectPromotionLines(h, atCamp, trainingMarks, promoteTargets, promoteCosts, branchIdx)
 	for _, ln := range promo {
 		out = append(out, ln)
@@ -95,16 +100,6 @@ func formationInspectProgressLines(h *hero.Hero, inReserve bool, atCamp bool, tr
 		return out[:maxFormationInspectProgressLines]
 	}
 	return out
-}
-
-func inspectCombatXPProgressLine(h *hero.Hero) string {
-	if h == nil {
-		return ""
-	}
-	effective := h.EffectiveBasicAttackBonusForCombat()
-	baseBonus := h.BasicAttackBonus
-	xpPart := h.CombatExperience / hero.CombatXPStepsPerBasicAttackBonus
-	return fmt.Sprintf("Опыт %d · удар +%d (лид %d + опыт %d)", h.CombatExperience, effective, baseBonus, xpPart)
 }
 
 func inspectPromotionFooterHint(atCamp bool, nTargets int) string {

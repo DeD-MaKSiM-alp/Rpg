@@ -8,6 +8,7 @@ import (
 	text "github.com/hajimehoshi/ebiten/v2/text/v2"
 
 	battlepkg "mygame/internal/battle"
+	"mygame/internal/hero"
 )
 
 // DrawDebugInputDirection рисует raw и выданное (emit) направление ввода (временный debug для проверки диагонали).
@@ -15,10 +16,10 @@ func DrawDebugInputDirection(screen *ebiten.Image, rawDX, rawDY, emitDX, emitDY 
 	ebitenutil.DebugPrint(screen, fmt.Sprintf("Input raw: dx=%d dy=%d | emit: dx=%d dy=%d\n", rawDX, rawDY, emitDX, emitDY))
 }
 
-// DrawHUD рисует поверх кадра элементы HUD (например, счётчик собранных предметов и знаки обучения).
-// Цена повышения зависит от tier цели — см. карточку бойца в составе (F5 → I).
-func DrawHUD(screen *ebiten.Image, pickupCount, trainingMarks int, hudFace *text.GoTextFace) {
-	drawHUDText(screen, pickupCount, trainingMarks, hudFace)
+// DrawHUD рисует поверх кадра элементы HUD: предметы, знаки обучения, прогресс лидера, строка готовности повышения (если не пустая).
+// leader может быть nil; screenW — для обрезки длинных строк; promotionLine — из game.PromotionExploreHUDLine.
+func DrawHUD(screen *ebiten.Image, pickupCount, trainingMarks int, hudFace *text.GoTextFace, leader *hero.Hero, screenW int, promotionLine string) {
+	drawHUDText(screen, pickupCount, trainingMarks, hudFace, leader, screenW, promotionLine)
 }
 
 // DrawBattleOverlay рисует поверх кадра HUD для боевого режима.

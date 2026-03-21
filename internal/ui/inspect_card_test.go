@@ -11,7 +11,7 @@ import (
 
 func TestFormationInspectCardModel_hasProgressionNoEnemyFlag(t *testing.T) {
 	h := hero.DefaultHero()
-	m := buildFormationInspectCardModel(&h, 0, 1, false, false, 0, nil, nil, 0, "")
+	m := buildFormationInspectCardModel(&h, 0, 1, false, false, 0, nil, nil, 0, "", "")
 	if m.IsEnemy {
 		t.Fatal("formation ally")
 	}
@@ -24,7 +24,7 @@ func TestFlattenInspectCardText_noRawUnitIDInFormation(t *testing.T) {
 	secret := "hidden_unit_id_xyz"
 	h := hero.DefaultHero()
 	h.UnitID = secret
-	m := buildFormationInspectCardModel(&h, 0, 1, false, false, 0, nil, nil, 0, "")
+	m := buildFormationInspectCardModel(&h, 0, 1, false, false, 0, nil, nil, 0, "", "")
 	s := FlattenInspectCardText(m)
 	if strings.Contains(s, secret) {
 		t.Fatal("raw unit id should not appear in card text")
@@ -33,7 +33,7 @@ func TestFlattenInspectCardText_noRawUnitIDInFormation(t *testing.T) {
 
 func TestFormationInspectCard_mergedStatsAndNoExtraHealLine(t *testing.T) {
 	h := hero.DefaultHero()
-	m := buildFormationInspectCardModel(&h, 0, 1, false, false, 0, nil, nil, 0, "")
+	m := buildFormationInspectCardModel(&h, 0, 1, false, false, 0, nil, nil, 0, "", "")
 	if m.ExtraStatLine != "" {
 		t.Fatalf("ExtraStatLine should be merged into StatsLine, got %q", m.ExtraStatLine)
 	}
@@ -53,11 +53,11 @@ func TestInspectCard_progressionLineBudget(t *testing.T) {
 		},
 		Origin: battlepkg.CombatUnitOrigin{PartyActiveIndex: 0},
 	}
-	battleM := buildBattleInspectAllyModel(&h, u, 0, 1, 0, nil, nil, 0)
+	battleM := buildBattleInspectAllyModel(&h, u, 0, 1, 0, nil, nil, 0, "")
 	if len(battleM.ProgressLines) > maxBattleInspectProgressLines {
 		t.Fatalf("battle progression too long: %d lines %v", len(battleM.ProgressLines), battleM.ProgressLines)
 	}
-	formM := buildFormationInspectCardModel(&h, 0, 1, false, false, 0, nil, nil, 0, "")
+	formM := buildFormationInspectCardModel(&h, 0, 1, false, false, 0, nil, nil, 0, "", "")
 	if len(formM.ProgressLines) > maxFormationInspectProgressLines {
 		t.Fatalf("formation progression too long: %d lines %v", len(formM.ProgressLines), formM.ProgressLines)
 	}
@@ -65,7 +65,7 @@ func TestInspectCard_progressionLineBudget(t *testing.T) {
 
 func TestInspectCard_abilitiesStillListed(t *testing.T) {
 	h := hero.DefaultHero()
-	m := buildFormationInspectCardModel(&h, 0, 1, false, false, 0, nil, nil, 0, "")
+	m := buildFormationInspectCardModel(&h, 0, 1, false, false, 0, nil, nil, 0, "", "")
 	flat := FlattenInspectCardText(m)
 	if !strings.Contains(flat, "Базовый удар") {
 		t.Fatalf("expected default ability label in card: %q", flat)
