@@ -17,6 +17,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	g.world.Draw(screen, g.cameraX, g.cameraY, WorldViewport.WidthTiles, WorldViewport.HeightTiles, tileSize)
 	g.drawGrid(screen)
+	if g.mode == ModeExplore {
+		g.world.DrawExploreCues(screen, g.player.GridX, g.player.GridY, g.cameraX, g.cameraY, WorldViewport.WidthTiles, WorldViewport.HeightTiles, tileSize)
+	}
 
 	if debugShowChunkOverlay {
 		viewportW := WorldViewport.WidthTiles * tileSize
@@ -36,7 +39,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ui.DrawExplorePartyStrip(screen, g.hudFace, &g.party, ScreenWidth)
 	}
 	if g.mode == ModeExplore {
-		ui.DrawExploreFormationHint(screen, g.hudFace, ScreenWidth, ScreenHeight, g.exploreRestMsg, g.exploreRecruitMsg)
+		ui.DrawExploreFormationHint(screen, g.hudFace, ScreenWidth, ScreenHeight, g.exploreRestMsg, g.exploreRecruitMsg, g.world.ExploreHUDHintLine(g.player.GridX, g.player.GridY))
 	}
 
 	if g.mode == ModeRecruitOffer {
@@ -70,7 +73,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	if g.mode == ModeBattle {
-		ui.DrawBattleOverlay(screen, g.hudFace, g.battle, ScreenWidth, ScreenHeight)
+		ui.DrawBattleOverlay(screen, g.hudFace, g.battle, ScreenWidth, ScreenHeight, g.battleInspectUnitID, g.battleInspectOpen)
 		if g.battle != nil && !g.postBattle.IsActive() {
 			ui.DrawBattleInspectHighlights(screen, g.battle, ScreenWidth, ScreenHeight, g.inspectHoverBattleUnitID, g.battleInspectOpen, g.battleInspectUnitID)
 		}

@@ -12,6 +12,15 @@ import (
 	"mygame/internal/unitdata"
 )
 
+// battleInspectPanelWidth — шире обычной карточки: место под крупный портрет battle inspect.
+func battleInspectPanelWidth(screenW int) float32 {
+	w := float32(620)
+	if float32(screenW)-40 < w {
+		w = float32(screenW) - 40
+	}
+	return w
+}
+
 // DrawBattleInspectOverlay — карточка по ПКМ в бою: союзник (hero + текущее ОЗ) или враг.
 func DrawBattleInspectOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, u *battlepkg.CombatUnit, screenW, screenH int, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int) {
 	if hudFace == nil || p == nil || u == nil {
@@ -19,7 +28,7 @@ func DrawBattleInspectOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p 
 	}
 	sw := float32(screenW)
 	sh := float32(screenH)
-	panelW := DefaultInspectCardPanelWidth(screenW)
+	panelW := battleInspectPanelWidth(screenW)
 
 	var m InspectCardModel
 	if u.Side == battlepkg.TeamPlayer && u.Origin.PartyActiveIndex >= 0 && u.Origin.PartyActiveIndex < len(p.Active) {
@@ -49,6 +58,51 @@ func battleInspectCardFooter() string {
 	return "Esc или ПКМ мимо — закрыть · ПКМ по другому юниту — переключить"
 }
 
+func battlePortraitImageForInspectAlly(h *hero.Hero) *ebiten.Image {
+	if h == nil {
+		return nil
+	}
+	if h.UnitID == unitdata.EmpireWarriorSquire {
+		return SquirePortraitImage()
+	}
+	return nil
+}
+
+func battlePortraitImageForInspectEnemy(u *battlepkg.CombatUnit) *ebiten.Image {
+	if u == nil {
+		return nil
+	}
+	if u.Def.TemplateUnitID == unitdata.EmpireWarriorSquire {
+		return SquirePortraitImage()
+	}
+	return nil
+}
+
+func loreParagraphBattleInspectAlly(h *hero.Hero) string {
+	if h == nil {
+		return ""
+	}
+	if tpl, ok := unitdata.GetUnitTemplate(h.UnitID); ok && tpl.InspectNote != "" {
+		return tpl.InspectNote
+	}
+	if h.RecruitLabel != "" {
+		return fmt.Sprintf("%s — черновая запись в отряде; полная хроника появится позже.", h.RecruitLabel)
+	}
+	return "Черновая заглушка: для этого бойца ещё нет готовой записи в хронике кампании."
+}
+
+func loreParagraphBattleInspectEnemy(u *battlepkg.CombatUnit) string {
+	if u == nil {
+		return ""
+	}
+	if u.Def.TemplateUnitID != "" {
+		if tpl, ok := unitdata.GetUnitTemplate(u.Def.TemplateUnitID); ok && tpl.InspectNote != "" {
+			return tpl.InspectNote
+		}
+	}
+	return "Разведданные неполные. Облик и происхождение противника будут уточнены в следующих билдах."
+}
+
 func heroSnapshotBattleInspect(h *hero.Hero, u *battlepkg.CombatUnit) hero.Hero {
 	if h == nil || u == nil {
 		return hero.Hero{}
@@ -64,14 +118,17 @@ func heroSnapshotBattleInspect(h *hero.Hero, u *battlepkg.CombatUnit) hero.Hero 
 
 func buildBattleInspectAllyModel(h *hero.Hero, u *battlepkg.CombatUnit, idx, na int, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int) InspectCardModel {
 	m := InspectCardModel{
-		RoleIcon:    InspectRoleIconFromHero(h),
-		Title:       inspectPrimaryTitle(h, idx, na),
-		ContextLine: fmt.Sprintf("В бою · %s", party.FormationSlotCaption(idx)),
-		HPCur:       h.CurrentHP,
-		HPMax:       h.MaxHP,
-		Alive:       u.IsAlive(),
-		IsEnemy:     false,
-		Footer:      battleInspectCardFooter(),
+		BattlePortraitLayout: true,
+		BattlePortrait:       battlePortraitImageForInspectAlly(h),
+		LoreParagraph:        loreParagraphBattleInspectAlly(h),
+		RoleIcon:             InspectRoleIconFromHero(h),
+		Title:                inspectPrimaryTitle(h, idx, na),
+		ContextLine:          fmt.Sprintf("В бою · %s", party.FormationSlotCaption(idx)),
+		HPCur:                h.CurrentHP,
+		HPMax:                h.MaxHP,
+		Alive:                u.IsAlive(),
+		IsEnemy:              false,
+		Footer:               battleInspectCardFooter(),
 	}
 	m.Badges = compactTierRangeBadgesFromHero(h)
 	m.ProfileLines = templateProfileShortLines(h)
@@ -88,14 +145,17 @@ func buildBattleInspectAllyModel(h *hero.Hero, u *battlepkg.CombatUnit, idx, na 
 
 func buildBattleInspectEnemyModel(u *battlepkg.CombatUnit) InspectCardModel {
 	m := InspectCardModel{
-		RoleIcon:    InspectRoleIconFromCombatUnit(u),
-		Title:       u.Name(),
-		ContextLine: "Противник",
-		HPCur:       u.State.HP,
-		HPMax:       u.MaxHP(),
-		Alive:       u.IsAlive(),
-		IsEnemy:     true,
-		Footer:      battleInspectCardFooter(),
+		BattlePortraitLayout: true,
+		BattlePortrait:       battlePortraitImageForInspectEnemy(u),
+		LoreParagraph:        loreParagraphBattleInspectEnemy(u),
+		RoleIcon:             InspectRoleIconFromCombatUnit(u),
+		Title:                u.Name(),
+		ContextLine:          "Противник",
+		HPCur:                u.State.HP,
+		HPMax:                u.MaxHP(),
+		Alive:                u.IsAlive(),
+		IsEnemy:              true,
+		Footer:               battleInspectCardFooter(),
 	}
 	m.Badges = compactTierRangeBadgesFromEnemy(u)
 	m.ProfileLines = enemyProfileLines(u)

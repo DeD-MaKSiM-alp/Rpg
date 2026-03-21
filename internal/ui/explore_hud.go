@@ -32,8 +32,9 @@ func DrawExplorePartyStrip(screen *ebiten.Image, hudFace *text.GoTextFace, p *pa
 	x := float32(10)
 	y := float32(46)
 
-	vector.FillRect(screen, x, y, maxW, panelH, Theme.PanelBG, false)
-	vector.StrokeRect(screen, x, y, maxW, panelH, 1, Theme.PanelBorder, false)
+	vector.FillRect(screen, x, y, maxW, panelH, Theme.PanelBGDeep, false)
+	vector.FillRect(screen, x, y, 4, panelH, Theme.AccentStrip, false)
+	vector.StrokeRect(screen, x, y, maxW, panelH, 1, Theme.PostBattleBorder, false)
 	DrawThinAccentLine(screen, x+6, y+4, maxW-12)
 
 	metrics := battlepkg.HUDMetrics{LineH: lineH}
@@ -72,9 +73,12 @@ func DrawExplorePartyStrip(screen *ebiten.Image, hudFace *text.GoTextFace, p *pa
 }
 
 // DrawExploreHintPanelLayout возвращает Y первой строки текста и шаг для подсказок explore (после отрисовки подложки).
-func DrawExploreHintPanelLayout(screen *ebiten.Image, screenW, screenH int, restFeedback, recruitFeedback string) (firstY, lineStep float32) {
+func DrawExploreHintPanelLayout(screen *ebiten.Image, screenW, screenH int, restFeedback, recruitFeedback, interactionHint string) (firstY, lineStep float32) {
 	lineStep = 22
 	n := 2
+	if interactionHint != "" {
+		n++
+	}
 	if restFeedback != "" {
 		n++
 	}
@@ -84,17 +88,25 @@ func DrawExploreHintPanelLayout(screen *ebiten.Image, screenW, screenH int, rest
 	pad := float32(8)
 	h := float32(n)*lineStep + pad*2
 	y0 := float32(screenH) - h
-	vector.FillRect(screen, 0, y0, float32(screenW), h, Theme.ExploreBarBG, false)
-	vector.StrokeRect(screen, 0, y0, float32(screenW), h, 1, Theme.ExploreBarBorder, false)
+	drawUnifiedBottomBarChrome(screen, 0, y0, float32(screenW), h)
 	return y0 + pad, lineStep
 }
 
 // DrawExploreFormationHintLines — текст подсказок поверх DrawExploreHintPanelLayout.
-func DrawExploreFormationHintLines(screen *ebiten.Image, hudFace *text.GoTextFace, firstY, lineStep float32, restFeedback, recruitFeedback string) {
+func DrawExploreFormationHintLines(screen *ebiten.Image, hudFace *text.GoTextFace, screenW int, firstY, lineStep float32, restFeedback, recruitFeedback, interactionHint string) {
 	if hudFace == nil {
 		return
 	}
 	y := firstY
+	maxW := float32(screenW) - 28
+	if interactionHint != "" {
+		line := trimTextToWidth(hudFace, interactionHint, maxW)
+		op := &text.DrawOptions{}
+		op.GeoM.Translate(14, float64(y))
+		op.ColorScale.ScaleWithColor(Theme.HoverTarget)
+		text.Draw(screen, line, hudFace, op)
+		y += lineStep
+	}
 	if restFeedback != "" {
 		opF := &text.DrawOptions{}
 		opF.GeoM.Translate(14, float64(y))
@@ -121,10 +133,11 @@ func DrawExploreFormationHintLines(screen *ebiten.Image, hudFace *text.GoTextFac
 }
 
 // DrawExploreFormationHint — подсказки F5/R/F9 и баннеры recovery/recruit; общий стиль с explore bar.
-func DrawExploreFormationHint(screen *ebiten.Image, hudFace *text.GoTextFace, screenW, screenH int, restFeedback, recruitFeedback string) {
+// interactionHint — динамическая строка «что рядом» (шаг на бой / добычу / лагерь); пусто = не рисовать.
+func DrawExploreFormationHint(screen *ebiten.Image, hudFace *text.GoTextFace, screenW, screenH int, restFeedback, recruitFeedback, interactionHint string) {
 	if hudFace == nil || screenH < 40 {
 		return
 	}
-	firstY, step := DrawExploreHintPanelLayout(screen, screenW, screenH, restFeedback, recruitFeedback)
-	DrawExploreFormationHintLines(screen, hudFace, firstY, step, restFeedback, recruitFeedback)
+	firstY, step := DrawExploreHintPanelLayout(screen, screenW, screenH, restFeedback, recruitFeedback, interactionHint)
+	DrawExploreFormationHintLines(screen, hudFace, screenW, firstY, step, restFeedback, recruitFeedback, interactionHint)
 }

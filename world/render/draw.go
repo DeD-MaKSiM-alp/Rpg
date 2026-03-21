@@ -6,7 +6,9 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
+	"mygame/internal/visualcolor"
 	"mygame/world/entity"
+	"mygame/world/generation"
 	"mygame/world/mapdata"
 )
 
@@ -31,39 +33,86 @@ func Draw(
 }
 
 func drawTiles(screen *ebiten.Image, source DrawSource, cameraX, cameraY, endX, endY, tileSize int) {
-	floorColor := color.RGBA{R: 30, G: 30, B: 30, A: 255}
-	wallColor := color.RGBA{R: 90, G: 90, B: 90, A: 255}
-	grassColor := color.RGBA{R: 40, G: 110, B: 40, A: 255}
-	waterColor := color.RGBA{R: 40, G: 80, B: 170, A: 255}
-
+	ts := float32(tileSize)
 	for worldY := cameraY; worldY < endY; worldY++ {
 		for worldX := cameraX; worldX < endX; worldX++ {
 			tile := source.GetTileAt(worldX, worldY)
-			var tileColor color.RGBA
-			switch tile {
-			case mapdata.TileFloor:
-				tileColor = floorColor
-			case mapdata.TileWall:
-				tileColor = wallColor
-			case mapdata.TileGrass:
-				tileColor = grassColor
-			case mapdata.TileWater:
-				tileColor = waterColor
-			default:
-				tileColor = floorColor
-			}
+			tileColor := tileBaseColor(tile, worldX, worldY)
 			screenX := float32((worldX - cameraX) * tileSize)
 			screenY := float32((worldY - cameraY) * tileSize)
-			vector.FillRect(screen, screenX, screenY, float32(tileSize), float32(tileSize), tileColor, false)
+			vector.FillRect(screen, screenX, screenY, ts, ts, tileColor, false)
+
+			if tile == mapdata.TileWall {
+				// Лёгкий «объём» стены: верхняя кромка светлее.
+				hl := wallHighlight()
+				vector.StrokeLine(screen, screenX+1, screenY+1, screenX+ts-1, screenY+1, 1, hl, false)
+				vector.StrokeRect(screen, screenX, screenY, ts, ts, 1, visualcolor.Foundation.PanelTitleSep, false)
+			} else if generation.IsTileWalkable(tile) {
+				// Тонкая кромка клетки пола — чуть лучше читается сетка без тяжёлой сетки.
+				vector.StrokeRect(screen, screenX+0.5, screenY+0.5, ts-1, ts-1, 0.75, floorGridLine(), false)
+			}
 		}
 	}
 }
 
-func drawPickups(screen *ebiten.Image, source DrawSource, cameraX, cameraY, endX, endY, tileSize int) {
-	pickupColorResource := color.RGBA{R: 240, G: 220, B: 60, A: 255}
-	pickupColorRecruit := color.RGBA{R: 80, G: 220, B: 220, A: 255}
-	pickupSize := float32(tileSize / 2)
+func tileBaseColor(tile mapdata.TileType, worldX, worldY int) color.RGBA {
+	parity := (worldX+worldY)&1 == 0
+	switch tile {
+	case mapdata.TileFloor:
+		return blendParity(visualcolor.Foundation.PanelBGDeep, visualcolor.Foundation.SceneTint, parity)
+	case mapdata.TileWall:
+		return visualcolor.Foundation.PanelBorder
+	case mapdata.TileGrass:
+		return blendParity(tintRGBA(visualcolor.Foundation.BattlefieldTokenAlly, -25, 15, -20), tintRGBA(visualcolor.Foundation.BattlefieldTokenAlly, -10, 28, -8), parity)
+	case mapdata.TileWater:
+		return blendParity(tintRGBA(visualcolor.Foundation.ValidTarget, -40, -20, 10), tintRGBA(visualcolor.Foundation.HoverTarget, -55, -35, -5), parity)
+	default:
+		return visualcolor.Foundation.PanelBGDeep
+	}
+}
 
+func blendParity(a, b color.RGBA, useA bool) color.RGBA {
+	if useA {
+		return a
+	}
+	return b
+}
+
+func tintRGBA(c color.RGBA, dr, dg, db int) color.RGBA {
+	r := int(c.R) + dr
+	g := int(c.G) + dg
+	bl := int(c.B) + db
+	if r < 0 {
+		r = 0
+	}
+	if r > 255 {
+		r = 255
+	}
+	if g < 0 {
+		g = 0
+	}
+	if g > 255 {
+		g = 255
+	}
+	if bl < 0 {
+		bl = 0
+	}
+	if bl > 255 {
+		bl = 255
+	}
+	return color.RGBA{R: uint8(r), G: uint8(g), B: uint8(bl), A: c.A}
+}
+
+func wallHighlight() color.RGBA {
+	return color.RGBA{R: 130, G: 136, B: 155, A: 200}
+}
+
+func floorGridLine() color.RGBA {
+	return color.RGBA{R: 32, G: 36, B: 46, A: 90}
+}
+
+func drawPickups(screen *ebiten.Image, source DrawSource, cameraX, cameraY, endX, endY, tileSize int) {
+	ts := float32(tileSize)
 	for _, chunk := range source.Chunks() {
 		for _, pickup := range chunk.Pickups {
 			if pickup.Collected {
@@ -72,21 +121,45 @@ func drawPickups(screen *ebiten.Image, source DrawSource, cameraX, cameraY, endX
 			if pickup.X < cameraX || pickup.X >= endX || pickup.Y < cameraY || pickup.Y >= endY {
 				continue
 			}
-			screenX := float32((pickup.X-cameraX)*tileSize) + float32(tileSize)/4
-			screenY := float32((pickup.Y-cameraY)*tileSize) + float32(tileSize)/4
-			pc := pickupColorResource
+			cx := float32((pickup.X-cameraX)*tileSize) + ts*0.5
+			cy := float32((pickup.Y-cameraY)*tileSize) + ts*0.5
+
 			if pickup.Kind == entity.PickupKindRecruitCamp {
-				pc = pickupColorRecruit
+				drawRecruitCampMarker(screen, cx, cy, ts)
+			} else {
+				drawResourcePickupMarker(screen, cx, cy, ts)
 			}
-			vector.FillRect(screen, screenX, screenY, pickupSize, pickupSize, pc, false)
 		}
 	}
 }
 
-func drawEnemies(screen *ebiten.Image, source DrawSource, cameraX, cameraY, endX, endY, tileSize int) {
-	enemyColor := color.RGBA{R: 200, G: 60, B: 60, A: 255}
-	enemySize := float32(tileSize / 2)
+func drawResourcePickupMarker(screen *ebiten.Image, cx, cy, ts float32) {
+	r := ts * 0.26
+	if r < 6 {
+		r = 6
+	}
+	vector.FillCircle(screen, cx, cy, r, visualcolor.Foundation.AccentStrip, false)
+	vector.StrokeCircle(screen, cx, cy, r, 2, visualcolor.Foundation.PostBattleBorder, false)
+	vector.FillCircle(screen, cx, cy, r*0.35, visualcolor.Foundation.PanelBGDeep, false)
+}
 
+func drawRecruitCampMarker(screen *ebiten.Image, cx, cy, ts float32) {
+	r := ts * 0.32
+	if r < 8 {
+		r = 8
+	}
+	vector.FillCircle(screen, cx, cy, r, visualcolor.Foundation.AbilityHoverBG, false)
+	vector.StrokeCircle(screen, cx, cy, r, 2.25, visualcolor.Foundation.HoverTarget, false)
+	vector.StrokeCircle(screen, cx, cy, r-3, 1, visualcolor.Foundation.AccentStrip, false)
+	// Упрощённый «шатёр»: треугольник + основание (лагерь наёмников).
+	s := ts * 0.22
+	vector.StrokeLine(screen, cx-s, cy+s*0.35, cx, cy-s*0.95, 2, visualcolor.Foundation.AccentStrip, false)
+	vector.StrokeLine(screen, cx+s, cy+s*0.35, cx, cy-s*0.95, 2, visualcolor.Foundation.AccentStrip, false)
+	vector.StrokeLine(screen, cx-s*1.1, cy+s*0.4, cx+s*1.1, cy+s*0.4, 1.5, visualcolor.Foundation.TextPrimary, false)
+}
+
+func drawEnemies(screen *ebiten.Image, source DrawSource, cameraX, cameraY, endX, endY, tileSize int) {
+	ts := float32(tileSize)
 	for _, e := range source.Entities() {
 		if !e.Alive || e.Type != entity.EntityEnemy {
 			continue
@@ -94,9 +167,19 @@ func drawEnemies(screen *ebiten.Image, source DrawSource, cameraX, cameraY, endX
 		if e.X < cameraX || e.X >= endX || e.Y < cameraY || e.Y >= endY {
 			continue
 		}
-		screenX := float32((e.X-cameraX)*tileSize) + float32(tileSize)/4
-		screenY := float32((e.Y-cameraY)*tileSize) + float32(tileSize)/4
-		vector.FillRect(screen, screenX, screenY, enemySize, enemySize, enemyColor, false)
+		cx := float32((e.X-cameraX)*tileSize) + ts*0.5
+		cy := float32((e.Y-cameraY)*tileSize) + ts*0.5
+		r := ts * 0.3
+		if r < 8 {
+			r = 8
+		}
+		vector.FillCircle(screen, cx, cy, r, visualcolor.Foundation.HPEnemyFill, false)
+		vector.StrokeCircle(screen, cx, cy, r, 2.25, visualcolor.Foundation.EnemyAccent, false)
+		vector.StrokeCircle(screen, cx, cy, r-2.5, 1, visualcolor.Foundation.SelectedKill, false)
+		// Крест-глиф «враждебность» (черновой маркер).
+		d := r * 0.45
+		vector.StrokeLine(screen, cx-d, cy-d, cx+d, cy+d, 1.5, visualcolor.Foundation.PanelBGDeep, false)
+		vector.StrokeLine(screen, cx-d, cy+d, cx+d, cy-d, 1.5, visualcolor.Foundation.PanelBGDeep, false)
 	}
 }
 
@@ -108,7 +191,7 @@ func DrawChunkDebugOverlay(
 	tileSize int,
 	screenWidth, screenHeight int,
 ) {
-	chunkLineColor := color.RGBA{R: 220, G: 180, B: 40, A: 255}
+	chunkLineColor := visualcolor.Foundation.AccentStrip
 	endX := cameraX + visibleTilesX
 	endY := cameraY + visibleTilesY
 

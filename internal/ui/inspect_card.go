@@ -34,10 +34,19 @@ type InspectCardModel struct {
 
 	Footer         string
 	FeedbackBanner string
+
+	// Battle inspect overlay only (formation оставляет нули).
+	BattlePortraitLayout bool           // двухколоночный блок с крупным портретом
+	BattlePortrait       *ebiten.Image  // nil — рамка-заглушка
+	LoreParagraph        string         // секция «Описание» (лор / заглушка)
 }
 
 const inspectCardPanelW = float32(480)
 const inspectCardIconSize = float32(30)
+
+// battleInspectPortraitBoxW/H — область под портрет в battle inspect.
+const battleInspectPortraitBoxW = float32(252)
+const battleInspectPortraitBoxH = float32(280)
 
 // DefaultInspectCardPanelWidth — ширина карточки (единая для battle / formation).
 func DefaultInspectCardPanelWidth(screenW int) float32 {
@@ -63,12 +72,19 @@ func DrawInspectCardChrome(screen *ebiten.Image, px, py, panelW, panelH float32,
 func EstimateInspectCardHeight(m InspectCardModel) float32 {
 	lineH := uiLineH
 	var h float32 = 14 + 3
-	h += maxF(lineH*1.95, inspectCardIconSize) + 6
-	for range m.Badges {
-		h += lineH * 1.12
+	if m.BattlePortraitLayout {
+		h += estimateBattleInspectHeaderRowHeight(m, lineH)
+	} else {
+		h += maxF(lineH*1.95, inspectCardIconSize) + 6
+		for range m.Badges {
+			h += lineH * 1.12
+		}
 	}
 	h += lineH*1.2 + 8
 	h += lineH*1.35 + 4 + 6 + 10
+	if m.BattlePortraitLayout && strings.TrimSpace(m.LoreParagraph) != "" {
+		h += lineH*0.9 + 8 + lineH*1.15*3 + 10
+	}
 	h += inspectCardSectionBlockHeight(len(m.ProfileLines), lineH)
 	if m.StatsLine != "" {
 		h += lineH*0.9 + 6 + lineH*1.1
@@ -115,21 +131,27 @@ func DrawInspectCardContent(screen *ebiten.Image, hudFace *text.GoTextFace, px, 
 
 	vector.FillRect(screen, px, py, panelW, 3, Theme.AccentStrip, false)
 
-	iconCol := Theme.AccentStrip
-	titleRowH := maxF(lineH*1.95, inspectCardIconSize)
-	DrawInspectRoleIcon(screen, ix, y+(titleRowH-inspectCardIconSize)*0.5, inspectCardIconSize, m.RoleIcon, iconCol)
+	if m.BattlePortraitLayout {
+		y = drawBattleInspectPortraitHeader(screen, hudFace, ix, y, innerW, m)
+	} else {
+		iconCol := Theme.AccentStrip
+		titleRowH := maxF(lineH*1.95, inspectCardIconSize)
+		DrawInspectRoleIcon(screen, ix, y+(titleRowH-inspectCardIconSize)*0.5, inspectCardIconSize, m.RoleIcon, iconCol)
 
-	titleMetrics := battlepkg.HUDMetrics{LineH: lineH * 1.12}
-	titleTextW := innerW - inspectCardIconSize - 8
-	drawSingleLineInRect(screen, hudFace, rect{X: ix + inspectCardIconSize + 8, Y: y, W: titleTextW, H: titleRowH}, m.Title, titleMetrics, Theme.TextPrimary)
-	y += titleRowH + 6
+		titleMetrics := battlepkg.HUDMetrics{LineH: lineH * 1.12}
+		titleTextW := innerW - inspectCardIconSize - 8
+		drawSingleLineInRect(screen, hudFace, rect{X: ix + inspectCardIconSize + 8, Y: y, W: titleTextW, H: titleRowH}, m.Title, titleMetrics, Theme.TextPrimary)
+		y += titleRowH + 6
+	}
 
-	for _, b := range m.Badges {
-		if strings.TrimSpace(b) == "" {
-			continue
+	if !m.BattlePortraitLayout {
+		for _, b := range m.Badges {
+			if strings.TrimSpace(b) == "" {
+				continue
+			}
+			drawSingleLineInRect(screen, hudFace, rect{X: ix, Y: y, W: innerW, H: lineH * 1.05}, b, metrics, Theme.TextSecondary)
+			y += lineH * 1.12
 		}
-		drawSingleLineInRect(screen, hudFace, rect{X: ix, Y: y, W: innerW, H: lineH * 1.05}, b, metrics, Theme.TextSecondary)
-		y += lineH * 1.12
 	}
 
 	drawSingleLineInRect(screen, hudFace, rect{X: ix, Y: y, W: innerW, H: lineH * 1.05}, m.ContextLine, metrics, Theme.TextMuted)
@@ -148,6 +170,15 @@ func DrawInspectCardContent(screen *ebiten.Image, hudFace *text.GoTextFace, px, 
 	y += lineH*1.4 + 4
 	DrawHPBarMicro(screen, ix, y, innerW, 6, m.HPCur, m.HPMax, m.Alive && m.HPCur > 0, m.IsEnemy)
 	y += 6 + 12
+
+	if m.BattlePortraitLayout && strings.TrimSpace(m.LoreParagraph) != "" {
+		drawSingleLineInRect(screen, hudFace, rect{X: ix, Y: y, W: innerW, H: lineH * 0.9}, "Описание", metrics, Theme.TextMuted)
+		y += lineH * 0.9
+		DrawThinAccentLine(screen, ix, y, innerW)
+		y += 8
+		drawSingleLineInRect(screen, hudFace, rect{X: ix, Y: y, W: innerW, H: lineH * 3.5}, m.LoreParagraph, metrics, Theme.TextSecondary)
+		y += lineH*3.5 + 10
+	}
 
 	y = drawInspectCardSection(screen, hudFace, ix, y, innerW, "Профиль", m.ProfileLines, metrics)
 
@@ -199,6 +230,79 @@ func drawInspectCardSection(screen *ebiten.Image, hudFace *text.GoTextFace, ix, 
 	return y
 }
 
+func estimateBattleInspectHeaderRowHeight(m InspectCardModel, lineH float32) float32 {
+	var badgeH float32
+	for _, b := range m.Badges {
+		if strings.TrimSpace(b) == "" {
+			continue
+		}
+		badgeH += lineH * 1.12
+	}
+	titleH := maxF(lineH*1.95, inspectCardIconSize)
+	rightCol := titleH + 6 + badgeH + 4
+	row := maxF(battleInspectPortraitBoxH, rightCol)
+	return row + 6
+}
+
+// drawBattleInspectPortraitHeader — крупный портрет слева, роль/имя/бейджи справа.
+func drawBattleInspectPortraitHeader(screen *ebiten.Image, hudFace *text.GoTextFace, ix, y, innerW float32, m InspectCardModel) float32 {
+	lineH := uiLineH
+	metrics := battlepkg.HUDMetrics{LineH: lineH}
+	titleMetrics := battlepkg.HUDMetrics{LineH: lineH * 1.12}
+	iconCol := Theme.AccentStrip
+
+	drawBattlePortraitCell(screen, hudFace, ix, y, battleInspectPortraitBoxW, battleInspectPortraitBoxH, m.BattlePortrait)
+
+	textX := ix + battleInspectPortraitBoxW + 12
+	textW := innerW - battleInspectPortraitBoxW - 12
+	ty := y + 4
+	DrawInspectRoleIcon(screen, textX, ty, inspectCardIconSize, m.RoleIcon, iconCol)
+	titleRowH := maxF(lineH*1.95, inspectCardIconSize)
+	drawSingleLineInRect(screen, hudFace, rect{X: textX + inspectCardIconSize + 8, Y: ty, W: textW - inspectCardIconSize - 8, H: titleRowH}, m.Title, titleMetrics, Theme.TextPrimary)
+	badgeY := ty + titleRowH + 6
+	for _, b := range m.Badges {
+		if strings.TrimSpace(b) == "" {
+			continue
+		}
+		drawSingleLineInRect(screen, hudFace, rect{X: textX, Y: badgeY, W: textW, H: lineH * 1.05}, b, metrics, Theme.TextSecondary)
+		badgeY += lineH * 1.12
+	}
+	headerBottom := y + battleInspectPortraitBoxH
+	if badgeY+8 > headerBottom {
+		headerBottom = badgeY + 8
+	}
+	return headerBottom + 8
+}
+
+func drawBattlePortraitCell(screen *ebiten.Image, hudFace *text.GoTextFace, x, y, w, h float32, img *ebiten.Image) {
+	vector.FillRect(screen, x, y, w, h, Theme.PanelBGDeep, false)
+	vector.StrokeRect(screen, x, y, w, h, 2, Theme.PanelBorder, false)
+	pad := float32(4)
+	lineH := uiLineH
+	metrics := battlepkg.HUDMetrics{LineH: lineH}
+	if img == nil {
+		drawSingleLineInRect(screen, hudFace, rect{X: x + pad, Y: y + h*0.42, W: w - 2*pad, H: lineH * 1.3}, "Портрет · скоро", metrics, Theme.TextMuted)
+		return
+	}
+	iw := float32(img.Bounds().Dx())
+	ih := float32(img.Bounds().Dy())
+	if iw <= 0 || ih <= 0 {
+		return
+	}
+	scale := (w - 2*pad) / iw
+	if sh := (h - 2*pad) / ih; sh < scale {
+		scale = sh
+	}
+	dw := iw * scale
+	dh := ih * scale
+	offX := x + (w-dw)/2
+	offY := y + (h-dh)/2
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(float64(scale), float64(scale))
+	op.GeoM.Translate(float64(offX), float64(offY))
+	screen.DrawImage(img, op)
+}
+
 // FlattenInspectCardText склеивает текст карточки для тестов (без иконки).
 func FlattenInspectCardText(m InspectCardModel) string {
 	var b strings.Builder
@@ -221,5 +325,6 @@ func FlattenInspectCardText(m InspectCardModel) string {
 	}
 	b.WriteString(m.Footer)
 	b.WriteString(m.FeedbackBanner)
+	b.WriteString(m.LoreParagraph)
 	return b.String()
 }

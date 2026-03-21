@@ -52,8 +52,7 @@ func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *par
 	}
 	panelH += footerH
 
-	vector.FillRect(screen, panelX, panelY, panelW, panelH, Theme.PanelBG, false)
-	vector.StrokeRect(screen, panelX, panelY, panelW, panelH, 1, Theme.PanelBorder, false)
+	drawUnifiedModalPanelChrome(screen, panelX, panelY, panelW, panelH)
 	DrawThinAccentLine(screen, panelX+10, panelY+8, panelW-20)
 
 	innerX := panelX + 16
@@ -74,7 +73,7 @@ func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *par
 	drawMemberRow := func(globalIdx int, h hero.Hero, slotCaption, roleCaption string, inReserve bool) {
 		ry := y
 		rowW := panelW - 32
-		fill := Theme.PanelBGDeep
+		fill := Theme.RosterCardContentWell
 		border := Theme.AllyAccent
 		strokeW := float32(2)
 

@@ -405,23 +405,33 @@ func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *bat
 }
 
 // drawBattleScreenV2 рисует battle screen в стиле Disciples: центр = сцена, слева/справа ростеры, внизу панель команд, сверху минимальный TopBar.
-func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, layout battlepkg.BattleHUDLayout) {
+func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, layout battlepkg.BattleHUDLayout, inspectOpenID battlepkg.UnitID, inspectOpen bool) {
 	metrics := layout.Metrics
 
-	// 1) Battlefield (center) — сцена: тёмный фон + чуть светлее центр (placeholder под арт)
+	// 1) Battlefield (center) — сцена: рамка в духе inspect/roster, внутренняя подложка, лёгкое затемнение по краям.
 	bf := layout.Battlefield
 	if bf.W > 0 && bf.H > 0 {
 		vector.FillRect(screen, bf.X, bf.Y, bf.W, bf.H, Theme.SceneTint, false)
-		insetPx := float32(24)
-		if bf.W > insetPx*2 && bf.H > insetPx*2 {
+		insetPx := float32(14)
+		if bf.W > insetPx*2+16 && bf.H > insetPx*2+16 {
 			cx, cy := bf.X+insetPx, bf.Y+insetPx
 			cw, ch := bf.W-insetPx*2, bf.H-insetPx*2
 			vector.FillRect(screen, cx, cy, cw, ch, Theme.PanelBGDeep, false)
+			vector.StrokeRect(screen, cx, cy, cw, ch, 1, Theme.RosterCardInnerStroke, false)
+			DrawThinAccentLine(screen, cx+4, cy+4, cw-8)
 		}
-		vector.StrokeRect(screen, bf.X, bf.Y, bf.W, bf.H, 1, Theme.PanelBorder, false)
+		vector.StrokeRect(screen, bf.X, bf.Y, bf.W, bf.H, 2, Theme.PostBattleBorder, false)
+		vector.StrokeRect(screen, bf.X+3, bf.Y+3, bf.W-6, bf.H-6, 1, Theme.PanelBorder, false)
+		v := float32(7)
+		if bf.W > v*2+4 && bf.H > v*2+4 {
+			vector.FillRect(screen, bf.X, bf.Y, bf.W, v, Theme.BattlefieldSceneVignette, false)
+			vector.FillRect(screen, bf.X, bf.Y+bf.H-v, bf.W, v, Theme.BattlefieldSceneVignette, false)
+			vector.FillRect(screen, bf.X, bf.Y+v, v, bf.H-v*2, Theme.BattlefieldSceneVignette, false)
+			vector.FillRect(screen, bf.X+bf.W-v, bf.Y+v, v, bf.H-v*2, Theme.BattlefieldSceneVignette, false)
+		}
 	}
 
-	DrawBattlefieldV2Scene(screen, hudFace, battle, layout)
+	DrawBattlefieldV2Scene(screen, hudFace, battle, layout, inspectOpenID, inspectOpen)
 
 	// 2) Left / Right rosters — боковые панели, визуально отделены от сцены
 	lr := layout.LeftRoster
@@ -447,62 +457,7 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		if u == nil {
 			continue
 		}
-		r := battleToRect(hr)
-		fill := Theme.PanelBGDeep
-		border := Theme.AllyAccent
-		textCol := Theme.TextPrimary
-		if u.Side == battlepkg.TeamEnemy {
-			border = Theme.EnemyAccent
-		}
-		if !u.IsAlive() {
-			fill = Theme.DeadFill
-			textCol = Theme.DeadText
-		}
-		active := battle.ActiveUnit()
-		if active != nil && active.ID == u.ID {
-			border = Theme.ActiveTurn
-		} else if u.IsAlive() && u.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction &&
-			active != nil && active.Side == battlepkg.TeamPlayer && active.ID != u.ID {
-			// Живой союзник, ожидающий своего хода в очереди инициативы.
-			border = Theme.WaitAlly
-		}
-		pt := &battle.PlayerTurn
-		if pt.HoverTargetUnitID == u.ID {
-			border = Theme.HoverTarget
-		}
-		if pt.SelectedTarget.Kind == battlepkg.TargetKindUnit && pt.SelectedTarget.UnitID == u.ID {
-			border = Theme.SelectedKill
-		}
-		vector.FillRect(screen, r.X, r.Y, r.W, r.H, fill, false)
-		vector.FillRect(screen, r.X, r.Y, 4, r.H, rosterIdentityStripColor(u), false)
-		vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 2, border, false)
-		if k, in := battle.FeedbackFlashIntensity(u.ID); k >= 0 && in > 0 {
-			drawFeedbackOverlayRect(screen, r, k, in)
-		}
-		name := u.Name()
-		if len([]rune(name)) > 10 {
-			rs := []rune(name)
-			name = string(rs[:10])
-		}
-		if active != nil && u.Side == battlepkg.TeamPlayer && u.IsAlive() {
-			if u.ID == active.ID {
-				name = "▶ " + name
-			} else {
-				name = "· " + name
-			}
-		}
-		row1 := rect{X: r.X + 8, Y: r.Y, W: r.W - 16, H: metrics.LineH}
-		drawSingleLineInRect(screen, hudFace, row1, fitTextToWidth(hudFace, name, r.W-16), metrics, textCol)
-		hpStr := "Погиб"
-		if u.IsAlive() {
-			hpStr = fmt.Sprintf("ОЗ %d/%d", u.State.HP, u.MaxHP())
-		}
-		row2 := rect{X: r.X + 8, Y: r.Y + metrics.LineH, W: r.W - 16, H: metrics.LineH}
-		drawSingleLineInRect(screen, hudFace, row2, hpStr, metrics, textCol)
-		if u.IsAlive() && r.H > metrics.LineH*2+8 {
-			barY := r.Y + r.H - 6
-			DrawHPBarMicro(screen, r.X+6, barY, r.W-12, 4, u.State.HP, u.MaxHP(), true, u.Side == battlepkg.TeamEnemy)
-		}
+		drawBattleRosterUnitCard(screen, hudFace, battle, u, hr, metrics, inspectOpenID, inspectOpen)
 	}
 
 	// 4) Bottom panel — control panel: Active | Target → Abilities → Summary → Hint → Buttons

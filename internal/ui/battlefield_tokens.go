@@ -15,7 +15,7 @@ import (
 )
 
 // DrawBattlefieldV2Scene — сетка слотов, разделитель сторон, токены юнитов (после фона battlefield, до ростеров).
-func DrawBattlefieldV2Scene(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, layout battlepkg.BattleHUDLayout) {
+func DrawBattlefieldV2Scene(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, layout battlepkg.BattleHUDLayout, inspectOpenID battlepkg.UnitID, inspectOpen bool) {
 	if battle == nil || layout.Style != battlepkg.LayoutStyleV2Disciples {
 		return
 	}
@@ -29,6 +29,23 @@ func DrawBattlefieldV2Scene(screen *ebiten.Image, hudFace *text.GoTextFace, batt
 	midGap := metrics.Gap * 2.5
 	halfW := (inner.W - midGap) * 0.5
 	midX := inner.X + halfW + midGap*0.5
+
+	// Тональное разделение сторон + ось столкновения (под рядами и токенами).
+	leftEdge := inner.X
+	rightEdge := inner.X + inner.W
+	allyW := (midX - midGap*0.5) - leftEdge
+	if allyW > 0 && inner.H > 0 {
+		vector.FillRect(screen, leftEdge, inner.Y, allyW, inner.H, Theme.BattlefieldAllyZoneTint, false)
+	}
+	enemyX := midX + midGap*0.5
+	enemyW := rightEdge - enemyX
+	if enemyW > 0 && inner.H > 0 {
+		vector.FillRect(screen, enemyX, inner.Y, enemyW, inner.H, Theme.BattlefieldEnemyZoneTint, false)
+	}
+	gutterW := float32(4)
+	if midGap > gutterW+1 {
+		vector.FillRect(screen, midX-gutterW*0.5, inner.Y+3, gutterW, inner.H-6, Theme.BattlefieldCenterGutter, false)
+	}
 
 	drawRowBand := func(hr battlepkg.HUDRect, front bool) {
 		if hr.W <= 0 {
@@ -57,8 +74,9 @@ func DrawBattlefieldV2Scene(screen *ebiten.Image, hudFace *text.GoTextFace, batt
 		vector.StrokeLine(screen, ef.X, inner.Y+3, ef.X, inner.Y+inner.H-3, 1, Theme.BattlefieldFrontRowBorder, false)
 	}
 
-	// Разделитель «линия столкновения» между сторонами
-	vector.StrokeLine(screen, midX, inner.Y+4, midX, inner.Y+inner.H-4, 1.25, Theme.PanelTitleSep, false)
+	// Разделитель «линия столкновения» между сторонами (акцент поверх канала).
+	vector.StrokeLine(screen, midX, inner.Y+4, midX, inner.Y+inner.H-4, 1.35, Theme.AccentStrip, false)
+	vector.StrokeLine(screen, midX, inner.Y+4, midX, inner.Y+inner.H-4, 1, Theme.PanelTitleSep, false)
 
 	// Ячейки сетки — слабая обводка, чтобы не перебивать токены и группировку рядов
 	for _, cell := range layout.BattlefieldSlotCells {
@@ -80,13 +98,15 @@ func DrawBattlefieldV2Scene(screen *ebiten.Image, hudFace *text.GoTextFace, batt
 		if u == nil {
 			continue
 		}
-		drawBattlefieldUnitToken(screen, hudFace, battle, u, battleToRect(hr), metrics)
+		drawBattlefieldUnitToken(screen, hudFace, battle, u, battleToRect(hr), metrics, inspectOpenID, inspectOpen)
 	}
 
 	DrawBattleFeedbackFloats(screen, hudFace, battle, layout, metrics)
 }
 
-func drawBattlefieldUnitToken(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, u *battlepkg.BattleUnit, r rect, metrics battlepkg.HUDMetrics) {
+func drawBattlefieldUnitToken(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, u *battlepkg.BattleUnit, r rect, metrics battlepkg.HUDMetrics, inspectOpenID battlepkg.UnitID, inspectOpen bool) {
+	drawBattlefieldMiniPortraitCorner(screen, hudFace, r, u, metrics)
+
 	cx := r.X + r.W*0.5
 	radius := r.W * 0.36
 	if h := r.H * 0.38; h < radius {
@@ -167,6 +187,8 @@ func drawBattlefieldUnitToken(screen *ebiten.Image, hudFace *text.GoTextFace, ba
 		barY := r.Y + r.H - 5
 		DrawHPBarMicro(screen, r.X+4, barY, r.W-8, 4, u.State.HP, u.MaxHP(), true, u.Side == battlepkg.TeamEnemy)
 	}
+
+	drawBattlefieldInspectPin(screen, hudFace, r, u, inspectOpenID, inspectOpen, metrics)
 
 	// Маркер хода — пульсирующее кольцо (круг, читаемо для любых силуэтов)
 	if active != nil && active.ID == u.ID && u.IsAlive() {

@@ -1,10 +1,10 @@
 package player
 
 import (
-	"image/color"
-
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+
+	"mygame/internal/visualcolor"
 )
 
 const playerSize = 32
@@ -29,10 +29,19 @@ func NewPlayer(gridX, gridY int) *Player {
 func (p *Player) Update() {}
 
 // Draw рисует игрока на экране (cameraX, cameraY и tileSize в клетках/пикселях).
+// Визуально — токен «герой» в общем языке UI: золотой круг, рамки, внутренний маркер.
 func (p *Player) Draw(screen *ebiten.Image, cameraX, cameraY, tileSize int) {
-	screenX := float32((p.GridX-cameraX)*tileSize) + float32(tileSize)/2 - float32(p.size)/2
-	screenY := float32((p.GridY-cameraY)*tileSize) + float32(tileSize)/2 - float32(p.size)/2
-	vector.FillRect(screen, screenX, screenY, float32(p.size), float32(p.size), color.White, false)
+	ts := float32(tileSize)
+	cx := float32((p.GridX-cameraX)*tileSize) + ts*0.5
+	cy := float32((p.GridY-cameraY)*tileSize) + ts*0.5
+	r := ts * 0.38
+	if r < 9 {
+		r = 9
+	}
+	vector.FillCircle(screen, cx, cy, r, visualcolor.Foundation.ActiveTurn, false)
+	vector.StrokeCircle(screen, cx, cy, r, 2.5, visualcolor.Foundation.PostBattleBorder, false)
+	vector.StrokeCircle(screen, cx, cy, r-3, 1.25, visualcolor.Foundation.AccentStrip, false)
+	vector.FillCircle(screen, cx, cy, r*0.32, visualcolor.Foundation.PanelBGDeep, false)
 }
 
 // Position возвращает текущие координаты игрока на сетке (GridX, GridY).

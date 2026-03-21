@@ -201,6 +201,8 @@ type PostBattleParams struct {
 	ConfirmRewardLabel  string
 	HoverContinue       bool
 	HoverRewardConfirm  bool
+	// HoverRewardIndex — индекс строки награды под курсором (шаг награды); -1 = нет наведения.
+	HoverRewardIndex int
 }
 
 // DrawPostBattleOverlay рисует полупрозрачный overlay: результат боя и (при победе) выбор награды.
@@ -217,8 +219,7 @@ func DrawPostBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p Pos
 	h := float32(p.ScreenHeight)
 	vector.FillRect(screen, 0, 0, w, h, Theme.OverlayDim, false)
 
-	vector.FillRect(screen, layout.PanelX, layout.PanelY, layout.PanelW, layout.PanelH, Theme.PostBattlePanelBG, false)
-	vector.StrokeRect(screen, layout.PanelX, layout.PanelY, layout.PanelW, layout.PanelH, 2, Theme.PostBattleBorder, false)
+	drawUnifiedModalPanelChrome(screen, layout.PanelX, layout.PanelY, layout.PanelW, layout.PanelH)
 
 	innerX := layout.InnerX
 	innerY := layout.InnerY
@@ -228,6 +229,7 @@ func DrawPostBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p Pos
 
 	// Result line
 	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY, W: innerW, H: lineH * 1.5}, p.ResultText, metrics, Theme.TextPrimary)
+	DrawThinAccentLine(screen, innerX+4, innerY+lineH*1.48, innerW-8)
 
 	if !p.IsRewardStep {
 		y := innerY + lineH*1.55
@@ -262,6 +264,7 @@ func DrawPostBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p Pos
 	}
 	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY + lineH*2, W: innerW, H: lineH}, sub, metrics, Theme.TextMuted)
 	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY + lineH*3.1, W: innerW, H: lineH}, "Выберите вариант:", metrics, Theme.TextSecondary)
+	DrawThinAccentLine(screen, innerX+4, innerY+lineH*4.05, innerW-8)
 
 	y := innerY + lineH*4.0
 	for i := 0; i < len(p.OptionLabels); i++ {
@@ -271,13 +274,24 @@ func DrawPostBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p Pos
 			label = label + " — " + p.OptionDescs[i]
 		}
 		textCol := Theme.TextSecondary
-		if i == p.SelectedIndex && i < len(layout.RewardOptionRects) {
-			textCol = Theme.TextPrimary
+		if i < len(layout.RewardOptionRects) {
 			r := layout.RewardOptionRects[i]
-			vector.FillRect(screen, r.X, r.Y, r.W, r.H, Theme.PostBattleRowSelect, false)
-			vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 1, Theme.PostBattleRowBrd, false)
+			switch {
+			case i == p.SelectedIndex:
+				textCol = Theme.TextPrimary
+				vector.FillRect(screen, r.X, r.Y, r.W, r.H, Theme.PostBattleRowSelect, false)
+				vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 1.25, Theme.PostBattleRowBrd, false)
+				vector.FillRect(screen, r.X, r.Y, 4, r.H, Theme.AccentStrip, false)
+			case p.HoverRewardIndex >= 0 && i == p.HoverRewardIndex:
+				textCol = Theme.TextPrimary
+				vector.FillRect(screen, r.X, r.Y, r.W, r.H, Theme.AbilityHoverBG, false)
+				vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 1, Theme.HoverTarget, false)
+			default:
+				vector.FillRect(screen, r.X, r.Y, r.W, r.H, Theme.RosterCardContentWell, false)
+				vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 1, Theme.PanelBorder, false)
+			}
 		}
-		drawSingleLineInRect(screen, hudFace, rect{X: innerX + 8, Y: y, W: innerW - 16, H: rowH}, label, metrics, textCol)
+		drawSingleLineInRect(screen, hudFace, rect{X: innerX + 10, Y: y, W: innerW - 20, H: rowH}, label, metrics, textCol)
 		y += rowH + postBattleRowGap
 	}
 	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y + 4, W: innerW, H: lineH}, "Стрелки — выбор · Пробел / Enter или кнопка ниже", metrics, Theme.TextMuted)
@@ -292,14 +306,17 @@ func drawPostBattlePrimaryButton(screen *ebiten.Image, hudFace *text.GoTextFace,
 	if r.W <= 0 || r.H <= 0 {
 		return
 	}
-	fill := Theme.ButtonBG
-	border := Theme.ButtonBorder
+	fill := Theme.AbilityBG
+	border := Theme.AbilityBorder
 	if hover {
 		fill = Theme.ButtonHoverBG
-		border = Theme.ButtonHoverBorder
+		border = Theme.AccentStrip
 	}
 	vector.FillRect(screen, r.X, r.Y, r.W, r.H, fill, false)
-	vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 1, border, false)
+	vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 1.25, border, false)
+	if hover {
+		vector.FillRect(screen, r.X, r.Y, 3, r.H, Theme.AccentStrip, false)
+	}
 	rr := rect{X: r.X, Y: r.Y, W: r.W, H: r.H}
 	drawSingleLineInRect(screen, hudFace, rr, label, metrics, Theme.TextPrimary)
 }

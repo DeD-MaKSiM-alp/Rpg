@@ -22,22 +22,26 @@ func DrawRecruitOfferOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, scr
 		panelW = w - 40
 	}
 	lineH := float32(20)
-	panelH := lineH*6 + 48
+	panelH := lineH*6 + 52
 	px := (w - panelW) / 2
 	py := (h - panelH) / 2
 
-	vector.FillRect(screen, px, py, panelW, panelH, Theme.PostBattlePanelBG, false)
-	vector.StrokeRect(screen, px, py, panelW, panelH, 2, Theme.PostBattleBorder, false)
+	drawUnifiedModalPanelChrome(screen, px, py, panelW, panelH)
 
 	metrics := battlepkg.HUDMetrics{LineH: lineH}
-	innerX := px + 16
-	y := py + 16
+	innerX := px + 20
+	y := py + 18
 
-	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH * 1.2}, "Лагерь наёмников", metrics, Theme.TextPrimary)
-	y += lineH + 8
-	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH * 1.2}, "Принять нового бойца в резерв?", metrics, Theme.TextSecondary)
-	y += lineH + 12
-	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH}, "Enter / Space / Y — да · Esc / N — отказ", metrics, Theme.TextMuted)
-	y += lineH + 8
-	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH * 1.2}, "Принятый союзник идёт в резерв (F5 — состав).", metrics, Theme.TextMuted)
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 40, H: lineH * 1.2}, "Лагерь наёмников", metrics, Theme.TextPrimary)
+	DrawThinAccentLine(screen, innerX, y+lineH*1.15, panelW-40)
+	y += lineH + 14
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 40, H: lineH * 1.2}, "Принять нового бойца в резерв?", metrics, Theme.TextSecondary)
+	y += lineH + 14
+	// Блок-подложка под вопросом (карточное ощущение без смены hit-test).
+	qY := y
+	qH := lineH*2 + 16
+	vector.FillRect(screen, innerX, qY, panelW-40, qH, Theme.RosterCardContentWell, false)
+	vector.StrokeRect(screen, innerX, qY, panelW-40, qH, 1, Theme.RosterCardInnerStroke, false)
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX + 8, Y: qY + 8, W: panelW - 56, H: lineH}, "Enter / Space / Y — да · Esc / N — отказ", metrics, Theme.TextMuted)
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX + 8, Y: qY + 8 + lineH + 4, W: panelW - 56, H: lineH * 1.1}, "Принятый союзник идёт в резерв (F5 — состав).", metrics, Theme.TextSecondary)
 }

@@ -217,14 +217,6 @@ func (b *BattleContext) Update(screenW, screenH int) BattleOutcome {
 	b.tickFeedback()
 	kbd := PollBattleKeyboardIntents()
 
-	// PhaseFinishedWaitInput: ждём подтверждения (SPACE/ENTER) перед закрытием.
-	if b.Phase == PhaseFinishedWaitInput {
-		if kbd.Confirm {
-			return b.ToBattleOutcome()
-		}
-		return BattleOutcomeNone
-	}
-
 	if kbd.Escape {
 		if b.SuppressEscThisFrame {
 			return BattleOutcomeNone
@@ -252,8 +244,7 @@ func (b *BattleContext) Update(screenW, screenH int) BattleOutcome {
 		}
 		b.Result = ResultEscape
 		b.AddBattleLog("Отступление.")
-		b.Phase = PhaseFinishedWaitInput
-		return BattleOutcomeNone
+		return b.ToBattleOutcome()
 	}
 
 	switch b.Phase {
@@ -264,8 +255,7 @@ func (b *BattleContext) Update(screenW, screenH int) BattleOutcome {
 	case PhaseTurnStart:
 		b.UpdateResultIfFinished()
 		if b.IsFinished() {
-			b.Phase = PhaseFinishedWaitInput
-			return BattleOutcomeNone
+			return b.ToBattleOutcome()
 		}
 		for b.TurnIndex < len(b.TurnOrder) {
 			u := b.ActiveUnit()
@@ -314,24 +304,21 @@ func (b *BattleContext) Update(screenW, screenH int) BattleOutcome {
 		b.PauseFrames--
 		if b.PauseFrames <= 0 {
 			if b.IsFinished() {
-				b.Phase = PhaseFinishedWaitInput
-			} else {
-				b.Phase = PhaseTurnEnd
+				return b.ToBattleOutcome()
 			}
+			b.Phase = PhaseTurnEnd
 		}
 		return BattleOutcomeNone
 
 	case PhaseTurnEnd:
 		b.UpdateResultIfFinished()
 		if b.IsFinished() {
-			b.Phase = PhaseFinishedWaitInput
-			return BattleOutcomeNone
+			return b.ToBattleOutcome()
 		}
 		b.AdvanceTurn()
 		b.UpdateResultIfFinished()
 		if b.IsFinished() {
-			b.Phase = PhaseFinishedWaitInput
-			return BattleOutcomeNone
+			return b.ToBattleOutcome()
 		}
 		b.Phase = PhaseTurnStart
 		return BattleOutcomeNone

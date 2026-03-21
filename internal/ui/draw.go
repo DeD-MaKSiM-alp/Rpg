@@ -23,13 +23,14 @@ func DrawHUD(screen *ebiten.Image, pickupCount, trainingMarks int, hudFace *text
 
 // DrawBattleOverlay рисует поверх кадра HUD для боевого режима.
 // Использует battle.LayoutStyle: v1 = табличный overlay, v2 = Disciples-like (сцена по центру, ростеры по бокам, панель внизу).
-func DrawBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, screenWidth, screenHeight int) {
+// inspectOpenID/inspectOpen — визуальная связь карточек/токенов с открытой battle inspect (hover рисуется отдельным слоем).
+func DrawBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, screenWidth, screenHeight int, inspectOpenID battlepkg.UnitID, inspectOpen bool) {
 	if battle == nil {
 		return
 	}
 	layout := battle.ComputeBattleHUDLayout(screenWidth, screenHeight)
 	if layout.Style == battlepkg.LayoutStyleV2Disciples {
-		drawBattleScreenV2(screen, hudFace, battle, layout)
+		drawBattleScreenV2(screen, hudFace, battle, layout, inspectOpenID, inspectOpen)
 		return
 	}
 	drawBattleOverlayPanel(screen, screenWidth, screenHeight, layout)

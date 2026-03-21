@@ -358,6 +358,9 @@ func (c *BattleContext) PhaseLabelRU() string {
 	if c == nil {
 		return "—"
 	}
+	if c.Result != ResultNone {
+		return "итог"
+	}
 	switch c.Phase {
 	case PhaseStart:
 		return "старт"

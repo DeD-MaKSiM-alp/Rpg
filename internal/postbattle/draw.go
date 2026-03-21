@@ -39,6 +39,7 @@ func BuildPostBattleParams(f *Flow, screenW, screenH int) ui.PostBattleParams {
 		ConfirmRewardLabel:    "Подтвердить",
 		VictorySummaryLines:   f.VictorySummaryLines,
 		RewardPreambleLine:    "",
+		HoverRewardIndex:      -1,
 	}
 	if f.Step == StepResult {
 		if f.Outcome == battlepkg.BattleOutcomeVictory {
@@ -52,6 +53,9 @@ func BuildPostBattleParams(f *Flow, screenW, screenH int) ui.PostBattleParams {
 	if isReward {
 		params.RewardPreambleLine = "Награда только лидеру — отдельно от боевого опыта отряда."
 		params.HoverRewardConfirm = layout.HitRewardConfirm(mx, my)
+		if optN > 0 {
+			params.HoverRewardIndex = layout.RewardOptionIndexAt(mx, my)
+		}
 	}
 	if params.IsRewardStep && len(f.RewardOffer) > 0 {
 		params.OptionLabels = make([]string, len(f.RewardOffer))
