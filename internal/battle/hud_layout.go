@@ -163,6 +163,8 @@ type BattlefieldRowLabel struct {
 
 // ComputeBattleHUDLayout builds a battle HUD layout for the given screen size and
 // current battle state. It is the single source of truth for all major HUD rects.
+// screenW/screenH must be the logical game resolution (same as ebiten.Game.Layout and
+// the values passed to DrawBattleOverlay); do not use device/window pixel size here.
 // Uses b.LayoutStyle: 0 = v1 table, 1 = v2 Disciples-like.
 func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLayout {
 	if b != nil && b.LayoutStyle == LayoutStyleV2Disciples {

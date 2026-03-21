@@ -109,22 +109,15 @@ func (g *Game) updateExploreMode() error {
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyF9) {
-		if g.party.TotalMembers() >= party.MaxPartyMembers {
-			g.exploreRecruitMsg = fmt.Sprintf("Отряд полон (макс. %d)", party.MaxPartyMembers)
-			g.exploreRecruitMsgTicks = exploreRestFeedbackDurationTicks
-			return nil
-		}
-		idx := len(g.party.Reserve) + 1
-		h := hero.RecruitHeroFromEarlyPool(idx)
-		h.RecruitLabel = hero.RecruitDisplayName(idx)
-		if err := g.party.AddToReserve(h); err != nil {
+		serial, err := tryAddEarlyPoolRecruitToReserve(&g.party)
+		if err != nil {
 			if errors.Is(err, party.ErrPartyFull) {
 				g.exploreRecruitMsg = fmt.Sprintf("Отряд полон (макс. %d)", party.MaxPartyMembers)
 			} else {
 				g.exploreRecruitMsg = err.Error()
 			}
 		} else {
-			g.exploreRecruitMsg = fmt.Sprintf("В резерв: %s (F5 — состав)", hero.RecruitDisplayName(idx))
+			g.exploreRecruitMsg = fmt.Sprintf("В резерв: %s (F5 — состав)", hero.RecruitDisplayName(serial))
 		}
 		g.exploreRecruitMsgTicks = exploreRestFeedbackDurationTicks
 		return nil
@@ -383,7 +376,7 @@ func (g *Game) updateBattleMode() {
 		}
 	}
 
-	outcome := g.battle.Update()
+	outcome := g.battle.Update(ScreenWidth, ScreenHeight)
 
 	switch outcome {
 	case battlepkg.BattleOutcomeVictory:

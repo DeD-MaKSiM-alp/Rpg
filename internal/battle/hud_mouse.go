@@ -2,7 +2,6 @@ package battle
 
 import (
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 func pointInRect(x, y float32, r HUDRect) bool {
@@ -22,7 +21,7 @@ func (l BattleHUDLayout) pointHitsUnit(id UnitID, mxf, myf float32) bool {
 	return false
 }
 
-func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, bool) {
+func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit, screenW, screenH int) (BattleAction, bool) {
 	if b == nil || actor == nil || actor.Side != TeamPlayer {
 		return BattleAction{}, false
 	}
@@ -43,10 +42,8 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 	mx, my := ebiten.CursorPosition()
 	mxf := float32(mx)
 	myf := float32(my)
-	leftClick := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
-	rightClick := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight)
+	mb := pollBattleMouseButtons()
 
-	screenW, screenH := ebiten.WindowSize()
 	layout := b.ComputeBattleHUDLayout(screenW, screenH)
 
 	action := BattleAction{}
@@ -70,7 +67,7 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 				}
 				if layout.pointHitsUnit(id, mxf, myf) {
 					pt.HoverTargetUnitID = id
-					if leftClick {
+					if mb.LeftJustPressed {
 						req := ActionRequest{Actor: actor.ID, Ability: AbilityBasicAttack, Target: UnitTarget(id)}
 						if ValidateAction(b, req).OK {
 							if act, v2 := ToBattleAction(b, req); v2.OK {
@@ -93,7 +90,7 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 			rowRect := layout.AbilityItemRects[i]
 			if pointInRect(mxf, myf, rowRect) {
 				pt.HoverAbilityIndex = i
-				if leftClick && pt.Phase == PlayerChooseAbility {
+				if mb.LeftJustPressed && pt.Phase == PlayerChooseAbility {
 					abilID := specialAbs[i]
 					pt.SelectedAbilityID = abilID
 					// Keep SelectedAbilityIndex in sync with full ability list for keyboard.
@@ -188,7 +185,7 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 					continue
 				}
 				pt.HoverTargetUnitID = u.ID
-				if leftClick && validSet[u.ID] && pt.Phase == PlayerChooseTarget {
+				if mb.LeftJustPressed && validSet[u.ID] && pt.Phase == PlayerChooseTarget {
 					// Click on valid target = execute immediately (no Confirm phase).
 					pt.SelectedTarget = UnitTarget(u.ID)
 					req := ActionRequest{
@@ -214,7 +211,7 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 		if pointInRect(mxf, myf, backBtn) {
 			pt.HoverBackButton = true
 		}
-		if leftClick && pointInRect(mxf, myf, backBtn) {
+		if mb.LeftJustPressed && pointInRect(mxf, myf, backBtn) {
 			pt.Phase = PlayerChooseAbility
 			if HasBasicAttack(actor) {
 				pt.SelectedAbilityID = AbilityBasicAttack
@@ -228,7 +225,7 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 	}
 
 	// 4) Right click = quick cancel/back; return to default attack mode when going back to ChooseAbility.
-	if rightClick && !b.SuppressMouseRightThisFrame {
+	if mb.RightJustPressed && !b.SuppressMouseRightThisFrame {
 		switch pt.Phase {
 		case PlayerChooseTarget:
 			pt.Phase = PlayerChooseAbility

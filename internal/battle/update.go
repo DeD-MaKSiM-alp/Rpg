@@ -1,28 +1,6 @@
 package battle
 
-import (
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
-)
-
 const actionPauseFrames = 30
-
-// justConfirmPressed: Space/Enter — execute current action (choose target or execute ability). No longer "confirm" semantics.
-func justConfirmPressed() bool {
-	return inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter)
-}
-
-func justBackPressed() bool {
-	return inpututil.IsKeyJustPressed(ebiten.KeyBackspace)
-}
-
-func justPrevPressed() bool {
-	return inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft)
-}
-
-func justNextPressed() bool {
-	return inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight)
-}
 
 func wrapIndex(idx, n int) int {
 	if n <= 0 {
@@ -61,7 +39,7 @@ func (b *BattleContext) ensurePlayerTurnInitialized(actor *BattleUnit) {
 	b.PlayerTurn.Pending = ActionRequest{}
 }
 
-func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleAction, bool) {
+func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit, kbd BattleKeyboardIntents) (BattleAction, bool) {
 	if b == nil || actor == nil || actor.Side != TeamPlayer {
 		return BattleAction{}, false
 	}
@@ -85,7 +63,7 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 
 	switch p.Phase {
 	case PlayerChooseAbility:
-		if justBackPressed() {
+		if kbd.Back {
 			// Return to default attack mode (cancel special ability selection).
 			if HasBasicAttack(actor) && p.SelectedAbilityID != AbilityBasicAttack {
 				p.SelectedAbilityID = AbilityBasicAttack
@@ -96,14 +74,14 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 				p.Pending = ActionRequest{}
 			}
 		}
-		if justPrevPressed() {
+		if kbd.Prev {
 			p.SelectedAbilityIndex = wrapIndex(p.SelectedAbilityIndex-1, len(abilities))
 			p.SelectedAbilityID = abilities[p.SelectedAbilityIndex]
 			p.ValidTargets = nil
 			p.SelectedTargetIdx = 0
 			p.SelectedTarget = NoTarget()
 		}
-		if justNextPressed() {
+		if kbd.Next {
 			p.SelectedAbilityIndex = wrapIndex(p.SelectedAbilityIndex+1, len(abilities))
 			p.SelectedAbilityID = abilities[p.SelectedAbilityIndex]
 			p.ValidTargets = nil
@@ -111,7 +89,7 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 			p.SelectedTarget = NoTarget()
 		}
 
-		if justConfirmPressed() {
+		if kbd.Confirm {
 			// If ability requires a target, go to target selection; otherwise execute immediately.
 			switch ability.TargetRule {
 			case TargetEnemySingle, TargetAllySingle:
@@ -167,7 +145,7 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 		}
 
 	case PlayerChooseTarget:
-		if justBackPressed() {
+		if kbd.Back {
 			p.Phase = PlayerChooseAbility
 			if HasBasicAttack(actor) {
 				p.SelectedAbilityID = AbilityBasicAttack
@@ -194,15 +172,15 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 			return BattleAction{}, false
 		}
 
-		if justPrevPressed() {
+		if kbd.Prev {
 			p.SelectedTargetIdx = wrapIndex(p.SelectedTargetIdx-1, len(p.ValidTargets))
 			p.SelectedTarget = p.ValidTargets[p.SelectedTargetIdx]
 		}
-		if justNextPressed() {
+		if kbd.Next {
 			p.SelectedTargetIdx = wrapIndex(p.SelectedTargetIdx+1, len(p.ValidTargets))
 			p.SelectedTarget = p.ValidTargets[p.SelectedTargetIdx]
 		}
-		if justConfirmPressed() {
+		if kbd.Confirm {
 			// Click on target = execute immediately (no Confirm phase).
 			req := ActionRequest{Actor: actor.ID, Ability: p.SelectedAbilityID, Target: p.SelectedTarget}
 			if v := ValidateAction(b, req); !v.OK {
@@ -230,21 +208,24 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 }
 
 // Update обрабатывает один кадр боевого режима и возвращает итог.
-func (b *BattleContext) Update() BattleOutcome {
+// screenW/screenH — логический размер кадра (тот же, что Layout() и DrawBattleOverlay);
+// нужен для mouse hit-test и должен совпадать с размерами, которыми считается HUD при отрисовке.
+func (b *BattleContext) Update(screenW, screenH int) BattleOutcome {
 	if b == nil {
 		return BattleOutcomeNone
 	}
 	b.tickFeedback()
+	kbd := PollBattleKeyboardIntents()
 
 	// PhaseFinishedWaitInput: ждём подтверждения (SPACE/ENTER) перед закрытием.
 	if b.Phase == PhaseFinishedWaitInput {
-		if justConfirmPressed() {
+		if kbd.Confirm {
 			return b.ToBattleOutcome()
 		}
 		return BattleOutcomeNone
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if kbd.Escape {
 		if b.SuppressEscThisFrame {
 			return BattleOutcomeNone
 		}
@@ -305,10 +286,10 @@ func (b *BattleContext) Update() BattleOutcome {
 		}
 		if active.Side == TeamPlayer {
 			// Keyboard-driven state machine remains as fallback.
-			action, ok := b.updatePlayerTurnStateMachine(active)
+			action, ok := b.updatePlayerTurnStateMachine(active, kbd)
 			if !ok {
 				// Mouse layer can trigger an action as well; it only uses the same state machine fields.
-				action, ok = b.updatePlayerTurnMouse(active)
+				action, ok = b.updatePlayerTurnMouse(active, screenW, screenH)
 			}
 			if ok {
 				result := ResolveAbility(b, action)

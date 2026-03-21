@@ -3,7 +3,6 @@ package postbattle
 
 import (
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 
 	battlepkg "mygame/internal/battle"
 	"mygame/internal/party"
@@ -118,6 +117,9 @@ func (f *Flow) Update(roster *party.Party, screenW, screenH int) (endBattle bool
 	if leader == nil {
 		return true
 	}
+	kbd := PollPostBattleKeyboardIntents()
+	mb := pollPostBattleMouseButtons()
+
 	n := len(f.RewardOffer)
 	if n == 0 {
 		n = 1
@@ -126,10 +128,10 @@ func (f *Flow) Update(roster *party.Party, screenW, screenH int) (endBattle bool
 
 	switch f.Step {
 	case StepResult:
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if kbd.Confirm {
 			return f.confirmResultStep(roster)
 		}
-		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		if mb.LeftJustPressed {
 			mx, my := ebiten.CursorPosition()
 			layout := ui.ComputePostBattleLayout(screenW, screenH, false, 0, len(f.VictorySummaryLines))
 			if layout.HitResultContinue(mx, my) {
@@ -138,16 +140,16 @@ func (f *Flow) Update(roster *party.Party, screenW, screenH int) (endBattle bool
 		}
 	case StepReward:
 		n = len(f.RewardOffer)
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+		if kbd.Prev {
 			f.SelectedIndex = wrapRewardIndex(f.SelectedIndex-1, n)
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+		if kbd.Next {
 			f.SelectedIndex = wrapRewardIndex(f.SelectedIndex+1, n)
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if kbd.Confirm {
 			return f.confirmRewardSelection(roster, f.SelectedIndex)
 		}
-		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		if mb.LeftJustPressed {
 			mx, my := ebiten.CursorPosition()
 			layout := ui.ComputePostBattleLayout(screenW, screenH, true, n, 0)
 			if idx := layout.RewardOptionIndexAt(mx, my); idx >= 0 && idx < n {
