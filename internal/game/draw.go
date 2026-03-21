@@ -5,6 +5,8 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 
+	battlepkg "mygame/internal/battle"
+	"mygame/internal/hero"
 	"mygame/internal/postbattle"
 	"mygame/internal/ui"
 )
@@ -28,7 +30,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawDebugInfo(screen)
 	}
 
-	ui.DrawHUD(screen, g.pickupCount, g.hudFace)
+	ui.DrawHUD(screen, g.pickupCount, g.TrainingMarks, g.hudFace)
 
 	if g.mode == ModeExplore || g.mode == ModeRecruitOffer {
 		ui.DrawExplorePartyStrip(screen, g.hudFace, &g.party, ScreenWidth)
@@ -42,10 +44,22 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	if g.mode == ModeFormation {
-		ui.DrawFormationOverlay(screen, g.hudFace, &g.party, g.formationSel, ScreenWidth, ScreenHeight, g.formationInspectOpen)
+		ui.DrawFormationOverlay(screen, g.hudFace, &g.party, g.formationSel, ScreenWidth, ScreenHeight, g.formationInspectOpen, g.inspectHoverFormationGlobalIdx)
 		if g.formationInspectOpen {
 			atCamp := g.world.PlayerStandsOnActiveRecruitCamp(g.player.GridX, g.player.GridY)
-			ui.DrawCharacterInspectOverlay(screen, g.hudFace, &g.party, g.formationSel, ScreenWidth, ScreenHeight, g.formationMsg, atCamp)
+			var promoTargets []string
+			promoCosts := []int(nil)
+			if h := g.party.HeroAtGlobalIndex(g.formationSel); h != nil {
+				promoTargets, _ = hero.PromotionTargetUnitIDs(h)
+				promoCosts = make([]int, len(promoTargets))
+				for i, id := range promoTargets {
+					c, ok := PromotionTrainingMarkCostForHeroTarget(h, id)
+					if ok {
+						promoCosts[i] = c
+					}
+				}
+			}
+			ui.DrawCharacterInspectOverlay(screen, g.hudFace, &g.party, g.formationSel, ScreenWidth, ScreenHeight, g.formationMsg, atCamp, g.TrainingMarks, promoTargets, promoCosts, g.formationPromoteBranchIdx)
 		}
 	}
 
@@ -57,9 +71,31 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	if g.mode == ModeBattle {
 		ui.DrawBattleOverlay(screen, g.hudFace, g.battle, ScreenWidth, ScreenHeight)
+		if g.battle != nil && !g.postBattle.IsActive() {
+			ui.DrawBattleInspectHighlights(screen, g.battle, ScreenWidth, ScreenHeight, g.inspectHoverBattleUnitID, g.battleInspectOpen, g.battleInspectUnitID)
+		}
 		if g.postBattle.IsActive() {
 			params := postbattle.BuildPostBattleParams(&g.postBattle, ScreenWidth, ScreenHeight)
 			ui.DrawPostBattleOverlay(screen, g.hudFace, params)
+		} else if g.battleInspectOpen && g.battle != nil {
+			u := g.battle.Units[g.battleInspectUnitID]
+			if u != nil {
+				var promoTargets []string
+				promoCosts := []int(nil)
+				if u.Side == battlepkg.TeamPlayer && u.Origin.PartyActiveIndex >= 0 {
+					if h := g.party.HeroAtGlobalIndex(u.Origin.PartyActiveIndex); h != nil {
+						promoTargets, _ = hero.PromotionTargetUnitIDs(h)
+						promoCosts = make([]int, len(promoTargets))
+						for i, id := range promoTargets {
+							c, ok := PromotionTrainingMarkCostForHeroTarget(h, id)
+							if ok {
+								promoCosts[i] = c
+							}
+						}
+					}
+				}
+				ui.DrawBattleInspectOverlay(screen, g.hudFace, &g.party, u, ScreenWidth, ScreenHeight, g.TrainingMarks, promoTargets, promoCosts, g.formationPromoteBranchIdx)
+			}
 		}
 	}
 

@@ -65,6 +65,20 @@ func TestCombatUnitSeed_identityFromTemplate(t *testing.T) {
 	}
 }
 
+func TestCombatUnitSeed_groupHealerBranch(t *testing.T) {
+	h, err := NewHeroFromUnitTemplate(unitdata.EmpireHealerGroup1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := h.CombatUnitSeed()
+	if len(s.Def.Loadout.Abilities) < 1 || s.Def.Loadout.Abilities[0] != battlepkg.AbilityGroupHeal {
+		t.Fatalf("loadout: %+v", s.Def.Loadout.Abilities)
+	}
+	if s.Def.TemplateUnitID != unitdata.EmpireHealerGroup1 {
+		t.Fatalf("TemplateUnitID=%q", s.Def.TemplateUnitID)
+	}
+}
+
 func TestCombatUnitSeed_legacyEmptyUnitIDUsesAbilities(t *testing.T) {
 	h := Hero{
 		UnitID:    "",

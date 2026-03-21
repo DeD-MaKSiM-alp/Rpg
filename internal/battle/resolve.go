@@ -45,9 +45,9 @@ func ResolveAbility(ctx *BattleContext, action BattleAction) ActionResult {
 			target.State.Alive = false
 			killed = true
 		}
-		ctx.AddBattleLog(fmt.Sprintf("%s hits %s for %d.", actor.Name(), target.Name(), damage))
+		ctx.AddBattleLog(fmt.Sprintf("%s · %s · %d урона · %s", actor.Name(), PlayerAbilityLabelRU(action.Ability), damage, target.Name()))
 		if killed {
-			ctx.AddBattleLog(fmt.Sprintf("%s dies.", target.Name()))
+			ctx.AddBattleLog(fmt.Sprintf("%s погиб.", target.Name()))
 		}
 		return ActionResult{
 			Actor:  action.Actor,
@@ -64,18 +64,45 @@ func ResolveAbility(ctx *BattleContext, action BattleAction) ActionResult {
 		if target.State.HP > target.MaxHP() {
 			target.State.HP = target.MaxHP()
 		}
-		ctx.AddBattleLog(fmt.Sprintf("%s heals %s for %d.", actor.Name(), target.Name(), amount))
+		ctx.AddBattleLog(fmt.Sprintf("%s · %s · +%d ОЗ · %s", actor.Name(), PlayerAbilityLabelRU(AbilityHeal), amount, target.Name()))
 		return ActionResult{
 			Actor:      action.Actor,
 			Target:     action.Target,
 			HealAmount: amount,
+		}
+	case AbilityGroupHeal:
+		per := actor.GroupHealPower()
+		allies := ctx.LivingUnits(actor.Side)
+		var apps []HealApplication
+		for _, ally := range allies {
+			if ally == nil || !ally.IsAlive() {
+				continue
+			}
+			before := ally.State.HP
+			ally.State.HP += per
+			if ally.State.HP > ally.MaxHP() {
+				ally.State.HP = ally.MaxHP()
+			}
+			gained := ally.State.HP - before
+			if gained > 0 {
+				apps = append(apps, HealApplication{Target: ally.ID, Amount: gained})
+			}
+		}
+		if len(apps) == 0 {
+			ctx.AddBattleLog(fmt.Sprintf("%s · %s — нет эффекта.", actor.Name(), PlayerAbilityLabelRU(AbilityGroupHeal)))
+			return ActionResult{Actor: action.Actor}
+		}
+		ctx.AddBattleLog(fmt.Sprintf("%s · %s · +%d ОЗ каждому союзнику.", actor.Name(), PlayerAbilityLabelRU(AbilityGroupHeal), per))
+		return ActionResult{
+			Actor:            action.Actor,
+			HealApplications: apps,
 		}
 	case AbilityBuff:
 		if target == nil || !target.IsAlive() {
 			return ActionResult{}
 		}
 		target.State.Modifiers.AttackBonus += buffAttackBonus
-		ctx.AddBattleLog(fmt.Sprintf("%s buffs %s.", actor.Name(), target.Name()))
+		ctx.AddBattleLog(fmt.Sprintf("%s · %s · цель %s", actor.Name(), PlayerAbilityLabelRU(AbilityBuff), target.Name()))
 		return ActionResult{
 			Actor:  action.Actor,
 			Target: action.Target,

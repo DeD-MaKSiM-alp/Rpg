@@ -17,6 +17,12 @@ const (
 	EmpireArcherMarksmanBase = "empire_archer_marksman_base"
 	EmpireHealerNovice      = "empire_healer_novice"
 	EmpireHealerAcolyte     = "empire_healer_acolyte"
+	// Tier 3 — первые формы по линиям (design-doc: empire_warrior_dd_1, empire_archer_pure_1, empire_healer_single_1).
+	EmpireWarriorDD1    = "empire_warrior_dd_1"
+	EmpireWarriorTank1  = "empire_warrior_tank_1"
+	EmpireArcherPure1   = "empire_archer_pure_1"
+	EmpireHealerSingle1 = "empire_healer_single_1"
+	EmpireHealerGroup1  = "empire_healer_group_1"
 )
 
 // AttackKind mirrors design-doc attack_type for inspect / data layer (not the full combat rules engine).
@@ -49,8 +55,10 @@ type UnitTemplate struct {
 	Abilities []battlepkg.AbilityID
 	// InspectNote — одна строка для карточки бойца (опционально).
 	InspectNote string
-	// UpgradeToUnitID — следующий шаг эволюции по данным (без логики апгрейда в игре пока).
+	// UpgradeToUnitID — один следующий шаг (линейный путь), если UpgradeOptions пуст.
 	UpgradeToUnitID string
+	// UpgradeOptions — 2+ целей ветвления (tier 2→3); если не пусто, UpgradeToUnitID игнорируется.
+	UpgradeOptions []string
 }
 
 var unitRegistry = map[string]UnitTemplate{
@@ -143,6 +151,7 @@ var unitRegistry = map[string]UnitTemplate{
 		HealPower:    0,
 		Abilities:   []battlepkg.AbilityID{battlepkg.AbilityBasicAttack},
 		InspectNote: "Воинская линия, tier 2.",
+		UpgradeOptions: []string{EmpireWarriorTank1, EmpireWarriorDD1},
 	},
 	EmpireArcherMarksmanBase: {
 		UnitID:      EmpireArcherMarksmanBase,
@@ -159,7 +168,8 @@ var unitRegistry = map[string]UnitTemplate{
 		Initiative:  4,
 		HealPower:    0,
 		Abilities:   []battlepkg.AbilityID{battlepkg.AbilityRangedAttack},
-		InspectNote: "Стрелковая линия, tier 2.",
+		InspectNote:     "Стрелковая линия, tier 2.",
+		UpgradeToUnitID: EmpireArcherPure1,
 	},
 	EmpireHealerAcolyte: {
 		UnitID:      EmpireHealerAcolyte,
@@ -177,6 +187,94 @@ var unitRegistry = map[string]UnitTemplate{
 		HealPower:    0,
 		Abilities:   []battlepkg.AbilityID{battlepkg.AbilityHeal, battlepkg.AbilityBasicAttack},
 		InspectNote: "Линия хилов, tier 2.",
+		UpgradeOptions: []string{EmpireHealerSingle1, EmpireHealerGroup1},
+	},
+	// Tier 3 — без новых ability ID (те же базовые атаки/лечение/выстрел).
+	EmpireWarriorDD1: {
+		UnitID:      EmpireWarriorDD1,
+		DisplayName: "Мечник",
+		FactionID:   "empire",
+		LineID:      "warrior",
+		Tier:        3,
+		ArchetypeID: "melee_dd",
+		Role:        battlepkg.RoleFighter,
+		AttackKind:  AttackMelee,
+		MaxHP:       15,
+		Attack:      4,
+		Defense:     2,
+		Initiative:  3,
+		HealPower:   0,
+		Abilities:   []battlepkg.AbilityID{battlepkg.AbilityBasicAttack},
+		InspectNote: "Воинская линия, tier 3 (ДД).",
+	},
+	EmpireWarriorTank1: {
+		UnitID:      EmpireWarriorTank1,
+		DisplayName: "Щитоносец",
+		FactionID:   "empire",
+		LineID:      "warrior",
+		Tier:        3,
+		ArchetypeID: "tank",
+		Role:        battlepkg.RoleFighter,
+		AttackKind:  AttackMelee,
+		MaxHP:       17,
+		Attack:      2,
+		Defense:     4,
+		Initiative:  1,
+		HealPower:   0,
+		Abilities:   []battlepkg.AbilityID{battlepkg.AbilityBasicAttack},
+		InspectNote: "Воинская линия, tier 3 (танк).",
+	},
+	EmpireArcherPure1: {
+		UnitID:      EmpireArcherPure1,
+		DisplayName: "Лучник",
+		FactionID:   "empire",
+		LineID:      "archer",
+		Tier:        3,
+		ArchetypeID: "ranged_dd",
+		Role:        battlepkg.RoleArcher,
+		AttackKind:  AttackRanged,
+		MaxHP:       10,
+		Attack:      4,
+		Defense:     0,
+		Initiative:  5,
+		HealPower:   0,
+		Abilities:   []battlepkg.AbilityID{battlepkg.AbilityRangedAttack},
+		InspectNote: "Стрелковая линия, tier 3 (чистый урон).",
+	},
+	EmpireHealerSingle1: {
+		UnitID:      EmpireHealerSingle1,
+		DisplayName: "Целитель",
+		FactionID:   "empire",
+		LineID:      "healer",
+		Tier:        3,
+		ArchetypeID: "single_healer",
+		Role:        battlepkg.RoleHealer,
+		AttackKind:  AttackHeal,
+		MaxHP:       10,
+		Attack:      1,
+		Defense:     0,
+		Initiative:  2,
+		HealPower:   1,
+		Abilities:   []battlepkg.AbilityID{battlepkg.AbilityHeal, battlepkg.AbilityBasicAttack},
+		InspectNote: "Линия хилов, tier 3 (сильное одиночное лечение).",
+	},
+	EmpireHealerGroup1: {
+		UnitID:      EmpireHealerGroup1,
+		DisplayName: "Пастырь",
+		FactionID:   "empire",
+		LineID:      "healer",
+		Tier:        3,
+		ArchetypeID: "group_healer",
+		Role:        battlepkg.RoleHealer,
+		AttackKind:  AttackHeal,
+		MaxHP:       11,
+		Attack:      1,
+		Defense:     0,
+		Initiative:  2,
+		// Бонус к GroupHealPower (1+bonus на союзника); слабее по цели, чем одиночное Heal (2+bonus).
+		HealPower:   0,
+		Abilities:   []battlepkg.AbilityID{battlepkg.AbilityGroupHeal, battlepkg.AbilityBasicAttack},
+		InspectNote: "Линия хилов, tier 3: массовое лечение союзников (по чуть-чуть каждому).",
 	},
 }
 

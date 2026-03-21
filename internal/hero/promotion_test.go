@@ -65,7 +65,7 @@ func TestTryPromoteHero_LegacyNoUnitID(t *testing.T) {
 	}
 }
 
-func TestTryPromoteHero_SecondPromotionNoPath(t *testing.T) {
+func TestTryPromoteHero_ThirdPromotionNoPath(t *testing.T) {
 	h, err := NewHeroFromUnitTemplate(unitdata.EmpireWarriorRecruit)
 	if err != nil {
 		t.Fatal(err)
@@ -73,9 +73,18 @@ func TestTryPromoteHero_SecondPromotionNoPath(t *testing.T) {
 	if err := TryPromoteHero(&h); err != nil {
 		t.Fatal(err)
 	}
+	if err := TryPromoteHero(&h); !errors.Is(err, ErrPromotionBranchChoiceRequired) {
+		t.Fatalf("squire has two branches: %v", err)
+	}
+	if err := TryPromoteHeroTo(&h, unitdata.EmpireWarriorDD1); err != nil {
+		t.Fatal(err)
+	}
+	if h.UnitID != unitdata.EmpireWarriorDD1 {
+		t.Fatalf("want tier3 warrior, got %q", h.UnitID)
+	}
 	err = TryPromoteHero(&h)
 	if !errors.Is(err, ErrPromotionNoPath) {
-		t.Fatalf("second promote: %v", err)
+		t.Fatalf("promote after tier3: %v", err)
 	}
 }
 
@@ -107,6 +116,72 @@ func TestCombatUnitSeed_AfterPromotion(t *testing.T) {
 		t.Fatalf("seed TemplateUnitID=%q", s.Def.TemplateUnitID)
 	}
 	if s.Def.Tier != 2 {
+		t.Fatalf("tier %d", s.Def.Tier)
+	}
+}
+
+func TestTryPromoteHero_twoBranchesRequiresTo(t *testing.T) {
+	h, err := NewHeroFromUnitTemplate(unitdata.EmpireWarriorRecruit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := TryPromoteHero(&h); err != nil {
+		t.Fatal(err)
+	}
+	if err := TryPromoteHero(&h); !errors.Is(err, ErrPromotionBranchChoiceRequired) {
+		t.Fatalf("expected branch choice: %v", err)
+	}
+}
+
+func TestTryPromoteHeroTo_tankBranch(t *testing.T) {
+	h, err := NewHeroFromUnitTemplate(unitdata.EmpireWarriorRecruit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := TryPromoteHero(&h); err != nil {
+		t.Fatal(err)
+	}
+	if err := TryPromoteHeroTo(&h, unitdata.EmpireWarriorTank1); err != nil {
+		t.Fatal(err)
+	}
+	if h.UnitID != unitdata.EmpireWarriorTank1 {
+		t.Fatalf("got %q", h.UnitID)
+	}
+	s := h.CombatUnitSeed()
+	if s.Def.TemplateUnitID != unitdata.EmpireWarriorTank1 {
+		t.Fatalf("seed TemplateUnitID=%q", s.Def.TemplateUnitID)
+	}
+}
+
+func TestTryPromoteHeroTo_rejectsWrongTarget(t *testing.T) {
+	h, err := NewHeroFromUnitTemplate(unitdata.EmpireWarriorRecruit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := TryPromoteHero(&h); err != nil {
+		t.Fatal(err)
+	}
+	if err := TryPromoteHeroTo(&h, unitdata.EmpireArcherPure1); err == nil || !errors.Is(err, ErrPromotionTargetNotAllowed) {
+		t.Fatalf("expected ErrPromotionTargetNotAllowed, got %v", err)
+	}
+}
+
+func TestCombatUnitSeed_AfterTier3Promotion(t *testing.T) {
+	h, err := NewHeroFromUnitTemplate(unitdata.EmpireHealerNovice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := TryPromoteHero(&h); err != nil {
+		t.Fatal(err)
+	}
+	if err := TryPromoteHeroTo(&h, unitdata.EmpireHealerSingle1); err != nil {
+		t.Fatal(err)
+	}
+	s := h.CombatUnitSeed()
+	if s.Def.TemplateUnitID != unitdata.EmpireHealerSingle1 {
+		t.Fatalf("seed TemplateUnitID=%q", s.Def.TemplateUnitID)
+	}
+	if s.Def.Tier != 3 {
 		t.Fatalf("tier %d", s.Def.Tier)
 	}
 }

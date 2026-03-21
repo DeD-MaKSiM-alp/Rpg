@@ -65,11 +65,15 @@ func splitV(r rect, topH, gap float32) (rect, rect) {
 }
 
 // drawHUDText рисует текстовые блоки HUD (счётчик собранных предметов и т.п.).
-func drawHUDText(screen *ebiten.Image, pickupCount int, hudFace *text.GoTextFace) {
+func drawHUDText(screen *ebiten.Image, pickupCount, trainingMarks int, hudFace *text.GoTextFace) {
 	op := &text.DrawOptions{}
 	op.GeoM.Translate(10, 20)
 	op.ColorScale.ScaleWithColor(Theme.TextPrimary)
 	text.Draw(screen, fmt.Sprintf("Pickups: %d", pickupCount), hudFace, op)
+	op2 := &text.DrawOptions{}
+	op2.GeoM.Translate(10, 40)
+	op2.ColorScale.ScaleWithColor(Theme.TextSecondary)
+	text.Draw(screen, fmt.Sprintf("Знаки обучения: %d — для повышения в лагере (карточка бойца, I)", trainingMarks), hudFace, op2)
 }
 
 type rect struct {

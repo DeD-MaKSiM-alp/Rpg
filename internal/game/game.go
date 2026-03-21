@@ -10,6 +10,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	battlepkg "mygame/internal/battle"
+	"mygame/internal/hero"
 	inputpkg "mygame/internal/input"
 	"mygame/internal/party"
 	playerpkg "mygame/internal/player"
@@ -123,6 +124,9 @@ type Game struct {
 	// BattlesWon — число выигранных боёв за сессию; используется для эскалации сложности врагов и генерации оффера наград.
 	BattlesWon int
 
+	// TrainingMarks — сессионный счётчик «знаков обучения»: начисляется за победы, тратится на promotion в лагере (см. promotion_gate.go).
+	TrainingMarks int
+
 	// Post-battle: экран результата и выбор награды (оркестрация вынесена в postbattle.Flow).
 	postBattle postbattle.Flow
 
@@ -136,6 +140,8 @@ type Game struct {
 	formationSel int
 	// formationInspectOpen — карточка бойца (I) поверх состава.
 	formationInspectOpen bool
+	// formationPromoteBranchIdx — выбор ветки при двух UpgradeOptions: -1 = не выбрано, 0/1 = ветка.
+	formationPromoteBranchIdx int
 
 	// exploreRestMsg / exploreRestMsgTicks — краткая обратная связь после отдыха (R) в explore).
 	exploreRestMsg      string
@@ -152,19 +158,29 @@ type Game struct {
 	// formationMsg — баннер после promotion (P) на экране состава с открытой карточкой.
 	formationMsg      string
 	formationMsgTicks int
+
+	// battleInspectOpen — карточка по ПКМ в бою (не пост-бой).
+	battleInspectOpen     bool
+	battleInspectUnitID   battlepkg.UnitID
+
+	// inspectHoverBattleUnitID — юнит под курсором для подсказки ПКМ-inspect (0 = нет).
+	inspectHoverBattleUnitID battlepkg.UnitID
+	// inspectHoverFormationGlobalIdx — строка состава под курсором (-1 = нет).
+	inspectHoverFormationGlobalIdx int
 }
 
 // NewGame создаёт новый экземпляр игры (мир, игрок, UI-шрифт и т.д.).
 func NewGame(worldSeed, playerGridX, playerGridY int) *Game {
 	return &Game{
-		player:         *playerpkg.NewPlayer(playerGridX, playerGridY),
-		world:          world.NewWorld(worldSeed),
-		input:          inputpkg.New(),
-		hudFace:        ui.LoadHUDFace(),
-		mode:           ModeExplore,
-		battle:         nil,
-		party:          party.DefaultParty(),
-		BattleHUDStyle: 1, // 1 = v2 Disciples-like (default), 0 = v1 table (debug fallback)
+		player:                         *playerpkg.NewPlayer(playerGridX, playerGridY),
+		world:                          world.NewWorld(worldSeed),
+		input:                          inputpkg.New(),
+		hudFace:                        ui.LoadHUDFace(),
+		mode:                           ModeExplore,
+		battle:                         nil,
+		party:                          party.DefaultParty(),
+		BattleHUDStyle:                 1, // 1 = v2 Disciples-like (default), 0 = v1 table (debug fallback)
+		inspectHoverFormationGlobalIdx: -1,
 	}
 }
 
@@ -184,6 +200,43 @@ func Run(worldSeed, playerGridX, playerGridY int, windowTitle string) error {
 // Layout сообщает ebiten логический размер экрана.
 func (g *Game) Layout(w, h int) (int, int) {
 	return ScreenWidth, ScreenHeight
+}
+
+func (g *Game) syncPromotionBranchForBattleInspect() {
+	if g.battle == nil {
+		g.formationPromoteBranchIdx = 0
+		return
+	}
+	u := g.battle.Units[g.battleInspectUnitID]
+	if u == nil || u.Origin.PartyActiveIndex < 0 {
+		g.formationPromoteBranchIdx = 0
+		return
+	}
+	h := g.party.HeroAtGlobalIndex(u.Origin.PartyActiveIndex)
+	if h == nil {
+		g.formationPromoteBranchIdx = 0
+		return
+	}
+	targets, err := hero.PromotionTargetUnitIDs(h)
+	if err != nil || len(targets) < 2 {
+		g.formationPromoteBranchIdx = 0
+	} else {
+		g.formationPromoteBranchIdx = -1
+	}
+}
+
+func (g *Game) syncPromotionBranchForInspectHero() {
+	h := g.party.HeroAtGlobalIndex(g.formationSel)
+	if h == nil {
+		g.formationPromoteBranchIdx = 0
+		return
+	}
+	targets, err := hero.PromotionTargetUnitIDs(h)
+	if err != nil || len(targets) < 2 {
+		g.formationPromoteBranchIdx = 0
+	} else {
+		g.formationPromoteBranchIdx = -1
+	}
 }
 
 func (g *Game) updateStreamingWorld() {
@@ -223,6 +276,9 @@ func (g *Game) startBattle(enemyID world.EntityID) {
 	}
 	g.mode = ModeBattle
 	g.postBattle.Reset()
+	g.battleInspectOpen = false
+	g.battleInspectUnitID = 0
+	g.inspectHoverBattleUnitID = 0
 	g.exploreRestMsg = ""
 	g.exploreRestMsgTicks = 0
 	seeds := g.party.PlayerCombatSeeds()
@@ -237,6 +293,9 @@ func (g *Game) endBattle() {
 	g.mode = ModeExplore
 	g.battle = nil
 	g.postBattle.Reset()
+	g.battleInspectOpen = false
+	g.battleInspectUnitID = 0
+	g.inspectHoverBattleUnitID = 0
 }
 
 func (g *Game) updateCamera() {

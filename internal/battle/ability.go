@@ -7,6 +7,8 @@ const (
 	TargetEnemySingle TargetRule = iota
 	TargetAllySingle
 	TargetSelf
+	// TargetAllyTeam — без выбора юнита; эффект на всю живую союзную сторону (напр. массовое лечение).
+	TargetAllyTeam
 )
 
 // AbilityRange — дальность способности (контакт/дальняя).
@@ -25,6 +27,7 @@ const (
 	AbilityRangedAttack
 	AbilityHeal
 	AbilityBuff
+	AbilityGroupHeal
 )
 
 // Ability описывает способность (ID, имя, дальность, правило целей).
@@ -54,6 +57,12 @@ var abilityRegistry = map[AbilityID]Ability{
 		Name:       "Heal",
 		Range:      RangeMelee,
 		TargetRule: TargetAllySingle,
+	},
+	AbilityGroupHeal: {
+		ID:         AbilityGroupHeal,
+		Name:       "Массовое лечение",
+		Range:      RangeMelee,
+		TargetRule: TargetAllyTeam,
 	},
 	AbilityBuff: {
 		ID:         AbilityBuff,

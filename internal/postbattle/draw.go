@@ -23,27 +23,34 @@ func BuildPostBattleParams(f *Flow, screenW, screenH int) ui.PostBattleParams {
 	}
 	isReward := f.Step == StepReward
 	optN := len(f.RewardOffer)
-	layout := ui.ComputePostBattleLayout(screenW, screenH, isReward, optN)
+	summaryN := len(f.VictorySummaryLines)
+	if isReward {
+		summaryN = 0
+	}
+	layout := ui.ComputePostBattleLayout(screenW, screenH, isReward, optN, summaryN)
 	mx, my := ebiten.CursorPosition()
 
 	params := ui.PostBattleParams{
-		ResultText:         resultText,
-		IsRewardStep:       isReward,
-		SelectedIndex:      f.SelectedIndex,
-		ScreenWidth:        screenW,
-		ScreenHeight:       screenH,
-		ConfirmRewardLabel: "Подтвердить",
+		ResultText:            resultText,
+		IsRewardStep:          isReward,
+		SelectedIndex:         f.SelectedIndex,
+		ScreenWidth:           screenW,
+		ScreenHeight:          screenH,
+		ConfirmRewardLabel:    "Подтвердить",
+		VictorySummaryLines:   f.VictorySummaryLines,
+		RewardPreambleLine:    "",
 	}
 	if f.Step == StepResult {
 		if f.Outcome == battlepkg.BattleOutcomeVictory {
 			params.ContinueButtonLabel = "Продолжить"
-			params.ResultHintLine = "Выжившие в строю получили боевой опыт (+1). Пробел / Enter — далее к награде лидеру"
+			params.ResultHintLine = "Пробел / Enter или кнопка — далее к награде лидеру"
 		} else {
 			params.ContinueButtonLabel = "В мир"
 		}
 		params.HoverContinue = layout.HitResultContinue(mx, my)
 	}
 	if isReward {
+		params.RewardPreambleLine = "Награда только лидеру — отдельно от боевого опыта отряда."
 		params.HoverRewardConfirm = layout.HitRewardConfirm(mx, my)
 	}
 	if params.IsRewardStep && len(f.RewardOffer) > 0 {

@@ -65,6 +65,9 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 	if b == nil || actor == nil || actor.Side != TeamPlayer {
 		return BattleAction{}, false
 	}
+	if b.BlockPlayerInput {
+		return BattleAction{}, false
+	}
 	b.ensurePlayerTurnInitialized(actor)
 
 	p := &b.PlayerTurn
@@ -142,6 +145,9 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 				p.Phase = PlayerResolveAction
 				return act, true
 
+			case TargetAllyTeam:
+				// Массовое лечение: без выбора цели, сразу выполнение.
+				fallthrough
 			default:
 				// No-target abilities: execute immediately.
 				p.SelectedTarget = NoTarget()
@@ -239,6 +245,9 @@ func (b *BattleContext) Update() BattleOutcome {
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if b.SuppressEscThisFrame {
+			return BattleOutcomeNone
+		}
 		// During player turn in special/target mode: Esc cancels to default attack. In default mode or other phases: retreat.
 		if b.Phase == PhaseAwaitAction {
 			if active := b.ActiveUnit(); active != nil && active.IsAlive() && active.Side == TeamPlayer {

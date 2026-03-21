@@ -12,6 +12,7 @@ import (
 	"mygame/internal/party"
 	playerpkg "mygame/internal/player"
 	"mygame/internal/progression"
+	"mygame/internal/ui"
 	"mygame/internal/unitdata"
 	"mygame/world"
 )
@@ -24,6 +25,13 @@ const formationMsgDurationTicks = 180
 
 // Update обрабатывает один кадр игры.
 func (g *Game) Update() error {
+	if g.mode != ModeFormation {
+		g.inspectHoverFormationGlobalIdx = -1
+	}
+	if g.mode != ModeBattle {
+		g.inspectHoverBattleUnitID = 0
+	}
+
 	// Runtime resolution switch: F6 = previous preset, F7 = next preset (cyclic).
 	n := len(ResolutionPresets)
 	if n > 0 {
@@ -179,10 +187,27 @@ func (g *Game) updateExploreMode() error {
 }
 
 func (g *Game) updateFormationMode() {
+	mx, my := ebiten.CursorPosition()
+	g.inspectHoverFormationGlobalIdx = ui.FormationHitTestGlobalIndex(ScreenWidth, ScreenHeight, mx, my, &g.party)
+
 	if g.formationMsgTicks > 0 {
 		g.formationMsgTicks--
 		if g.formationMsgTicks <= 0 {
 			g.formationMsg = ""
+		}
+	}
+
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
+		mx, my := ebiten.CursorPosition()
+		if gidx := ui.FormationHitTestGlobalIndex(ScreenWidth, ScreenHeight, mx, my, &g.party); gidx >= 0 {
+			if g.formationInspectOpen && gidx == g.formationSel {
+				g.formationInspectOpen = false
+			} else {
+				g.formationSel = gidx
+				g.formationInspectOpen = true
+				g.syncPromotionBranchForInspectHero()
+			}
+			return
 		}
 	}
 
@@ -208,19 +233,44 @@ func (g *Game) updateFormationMode() {
 			g.formationInspectOpen = false
 			return
 		}
+		h := g.party.HeroAtGlobalIndex(g.formationSel)
+		if h != nil {
+			targets, _ := hero.PromotionTargetUnitIDs(h)
+			if len(targets) >= 2 {
+				if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+					g.formationPromoteBranchIdx = 0
+				}
+				if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+					g.formationPromoteBranchIdx = 1
+				}
+			}
+		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyP) {
-			h := g.party.HeroAtGlobalIndex(g.formationSel)
 			if h != nil {
 				atCamp := g.world.PlayerStandsOnActiveRecruitCamp(g.player.GridX, g.player.GridY)
-				gate := EvaluatePromotionGate(h, atCamp)
+				targets, _ := hero.PromotionTargetUnitIDs(h)
+				var sel string
+				if len(targets) == 1 {
+					sel = targets[0]
+				} else if len(targets) >= 2 {
+					if g.formationPromoteBranchIdx < 0 {
+						sel = ""
+					} else {
+						sel = targets[g.formationPromoteBranchIdx%len(targets)]
+					}
+				}
+				gate := EvaluatePromotionGate(h, atCamp, g.TrainingMarks, sel)
 				if !gate.Allowed {
 					g.formationMsg = gate.Message
-				} else if err := hero.TryPromoteHero(h); err != nil {
+				} else if err := hero.TryPromoteHeroTo(h, sel); err != nil {
 					g.formationMsg = hero.PromotionErrUserMessage(err)
-				} else if tpl, ok := unitdata.GetUnitTemplate(h.UnitID); ok {
-					g.formationMsg = "Повышение: «" + tpl.DisplayName + "»"
 				} else {
-					g.formationMsg = "Повышение выполнено."
+					g.TrainingMarks -= gate.Cost
+					if tpl, ok := unitdata.GetUnitTemplate(h.UnitID); ok {
+						g.formationMsg = "Повышение: «" + tpl.DisplayName + "»"
+					} else {
+						g.formationMsg = "Повышение выполнено."
+					}
 				}
 				g.formationMsgTicks = formationMsgDurationTicks
 			}
@@ -245,6 +295,7 @@ func (g *Game) updateFormationMode() {
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyI) {
 		g.formationInspectOpen = true
+		g.syncPromotionBranchForInspectHero()
 		return
 	}
 
@@ -292,32 +343,67 @@ func (g *Game) updateBattleMode() {
 
 	// Post-battle flow: result screen → (on victory) reward selection → return to world.
 	if g.postBattle.IsActive() {
+		g.inspectHoverBattleUnitID = 0
 		if g.postBattle.Update(&g.party, ScreenWidth, ScreenHeight) {
 			g.endBattle()
 		}
 		return
 	}
 
+	mx, my := ebiten.CursorPosition()
+	g.inspectHoverBattleUnitID = battlepkg.HitTestUnitUnderCursor(g.battle, ScreenWidth, ScreenHeight, mx, my)
+
 	g.battle.LayoutStyle = g.BattleHUDStyle
+	g.battle.SuppressEscThisFrame = false
+	g.battle.SuppressMouseRightThisFrame = false
+	g.battle.BlockPlayerInput = g.battleInspectOpen
+
+	if g.battleInspectOpen && inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		g.battleInspectOpen = false
+		g.battleInspectUnitID = 0
+		g.battle.SuppressEscThisFrame = true
+	}
+
+	g.handleBattleInspectInput()
+
+	if g.battleInspectOpen {
+		u := g.battle.Units[g.battleInspectUnitID]
+		if u != nil && u.Origin.PartyActiveIndex >= 0 {
+			if h := g.party.HeroAtGlobalIndex(u.Origin.PartyActiveIndex); h != nil {
+				targets, _ := hero.PromotionTargetUnitIDs(h)
+				if len(targets) >= 2 {
+					if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+						g.formationPromoteBranchIdx = 0
+					}
+					if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+						g.formationPromoteBranchIdx = 1
+					}
+				}
+			}
+		}
+	}
+
 	outcome := g.battle.Update()
 
 	switch outcome {
 	case battlepkg.BattleOutcomeVictory:
 		g.syncPartyFromBattle()
 		progression.ApplyVictoryCombatXPForActiveSurvivors(g.battle, &g.party)
+		summary := progression.BuildVictoryProgressionSummary(g.battle, &g.party, TrainingMarksPerVictory)
 		g.resolveBattleResult(outcome)
 		g.BattlesWon++
-		g.postBattle.Begin(outcome)
+		g.applyVictoryTrainingMarks()
+		g.postBattle.Begin(outcome, summary.Lines)
 		return
 	case battlepkg.BattleOutcomeDefeat:
 		g.syncPartyFromBattle()
 		g.resolveBattleResult(outcome)
-		g.postBattle.Begin(outcome)
+		g.postBattle.Begin(outcome, nil)
 		return
 	case battlepkg.BattleOutcomeRetreat:
 		g.syncPartyFromBattle()
 		g.resolveBattleResult(outcome)
-		g.postBattle.Begin(outcome)
+		g.postBattle.Begin(outcome, nil)
 		return
 	case battlepkg.BattleOutcomeNone:
 		return
@@ -325,6 +411,30 @@ func (g *Game) updateBattleMode() {
 }
 
 // resolveBattleResult применяет результат боя к миру (удаление врагов при победе и т.д.).
+func (g *Game) handleBattleInspectInput() {
+	if g.battle == nil || !inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
+		return
+	}
+	mx, my := ebiten.CursorPosition()
+	if hit := battlepkg.HitTestUnitUnderCursor(g.battle, ScreenWidth, ScreenHeight, mx, my); hit != 0 {
+		if g.battleInspectOpen && hit == g.battleInspectUnitID {
+			g.battleInspectOpen = false
+			g.battleInspectUnitID = 0
+		} else {
+			g.battleInspectOpen = true
+			g.battleInspectUnitID = hit
+			g.syncPromotionBranchForBattleInspect()
+		}
+		g.battle.SuppressMouseRightThisFrame = true
+		return
+	}
+	if g.battleInspectOpen {
+		g.battleInspectOpen = false
+		g.battleInspectUnitID = 0
+		g.battle.SuppressMouseRightThisFrame = true
+	}
+}
+
 func (g *Game) resolveBattleResult(outcome battlepkg.BattleOutcome) {
 	switch outcome {
 	case battlepkg.BattleOutcomeVictory:

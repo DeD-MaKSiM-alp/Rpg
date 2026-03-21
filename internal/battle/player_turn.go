@@ -64,6 +64,29 @@ func (p *PlayerTurnState) PhaseString() string {
 	}
 }
 
+// PhaseLabelRU — подпись подфазы хода игрока для player-facing HUD.
+func (p *PlayerTurnState) PhaseLabelRU() string {
+	if p == nil {
+		return "—"
+	}
+	switch p.Phase {
+	case PlayerTurnNone:
+		return "—"
+	case PlayerTurnStart:
+		return "старт"
+	case PlayerChooseAbility:
+		return "способность"
+	case PlayerChooseTarget:
+		return "цель"
+	case PlayerResolveAction:
+		return "выполнение"
+	case PlayerTurnEnd:
+		return "конец"
+	default:
+		return "?"
+	}
+}
+
 func (c *BattleContext) PlayerTurnStatusString() string {
 	if c == nil {
 		return "-"

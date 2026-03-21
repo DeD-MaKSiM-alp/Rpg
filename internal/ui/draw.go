@@ -15,9 +15,10 @@ func DrawDebugInputDirection(screen *ebiten.Image, rawDX, rawDY, emitDX, emitDY 
 	ebitenutil.DebugPrint(screen, fmt.Sprintf("Input raw: dx=%d dy=%d | emit: dx=%d dy=%d\n", rawDX, rawDY, emitDX, emitDY))
 }
 
-// DrawHUD рисует поверх кадра элементы HUD (например, счётчик собранных предметов).
-func DrawHUD(screen *ebiten.Image, pickupCount int, hudFace *text.GoTextFace) {
-	drawHUDText(screen, pickupCount, hudFace)
+// DrawHUD рисует поверх кадра элементы HUD (например, счётчик собранных предметов и знаки обучения).
+// Цена повышения зависит от tier цели — см. карточку бойца в составе (F5 → I).
+func DrawHUD(screen *ebiten.Image, pickupCount, trainingMarks int, hudFace *text.GoTextFace) {
+	drawHUDText(screen, pickupCount, trainingMarks, hudFace)
 }
 
 // DrawBattleOverlay рисует поверх кадра HUD для боевого режима.

@@ -91,7 +91,7 @@ func battleRoleFromAbilities(abils []battlepkg.AbilityID) battlepkg.Role {
 	hasRanged := false
 	for _, a := range abils {
 		switch a {
-		case battlepkg.AbilityHeal:
+		case battlepkg.AbilityHeal, battlepkg.AbilityGroupHeal:
 			hasHeal = true
 		case battlepkg.AbilityRangedAttack:
 			hasRanged = true

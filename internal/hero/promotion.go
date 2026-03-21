@@ -10,12 +10,15 @@ import (
 
 // Ошибки promotion — проверяйте через errors.Is.
 var (
-	ErrPromotionNilHero          = errors.New("hero: nil hero")
-	ErrPromotionNoUnitID         = errors.New("hero: promotion requires UnitID (legacy)")
-	ErrPromotionUnknownCurrent   = errors.New("hero: current template not in registry")
-	ErrPromotionNoPath           = errors.New("hero: no UpgradeToUnitID for this template")
-	ErrPromotionTargetMissing    = errors.New("hero: upgrade target template not in registry")
-	ErrPromotionSelfLoop         = errors.New("hero: UpgradeToUnitID points to self")
+	ErrPromotionNilHero                 = errors.New("hero: nil hero")
+	ErrPromotionNoUnitID                = errors.New("hero: promotion requires UnitID (legacy)")
+	ErrPromotionUnknownCurrent          = errors.New("hero: current template not in registry")
+	ErrPromotionNoPath                  = errors.New("hero: no UpgradeToUnitID for this template")
+	ErrPromotionTargetMissing           = errors.New("hero: upgrade target template not in registry")
+	ErrPromotionSelfLoop                = errors.New("hero: UpgradeToUnitID points to self")
+	ErrPromotionBranchChoiceRequired    = errors.New("hero: choose promotion branch (TryPromoteHeroTo)")
+	ErrPromotionInvalidTarget           = errors.New("hero: empty promotion target")
+	ErrPromotionTargetNotAllowed        = errors.New("hero: target not in allowed promotion options")
 )
 
 // preserveHPRatioOnPromotion сохраняет долю текущего HP при смене MaxHP (округление к ближайшему).
@@ -40,46 +43,54 @@ func preserveHPRatioOnPromotion(oldHP, oldMax, newMax int) int {
 	return newHP
 }
 
-// validatePromotionDomain — только доменные условия шаблона (без лагеря / карты / UI).
-func validatePromotionDomain(h *Hero) error {
+// promotionTargetsFromHero — нормализованные цели из текущего шаблона (линейно или UpgradeOptions).
+func promotionTargetsFromHero(h *Hero) ([]string, error) {
 	if h == nil {
-		return ErrPromotionNilHero
+		return nil, ErrPromotionNilHero
 	}
 	if h.UnitID == "" {
-		return ErrPromotionNoUnitID
+		return nil, ErrPromotionNoUnitID
 	}
 	cur, ok := unitdata.GetUnitTemplate(h.UnitID)
 	if !ok {
-		return ErrPromotionUnknownCurrent
+		return nil, ErrPromotionUnknownCurrent
 	}
-	if cur.UpgradeToUnitID == "" {
-		return ErrPromotionNoPath
+	ids := unitdata.PromotionTargetUnitIDs(cur)
+	if len(ids) == 0 {
+		return nil, ErrPromotionNoPath
 	}
-	if cur.UpgradeToUnitID == h.UnitID {
-		return ErrPromotionSelfLoop
+	for _, id := range ids {
+		if id == h.UnitID {
+			return nil, ErrPromotionSelfLoop
+		}
+		if _, ok := unitdata.GetUnitTemplate(id); !ok {
+			return nil, fmt.Errorf("%w: %q", ErrPromotionTargetMissing, id)
+		}
 	}
-	if _, ok := unitdata.GetUnitTemplate(cur.UpgradeToUnitID); !ok {
-		return fmt.Errorf("%w: %q", ErrPromotionTargetMissing, cur.UpgradeToUnitID)
-	}
-	return nil
+	return ids, nil
 }
 
-// ValidatePromotionDomain экспортирует доменную проверку для gameplay-слоя (gating до TryPromoteHero).
+// PromotionTargetUnitIDs — публичный доступ к списку допустимых целей повышения (для UI / policy).
+func PromotionTargetUnitIDs(h *Hero) ([]string, error) {
+	return promotionTargetsFromHero(h)
+}
+
+// ValidatePromotionPathsExist — домен: есть ли хотя бы один допустимый шаг (включая ветвление).
+func ValidatePromotionPathsExist(h *Hero) error {
+	_, err := promotionTargetsFromHero(h)
+	return err
+}
+
+// ValidatePromotionDomain — алиас для gameplay: «путь promotion существует» (старое имя).
 func ValidatePromotionDomain(h *Hero) error {
-	return validatePromotionDomain(h)
+	return ValidatePromotionPathsExist(h)
 }
 
-// TryPromoteHero переводит героя на следующий шаблон по UpgradeToUnitID.
-// Сохраняет: CombatExperience, BasicAttackBonus (награды лидера), RecruitLabel.
-// Пересобирает из целевого шаблона: статы, способности, UnitID.
-// CurrentHP: доля от старого MaxHP переносится на новый MaxHP (см. preserveHPRatioOnPromotion).
-// Политика «только в лагере» не проверяется здесь — вызывайте ValidatePromotionDomain + gating снаружи.
-func TryPromoteHero(h *Hero) error {
-	if err := validatePromotionDomain(h); err != nil {
-		return err
+func applyPromotionTo(h *Hero, targetUnitID string) error {
+	next, ok := unitdata.GetUnitTemplate(targetUnitID)
+	if !ok {
+		return fmt.Errorf("%w: %q", ErrPromotionTargetMissing, targetUnitID)
 	}
-	cur, _ := unitdata.GetUnitTemplate(h.UnitID)
-	next, _ := unitdata.GetUnitTemplate(cur.UpgradeToUnitID)
 
 	oldHP, oldMax := h.CurrentHP, h.MaxHP
 	xp := h.CombatExperience
@@ -106,16 +117,63 @@ func TryPromoteHero(h *Hero) error {
 	return nil
 }
 
+// TryPromoteHero переводит героя на единственный возможный следующий шаблон.
+// Если доступны две и более ветки — ErrPromotionBranchChoiceRequired; используйте TryPromoteHeroTo.
+func TryPromoteHero(h *Hero) error {
+	targets, err := promotionTargetsFromHero(h)
+	if err != nil {
+		return err
+	}
+	if len(targets) > 1 {
+		return ErrPromotionBranchChoiceRequired
+	}
+	return applyPromotionTo(h, targets[0])
+}
+
+// TryPromoteHeroTo переводит героя в указанный target UnitID; target должен быть в списке допустимых для текущего шаблона.
+func TryPromoteHeroTo(h *Hero, targetUnitID string) error {
+	if h == nil {
+		return ErrPromotionNilHero
+	}
+	if targetUnitID == "" {
+		return ErrPromotionInvalidTarget
+	}
+	targets, err := promotionTargetsFromHero(h)
+	if err != nil {
+		return err
+	}
+	allowed := false
+	for _, id := range targets {
+		if id == targetUnitID {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return ErrPromotionTargetNotAllowed
+	}
+	return applyPromotionTo(h, targetUnitID)
+}
+
 // PromotionUILine — строка для карточки: домен + флаг «стоим на лагере» (atCamp из world).
 func PromotionUILine(h *Hero, atCamp bool) string {
-	if err := validatePromotionDomain(h); err != nil {
+	if err := ValidatePromotionPathsExist(h); err != nil {
 		return PromotionErrUserMessage(err)
 	}
-	cur, _ := unitdata.GetUnitTemplate(h.UnitID)
-	if !atCamp {
-		return fmt.Sprintf("Повышение: только в лагере (лазурный маркер). Следующий: %s", cur.UpgradeToUnitID)
+	targets, err := PromotionTargetUnitIDs(h)
+	if err != nil || len(targets) == 0 {
+		return PromotionErrUserMessage(ErrPromotionNoPath)
 	}
-	return fmt.Sprintf("Повышение: P — перейти к «%s»", cur.UpgradeToUnitID)
+	if len(targets) > 1 {
+		if !atCamp {
+			return "Повышение: только в лагере. Две ветки — выберите ←/→, затем P."
+		}
+		return "Повышение: ←/→ выбор ветки · P — применить (в лагере)"
+	}
+	if !atCamp {
+		return fmt.Sprintf("Повышение: только в лагере (лазурный маркер). Следующий: %s", targets[0])
+	}
+	return fmt.Sprintf("Повышение: P — перейти к «%s»", targets[0])
 }
 
 // PromotionErrUserMessage — короткий текст для баннера при ошибке promotion.
@@ -136,8 +194,13 @@ func PromotionErrUserMessage(err error) string {
 		return "Повышение: ошибка данных (цикл)."
 	case errors.Is(err, ErrPromotionTargetMissing):
 		return "Повышение: целевой шаблон отсутствует в реестре."
+	case errors.Is(err, ErrPromotionBranchChoiceRequired):
+		return "Повышение: выберите ветку (←/→), затем P."
+	case errors.Is(err, ErrPromotionInvalidTarget):
+		return "Повышение: не выбрана цель."
+	case errors.Is(err, ErrPromotionTargetNotAllowed):
+		return "Повышение: эта ветка недоступна."
 	default:
 		return err.Error()
 	}
 }
-

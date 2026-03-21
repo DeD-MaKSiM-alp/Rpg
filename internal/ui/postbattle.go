@@ -42,7 +42,8 @@ const (
 
 // ComputePostBattleLayout вычисляет layout post-battle экрана для заданного размера окна.
 // isRewardStep и optionCount задают высоту панели и число прямоугольников наград.
-func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCount int) PostBattleLayout {
+// resultSummaryLines — число строк сводки прогрессии на шаге результата (победа); иначе 0.
+func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCount int, resultSummaryLines int) PostBattleLayout {
 	l := PostBattleLayout{
 		ScreenW: screenW,
 		ScreenH: screenH,
@@ -67,12 +68,20 @@ func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCoun
 		if n < 0 {
 			n = 0
 		}
-		// Высота внутренней области: заголовок + строки награды + подсказка + кнопка «Подтвердить».
-		innerH := lineH*3.5 + float32(n)*(postBattleRowH+postBattleRowGap) + 4 + lineH + 8 + postBattleButtonH + 8
+		// Заголовок + две строки пояснения + строки награды + подсказка + кнопка «Подтвердить».
+		innerH := lineH*4.5 + float32(n)*(postBattleRowH+postBattleRowGap) + 4 + lineH + 8 + postBattleButtonH + 8
 		panelH = postBattlePad*2 + innerH
 	} else {
-		// Результат боя: заголовок + подсказка + кнопка «Продолжить» / «В мир».
-		panelH = postBattlePad*2 + lineH*3 + 12 + postBattleButtonH + 16
+		// Результат боя: заголовок + опционально сводка + подсказка + кнопка.
+		ns := resultSummaryLines
+		if ns < 0 {
+			ns = 0
+		}
+		summaryBlock := float32(0)
+		if ns > 0 {
+			summaryBlock = lineH*1.05*float32(ns) + 8
+		}
+		panelH = postBattlePad*2 + lineH*1.5 + summaryBlock + lineH + 12 + postBattleButtonH + 16
 	}
 	panelX := (w - panelW) / 2
 	panelY := (h - panelH) / 2
@@ -92,9 +101,17 @@ func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCoun
 	btnX := l.InnerX + (l.InnerW-btnW)*0.5
 
 	if !isRewardStep {
+		ns := resultSummaryLines
+		if ns < 0 {
+			ns = 0
+		}
+		summaryBlock := float32(0)
+		if ns > 0 {
+			summaryBlock = lineH*1.05*float32(ns) + 8
+		}
 		l.ResultContinueButton = PostBattleRect{
 			X: btnX,
-			Y: l.InnerY + lineH*3 + 12,
+			Y: l.InnerY + lineH*1.5 + summaryBlock + lineH + 12,
 			W: btnW,
 			H: postBattleButtonH,
 		}
@@ -105,7 +122,7 @@ func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCoun
 	if n < 0 {
 		n = 0
 	}
-	firstY := l.InnerY + lineH*3.5
+	firstY := l.InnerY + lineH*4.0
 	l.RewardOptionRects = make([]PostBattleRect, n)
 	for i := 0; i < n; i++ {
 		y := firstY + float32(i)*(postBattleRowH+postBattleRowGap)
@@ -121,7 +138,7 @@ func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCoun
 		yAfter := firstY + float32(n)*(postBattleRowH+postBattleRowGap)
 		hintY = yAfter + 4
 	} else {
-		hintY = l.InnerY + lineH*3.5 + 4
+		hintY = l.InnerY + lineH*4.0 + 4
 	}
 	confirmY := hintY + lineH + 8
 	l.RewardConfirmButton = PostBattleRect{
@@ -175,6 +192,10 @@ type PostBattleParams struct {
 	ScreenHeight  int
 	// ResultHintLine — подсказка под заголовком на шаге результата; пусто = дефолтная строка про Пробел/Enter.
 	ResultHintLine string
+	// VictorySummaryLines — компактная сводка (победа); между заголовком и подсказкой.
+	VictorySummaryLines []string
+	// RewardPreambleLine — одна строка над выбором награды (разделение с боевым опытом).
+	RewardPreambleLine string
 	// Кнопки (явный mouse path; Space/Enter остаётся альтернативой).
 	ContinueButtonLabel string
 	ConfirmRewardLabel  string
@@ -187,7 +208,11 @@ func DrawPostBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p Pos
 	if hudFace == nil || p.ScreenWidth < 100 || p.ScreenHeight < 100 {
 		return
 	}
-	layout := ComputePostBattleLayout(p.ScreenWidth, p.ScreenHeight, p.IsRewardStep, len(p.OptionLabels))
+	summaryN := len(p.VictorySummaryLines)
+	if p.IsRewardStep {
+		summaryN = 0
+	}
+	layout := ComputePostBattleLayout(p.ScreenWidth, p.ScreenHeight, p.IsRewardStep, len(p.OptionLabels), summaryN)
 	w := float32(p.ScreenWidth)
 	h := float32(p.ScreenHeight)
 	vector.FillRect(screen, 0, 0, w, h, Theme.OverlayDim, false)
@@ -205,11 +230,23 @@ func DrawPostBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p Pos
 	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY, W: innerW, H: lineH * 1.5}, p.ResultText, metrics, Theme.TextPrimary)
 
 	if !p.IsRewardStep {
+		y := innerY + lineH*1.55
+		for _, s := range p.VictorySummaryLines {
+			if s == "" {
+				continue
+			}
+			drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: innerW, H: lineH * 1.05}, s, metrics, Theme.TextSecondary)
+			y += lineH * 1.08
+		}
 		hint := p.ResultHintLine
 		if hint == "" {
 			hint = "Пробел / Enter — продолжить или кнопка ниже"
 		}
-		drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY + lineH*2, W: innerW, H: lineH}, hint, metrics, Theme.TextMuted)
+		hintY := innerY + lineH*1.5
+		if len(p.VictorySummaryLines) > 0 {
+			hintY += lineH*1.05*float32(len(p.VictorySummaryLines)) + 8
+		}
+		drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: hintY, W: innerW, H: lineH}, hint, metrics, Theme.TextMuted)
 		lbl := p.ContinueButtonLabel
 		if lbl == "" {
 			lbl = "Продолжить"
@@ -219,9 +256,14 @@ func DrawPostBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p Pos
 		return
 	}
 
-	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY + lineH*2, W: innerW, H: lineH}, "Выберите награду:", metrics, Theme.TextSecondary)
+	sub := p.RewardPreambleLine
+	if sub == "" {
+		sub = "Награда лидеру — отдельно от боевого опыта отряда."
+	}
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY + lineH*2, W: innerW, H: lineH}, sub, metrics, Theme.TextMuted)
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY + lineH*3.1, W: innerW, H: lineH}, "Выберите вариант:", metrics, Theme.TextSecondary)
 
-	y := innerY + lineH*3.5
+	y := innerY + lineH*4.0
 	for i := 0; i < len(p.OptionLabels); i++ {
 		rowH := postBattleRowH
 		label := p.OptionLabels[i]

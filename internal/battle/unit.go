@@ -159,6 +159,18 @@ func (u *CombatUnit) HealPower() int {
 	}
 	return 2 + bonus
 }
+
+// GroupHealPower returns per-ally heal for AbilityGroupHeal: 1 + bonus (weaker per target than HealPower).
+func (u *CombatUnit) GroupHealPower() int {
+	if u == nil {
+		return 1
+	}
+	bonus := u.Def.Base.HealPower
+	if bonus < 0 {
+		bonus = 0
+	}
+	return 1 + bonus
+}
 func (u *CombatUnit) Defense() int {
 	return u.Def.Base.Defense + u.State.Modifiers.DefenseBonus
 }

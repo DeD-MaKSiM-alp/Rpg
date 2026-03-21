@@ -96,6 +96,13 @@ func ListValidTargets(ctx *BattleContext, actorID UnitID, abilityID AbilityID) (
 	case TargetSelf:
 		return []TargetDescriptor{SelfTarget()}, okResult()
 
+	case TargetAllyTeam:
+		allies := ctx.LivingUnits(actor.Side)
+		if len(allies) == 0 {
+			return nil, errResult(ErrNoSuchTargetUnit, "no allies")
+		}
+		return []TargetDescriptor{NoTarget()}, okResult()
+
 	case TargetAllySingle:
 		allies := ctx.LivingUnits(actor.Side)
 		out := make([]TargetDescriptor, 0, len(allies))
@@ -153,6 +160,12 @@ func ValidateAction(ctx *BattleContext, req ActionRequest) ValidationResult {
 	case TargetSelf:
 		if req.Target.Kind != TargetKindSelf {
 			return errResult(ErrMissingTarget, "self-target required")
+		}
+		return okResult()
+
+	case TargetAllyTeam:
+		if req.Target.Kind != TargetKindNone {
+			return errResult(ErrUnexpectedTarget, "mass heal does not take a target")
 		}
 		return okResult()
 

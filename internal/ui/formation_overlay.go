@@ -16,7 +16,8 @@ import (
 // DrawFormationOverlay — порядок Active, резерв и подсказки (F5 в explore).
 // selected — глобальный индекс: [0, len(Active)) строки строя, [len(Active), len(Active)+len(Reserve)) — резерв.
 // inspectOpen — открыта карточка бойца (I); подсказки сокращаются до навигации по карточке.
-func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, selected int, screenW, screenH int, inspectOpen bool) {
+// hoverGlobalIdx — строка под курсором (-1 = нет); подсветка для ПКМ-inspect.
+func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, selected int, screenW, screenH int, inspectOpen bool, hoverGlobalIdx int) {
 	if hudFace == nil || p == nil {
 		return
 	}
@@ -60,7 +61,7 @@ func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *par
 	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH * 1.1}, "Состав отряда · в бою и резерв", metrics, Theme.TextPrimary)
 	y += lineH * 1.35
 	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH * 1.2},
-		"В бою: до "+fmt.Sprintf("%d", party.MaxActiveBattleSlots)+" в строю; резерв не попадает в бой.", metrics, Theme.TextSecondary)
+		"В бою: до "+fmt.Sprintf("%d", party.MaxActiveBattleSlots)+" в строю. Боевой опыт — только выжившим в строю; резерв в бою не участвует.", metrics, Theme.TextSecondary)
 	y += lineH * 2.0
 
 	if na == 0 && nr == 0 {
@@ -68,17 +69,52 @@ func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *par
 		return
 	}
 
+	inspectPlan := BuildFormationInspectHighlightPlan(hoverGlobalIdx, selected, inspectOpen)
+
 	drawMemberRow := func(globalIdx int, h hero.Hero, slotCaption, roleCaption string, inReserve bool) {
 		ry := y
 		rowW := panelW - 32
 		fill := Theme.PanelBGDeep
 		border := Theme.AllyAccent
-		if globalIdx == selected {
+		strokeW := float32(2)
+
+		useCombined := inspectOpen && inspectPlan.CombinedGlobalIdx == globalIdx
+		useActive := inspectOpen && inspectPlan.ActiveGlobalIdx == globalIdx && inspectPlan.CombinedGlobalIdx < 0
+		useHover := inspectPlan.HoverGlobalIdx == globalIdx && inspectPlan.HoverStrength > 0 && inspectPlan.CombinedGlobalIdx < 0
+		if useHover && !inspectOpen && globalIdx == selected {
+			useHover = false
+		}
+		navSelected := globalIdx == selected && !inspectOpen
+
+		switch {
+		case useCombined:
+			fill = formationInspectCombinedFill()
+			border = Theme.ValidTarget
+			strokeW = 2.95
+		case useActive:
+			fill = formationInspectActiveOpenFill()
+			border = Theme.HoverTarget
+			strokeW = 2.45
+		case navSelected:
 			fill = Theme.AbilitySelectedBG
 			border = Theme.ActiveTurn
+		case useHover:
+			fill = formationHoverFill(inspectPlan.HoverStrength)
+			border = Theme.HoverTarget
 		}
+
 		vector.FillRect(screen, innerX, ry, rowW, rowH, fill, false)
-		vector.StrokeRect(screen, innerX, ry, rowW, rowH, 2, border, false)
+		vector.StrokeRect(screen, innerX, ry, rowW, rowH, strokeW, border, false)
+		switch {
+		case useCombined:
+			vector.StrokeRect(screen, innerX-2, ry-2, rowW+4, rowH+4, 1, Theme.AccentStrip, false)
+			vector.FillRect(screen, innerX, ry, 5, rowH, Theme.AccentStrip, false)
+		case useActive:
+			vector.StrokeRect(screen, innerX-1, ry-1, rowW+2, rowH+2, 1, Theme.AccentStrip, false)
+			vector.FillRect(screen, innerX, ry, 4, rowH, Theme.AccentStrip, false)
+		case useHover:
+			vector.FillRect(screen, innerX, ry, 3, rowH, Theme.AccentStrip, false)
+		}
 
 		lbl := fmt.Sprintf("%s · %s", roleCaption, slotCaption)
 		if globalIdx == selected {
@@ -87,8 +123,14 @@ func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *par
 		col := Theme.TextPrimary
 		if h.CurrentHP <= 0 {
 			col = Theme.DeadText
+		} else if useCombined {
+			col = color.RGBA{R: 255, G: 240, B: 175, A: 255}
+		} else if useActive {
+			col = color.RGBA{R: 255, G: 235, B: 165, A: 255}
 		} else if globalIdx == selected {
 			col = color.RGBA{R: 255, G: 235, B: 160, A: 255}
+		} else if useHover {
+			col = Theme.TextSecondary
 		}
 		drawSingleLineInRect(screen, hudFace, rect{X: innerX + 10, Y: ry + 6, W: rowW - 20, H: lineH}, lbl, metrics, col)
 
@@ -133,15 +175,31 @@ func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *par
 	y += lineH * 0.2
 	var help string
 	if inspectOpen {
-		help = "Карточка бойца · ↑↓ другой · P — повышение · I / Esc / F5 — закрыть"
+		help = "Карточка бойца · ↑↓ другой · P — повышение · I / Esc / F5 — закрыть · ПКМ по строке — сведения"
 	} else {
-		help = "↑↓ выбор   I — карточка бойца   ←→ сдвиг слота (строй)   Enter — резерв↔строй   Esc / F5 — выход"
+		help = "↑↓ выбор   I / ПКМ — карточка бойца   ←→ сдвиг слота (строй)   Enter — резерв↔строй   Esc / F5 — выход"
 		if na < 2 {
-			help = "↑↓ выбор   I — карточка   Enter — резерв↔строй   Esc / F5 — выход   (сдвиг слотов при ≥2 в строю)"
+			help = "↑↓ выбор   I / ПКМ — карточка   Enter — резерв↔строй   Esc / F5 — выход   (сдвиг слотов при ≥2 в строю)"
 		}
 		if na >= party.MaxActiveBattleSlots && nr > 0 {
 			help = "Строй полон (" + fmt.Sprintf("%d", party.MaxActiveBattleSlots) + "). Уберите в резерв, чтобы освободить место."
 		}
 	}
 	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH * 1.1}, help, metrics, Theme.TextMuted)
+}
+
+func formationHoverFill(strength float32) color.RGBA {
+	a := uint8(42 * strength)
+	if a < 1 {
+		a = 1
+	}
+	return color.RGBA{R: 48, G: 62, B: 88, A: a}
+}
+
+func formationInspectActiveOpenFill() color.RGBA {
+	return color.RGBA{R: 48, G: 66, B: 94, A: 40}
+}
+
+func formationInspectCombinedFill() color.RGBA {
+	return color.RGBA{R: 58, G: 78, B: 112, A: 54}
 }

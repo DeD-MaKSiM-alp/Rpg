@@ -38,6 +38,13 @@ type BattleContext struct {
 
 	// Feedback — краткоживущие визуальные эффекты (урон/лечение/числа); не доменное состояние.
 	Feedback BattleFeedbackState
+
+	// BlockPlayerInput — игровой слой (карточка по ПКМ): не обрабатывать выбор действия/цели.
+	BlockPlayerInput bool
+	// SuppressEscThisFrame — Esc уже обработан снаружи (закрытие карточки).
+	SuppressEscThisFrame bool
+	// SuppressMouseRightThisFrame — ПКМ обработан снаружи (открытие/переключение карточки).
+	SuppressMouseRightThisFrame bool
 }
 
 // BuildBattleContextFromEncounter создаёт BattleContext из Encounter.
@@ -346,6 +353,31 @@ func (c *BattleContext) PhaseString() string {
 	return "?"
 }
 
+// PhaseLabelRU — короткая подпись фазы боя для player-facing HUD.
+func (c *BattleContext) PhaseLabelRU() string {
+	if c == nil {
+		return "—"
+	}
+	switch c.Phase {
+	case PhaseStart:
+		return "старт"
+	case PhaseTurnStart:
+		return "начало хода"
+	case PhaseAwaitAction:
+		return "действие"
+	case PhaseActionPause:
+		return "пауза"
+	case PhaseTurnEnd:
+		return "конец хода"
+	case PhaseRoundEnd:
+		return "конец раунда"
+	case PhaseFinishedWaitInput:
+		return "итог"
+	default:
+		return "?"
+	}
+}
+
 // ResultString возвращает строковое представление результата боя.
 func (c *BattleContext) ResultString() string {
 	switch c.Result {
@@ -389,7 +421,13 @@ func (c *BattleContext) ApplyActionResult(r ActionResult) {
 	if r.Damage > 0 && r.Target != 0 {
 		c.pushDamageFeedback(r.Target, r.Damage, r.Killed)
 	}
-	if r.HealAmount > 0 && r.Target != 0 {
+	if len(r.HealApplications) > 0 {
+		for _, h := range r.HealApplications {
+			if h.Amount > 0 && h.Target != 0 {
+				c.pushHealFeedback(h.Target, h.Amount)
+			}
+		}
+	} else if r.HealAmount > 0 && r.Target != 0 {
 		c.pushHealFeedback(r.Target, r.HealAmount)
 	}
 	c.UpdateResultIfFinished()

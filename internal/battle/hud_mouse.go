@@ -26,6 +26,9 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 	if b == nil || actor == nil || actor.Side != TeamPlayer {
 		return BattleAction{}, false
 	}
+	if b.BlockPlayerInput {
+		return BattleAction{}, false
+	}
 
 	// Reset hover each frame; will be filled by hit-tests below.
 	b.PlayerTurn.HoverAbilityIndex = -1
@@ -133,6 +136,8 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 						}
 						return BattleAction{}, false
 
+					case TargetAllyTeam:
+						fallthrough
 					default:
 						pt.SelectedTarget = NoTarget()
 						req := ActionRequest{Actor: actor.ID, Ability: abilID, Target: pt.SelectedTarget}
@@ -223,7 +228,7 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 	}
 
 	// 4) Right click = quick cancel/back; return to default attack mode when going back to ChooseAbility.
-	if rightClick {
+	if rightClick && !b.SuppressMouseRightThisFrame {
 		switch pt.Phase {
 		case PlayerChooseTarget:
 			pt.Phase = PlayerChooseAbility

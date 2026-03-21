@@ -47,6 +47,13 @@ func PreviewAction(ctx *BattleContext, req ActionRequest) (ActionPreview, Valida
 		h := actor.HealPower()
 		return ActionPreview{HealMin: h, HealMax: h}, okResult()
 
+	case AbilityGroupHeal:
+		if actor == nil {
+			return ActionPreview{}, okResult()
+		}
+		g := actor.GroupHealPower()
+		return ActionPreview{HealMin: g, HealMax: g}, okResult()
+
 	default:
 		return ActionPreview{}, okResult()
 	}

@@ -6,7 +6,6 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	text "github.com/hajimehoshi/ebiten/v2/text/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	battlepkg "mygame/internal/battle"
 	"mygame/internal/hero"
@@ -14,10 +13,8 @@ import (
 	"mygame/internal/unitdata"
 )
 
-// DrawCharacterInspectOverlay — карточка бойца (канонические поля Hero); открывается из состава (F5) по I.
-// feedbackBanner — краткий результат promotion (успех/ошибка); может быть пустым.
-// atCamp — игрок на клетке лагеря наёмников (для строки про promotion).
-func DrawCharacterInspectOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, globalIdx int, screenW, screenH int, feedbackBanner string, atCamp bool) {
+// DrawCharacterInspectOverlay — карточка бойца (F5 → I / ПКМ); тот же визуальный шаблон, что и battle inspect.
+func DrawCharacterInspectOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, globalIdx int, screenW, screenH int, feedbackBanner string, atCamp bool, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int) {
 	if hudFace == nil || p == nil {
 		return
 	}
@@ -28,75 +25,105 @@ func DrawCharacterInspectOverlay(screen *ebiten.Image, hudFace *text.GoTextFace,
 
 	sw := float32(screenW)
 	sh := float32(screenH)
-	// Затемнение уже задано экраном состава; здесь только панель карточки.
-
 	na := len(p.Active)
 	inReserve := globalIdx >= na
-	title := inspectPrimaryTitle(h, globalIdx, na)
-	sub := inspectSubtitle(h, globalIdx, na, inReserve)
 
-	metrics := battlepkg.HUDMetrics{LineH: uiLineH}
-	pad := float32(18)
-	panelW := float32(520)
-	if sw-40 < panelW {
-		panelW = sw - 40
-	}
-	lineH := uiLineH
-	lines := buildInspectLines(h, inReserve, atCamp)
-	extraFeedback := float32(0)
-	if feedbackBanner != "" {
-		extraFeedback = lineH * 1.15
-	}
-	panelH := pad*2 + lineH*1.4 + lineH*1.2 + float32(len(lines)+2)*lineH + 24 + extraFeedback
+	m := buildFormationInspectCardModel(h, globalIdx, na, inReserve, atCamp, trainingMarks, promoteTargets, promoteCosts, branchIdx, feedbackBanner)
+
+	panelW := DefaultInspectCardPanelWidth(screenW)
+	panelH := EstimateInspectCardHeight(m)
 	px := (sw - panelW) / 2
 	py := (sh - panelH) * 0.45
-	if py < 20 {
-		py = 20
+	if py < 16 {
+		py = 16
 	}
 
-	vector.FillRect(screen, px, py, panelW, panelH, Theme.PostBattlePanelBG, false)
-	vector.StrokeRect(screen, px, py, panelW, panelH, 2, Theme.PostBattleBorder, false)
-
-	ix := px + 16
-	y := py + 14
-	drawSingleLineInRect(screen, hudFace, rect{X: ix, Y: y, W: panelW - 32, H: lineH * 1.2}, title, metrics, Theme.TextPrimary)
-	y += lineH * 1.25
-	drawSingleLineInRect(screen, hudFace, rect{X: ix, Y: y, W: panelW - 32, H: lineH * 1.1}, sub, metrics, Theme.TextSecondary)
-	y += lineH * 1.35
-	DrawThinAccentLine(screen, ix, y, panelW-32)
-	y += 10
-
-	for _, ln := range lines {
-		col := Theme.TextSecondary
-		if strings.HasPrefix(ln, "—") || strings.Contains(ln, "Способности") || strings.HasPrefix(ln, "Повышение:") {
-			col = Theme.TextMuted
-		}
-		drawSingleLineInRect(screen, hudFace, rect{X: ix, Y: y, W: panelW - 32, H: lineH * 1.05}, ln, metrics, col)
-		y += lineH * 1.08
-	}
-
-	if feedbackBanner != "" {
-		y += 4
-		drawSingleLineInRect(screen, hudFace, rect{X: ix, Y: y, W: panelW - 32, H: lineH * 1.1}, feedbackBanner, metrics, Theme.TextSecondary)
-		y += lineH * 1.12
-	}
-
-	y += 6
-	drawSingleLineInRect(screen, hudFace, rect{X: ix, Y: y, W: panelW - 32, H: lineH * 1.1}, inspectPromotionFooterHint(atCamp), metrics, Theme.TextMuted)
+	DrawInspectCardChrome(screen, px, py, panelW, panelH, false)
+	DrawInspectCardContent(screen, hudFace, px, py, panelW, m)
 }
 
-func inspectPromotionFooterHint(atCamp bool) string {
-	if atCamp {
-		return "I / Esc — закрыть · ↑↓ — другой · P — повышение (в лагере)"
+func buildFormationInspectCardModel(h *hero.Hero, globalIdx, na int, inReserve bool, atCamp bool, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int, feedbackBanner string) InspectCardModel {
+	m := InspectCardModel{
+		RoleIcon:    InspectRoleIconFromHero(h),
+		Title:       inspectPrimaryTitle(h, globalIdx, na),
+		ContextLine: formationContextLine(globalIdx, na, inReserve),
+		HPCur:       h.CurrentHP,
+		HPMax:       h.MaxHP,
+		Alive:       h.CurrentHP > 0,
+		IsEnemy:     false,
+		Footer:      inspectPromotionFooterHint(atCamp, len(promoteTargets)),
+		FeedbackBanner: strings.TrimSpace(feedbackBanner),
 	}
-	return "I / Esc — закрыть · ↑↓ — другой · P — повышение только на лазурном лагере"
+	m.Badges = compactTierRangeBadgesFromHero(h)
+	m.ProfileLines = templateProfileShortLines(h)
+	healTotal := 2 + h.HealPower
+	m.StatsLine = fmt.Sprintf("Атака %d · Защита %d · Инициатива %d · Лечение +%d", h.Attack, h.Defense, h.Initiative, healTotal)
+	m.ExtraStatLine = ""
+	m.AbilityLines = abilityLinesBullet(h.Abilities)
+	m.ProgressLines = formationInspectProgressLines(h, inReserve, atCamp, trainingMarks, promoteTargets, promoteCosts, branchIdx)
+	return m
+}
+
+func formationContextLine(globalIdx, na int, inReserve bool) string {
+	if inReserve {
+		return "Резерв — вне боя"
+	}
+	return party.FormationSlotCaption(globalIdx)
+}
+
+const maxFormationInspectProgressLines = 6
+
+func formationInspectProgressLines(h *hero.Hero, inReserve bool, atCamp bool, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int) []string {
+	if h == nil {
+		return nil
+	}
+	var out []string
+	out = append(out, inspectCombatXPProgressLine(h))
+	promo := inspectPromotionLines(h, atCamp, trainingMarks, promoteTargets, promoteCosts, branchIdx)
+	for _, ln := range promo {
+		out = append(out, ln)
+		if len(out) >= maxFormationInspectProgressLines-1 {
+			break
+		}
+	}
+	if inReserve {
+		out = append(out, "Резерв: опыт в бою не растёт.")
+	} else if h.CurrentHP <= 0 {
+		out = append(out, "0 ОЗ — в бой нельзя.")
+	}
+	if len(out) > maxFormationInspectProgressLines {
+		return out[:maxFormationInspectProgressLines]
+	}
+	return out
+}
+
+func inspectCombatXPProgressLine(h *hero.Hero) string {
+	if h == nil {
+		return ""
+	}
+	effective := h.EffectiveBasicAttackBonusForCombat()
+	baseBonus := h.BasicAttackBonus
+	xpPart := h.CombatExperience / hero.CombatXPStepsPerBasicAttackBonus
+	return fmt.Sprintf("Опыт %d · удар +%d (лид %d + опыт %d)", h.CombatExperience, effective, baseBonus, xpPart)
+}
+
+func inspectPromotionFooterHint(atCamp bool, nTargets int) string {
+	if nTargets >= 2 {
+		if atCamp {
+			return "I / Esc — закрыть · ↑↓ — другой · ←/→ — ветка · P — повышение"
+		}
+		return "I / Esc — закрыть · ↑↓ — другой · ←/→ — ветка · P — в лагере"
+	}
+	if atCamp {
+		return "I / Esc — закрыть · ↑↓ — другой · P — повышение (знаки обучения)"
+	}
+	return "I / Esc — закрыть · ↑↓ — другой · P — в лагере лазурного маркера"
 }
 
 func inspectPrimaryTitle(h *hero.Hero, globalIdx, na int) string {
 	if tpl, ok := unitdata.GetUnitTemplate(h.UnitID); ok {
 		return tpl.DisplayName
 	}
-	// LEGACY: до unit_id — подпись рекрута или роль в отряде.
 	if h.RecruitLabel != "" {
 		return h.RecruitLabel
 	}
@@ -106,17 +133,75 @@ func inspectPrimaryTitle(h *hero.Hero, globalIdx, na int) string {
 	return party.ReserveRowCaption(globalIdx - na)
 }
 
-func inspectSubtitle(h *hero.Hero, globalIdx, na int, inReserve bool) string {
+func inspectPromotionLines(h *hero.Hero, atCamp bool, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int) []string {
+	if err := hero.ValidatePromotionPathsExist(h); err != nil {
+		return []string{hero.PromotionErrUserMessage(err)}
+	}
+	if len(promoteTargets) == 0 {
+		return []string{"Нет шага повышения."}
+	}
+	if len(promoteTargets) == 1 {
+		nextID := promoteTargets[0]
+		nextLabel := promotionTargetDisplayName(nextID)
+		cost := 0
+		if len(promoteCosts) > 0 {
+			cost = promoteCosts[0]
+		}
+		if !atCamp {
+			return []string{fmt.Sprintf("Следующий: «%s» · %d знаков · только в лагере", nextLabel, cost)}
+		}
+		if trainingMarks < cost {
+			return []string{fmt.Sprintf("Следующий: «%s» · %d/%d знаков", nextLabel, trainingMarks, cost)}
+		}
+		return []string{fmt.Sprintf("Следующий: «%s» · P (%d знаков)", nextLabel, cost)}
+	}
+	// Несколько веток: одна строка-сводка + при необходимости строка статуса.
 	var parts []string
-	if h.RecruitLabel != "" {
-		parts = append(parts, h.RecruitLabel)
+	for i := range promoteTargets {
+		tpl, ok := unitdata.GetUnitTemplate(promoteTargets[i])
+		if !ok {
+			continue
+		}
+		c := 0
+		if i < len(promoteCosts) {
+			c = promoteCosts[i]
+		}
+		mark := ""
+		if branchIdx == i {
+			mark = "▸ "
+		}
+		parts = append(parts, fmt.Sprintf("%s«%s» %d", mark, tpl.DisplayName, c))
 	}
-	if inReserve {
-		parts = append(parts, "Резерв · вне боя до вывода в строй")
-	} else {
-		parts = append(parts, party.FormationSlotCaption(globalIdx))
+	if len(parts) == 0 {
+		return []string{"Нет шага повышения."}
 	}
-	return strings.Join(parts, " · ")
+	summary := strings.Join(parts, " · ")
+	if branchIdx < 0 {
+		if atCamp {
+			summary = "←/→ ветка · " + summary
+		} else {
+			summary = "Лагерь · " + summary
+		}
+		return []string{summary}
+	}
+	cost := 0
+	if branchIdx >= 0 && branchIdx < len(promoteCosts) {
+		cost = promoteCosts[branchIdx]
+	}
+	if !atCamp {
+		return []string{summary, fmt.Sprintf("В лагере · %d/%d знаков", trainingMarks, cost)}
+	}
+	if trainingMarks < cost {
+		return []string{summary, fmt.Sprintf("Нужно %d знаков · есть %d", cost, trainingMarks)}
+	}
+	return []string{summary, fmt.Sprintf("P — повышение (%d знаков)", cost)}
+}
+
+func promotionTargetDisplayName(unitID string) string {
+	if tpl, ok := unitdata.GetUnitTemplate(unitID); ok {
+		return tpl.DisplayName
+	}
+	return unitID
 }
 
 func roleLabelRu(r battlepkg.Role) string {
@@ -134,92 +219,3 @@ func roleLabelRu(r battlepkg.Role) string {
 	}
 }
 
-func buildInspectLines(h *hero.Hero, inReserve bool, atCamp bool) []string {
-	xpBonus := h.CombatExperience / hero.CombatXPStepsPerBasicAttackBonus
-	effective := h.EffectiveBasicAttackBonusForCombat()
-	baseBonus := h.BasicAttackBonus
-
-	var status string
-	switch {
-	case inReserve:
-		status = "Положение: резерв (не в бою)"
-	case h.CurrentHP <= 0:
-		status = "Положение: строй · не может сражаться (0 ОЗ)"
-	default:
-		status = "Положение: строй · готов к бою"
-	}
-
-	templateLines := templateInspectLines(h)
-
-	healTotal := 2 + h.HealPower
-	lines := []string{
-		status,
-	}
-	lines = append(lines, templateLines...)
-	lines = append(lines, hero.PromotionUILine(h, atCamp))
-	lines = append(lines,
-		fmt.Sprintf("ОЗ: %d / %d", h.CurrentHP, h.MaxHP),
-		fmt.Sprintf("Атака %d · Защита %d · Инициатива %d", h.Attack, h.Defense, h.Initiative),
-		fmt.Sprintf("Бонус базовой атаки: %d (награды %d + опыт %d)", effective, baseBonus, xpBonus),
-		fmt.Sprintf("Боевой опыт: %d (каждые %d → +1 к бонусу базовой атаки в бою)", h.CombatExperience, hero.CombatXPStepsPerBasicAttackBonus),
-		fmt.Sprintf("Лечение: итог восстановления %d ОЗ (база 2 + бонус %d)", healTotal, h.HealPower),
-		"—",
-		"Способности: " + abilityListRu(h.Abilities),
-	)
-	return lines
-}
-
-func templateInspectLines(h *hero.Hero) []string {
-	if h == nil {
-		return nil
-	}
-	tpl, ok := unitdata.GetUnitTemplate(h.UnitID)
-	if !ok {
-		return []string{
-			"— Шаблон —",
-			"Неизвестен (пустой или устаревший unit_id); ниже — текущее состояние бойца.",
-		}
-	}
-	out := []string{
-		"— Шаблон —",
-		fmt.Sprintf("ID: %s", tpl.UnitID),
-		fmt.Sprintf("Фракция: %s · Линия: %s · Tier %d",
-			unitdata.FactionDisplayRU(tpl.FactionID),
-			unitdata.LineDisplayRU(tpl.LineID),
-			tpl.Tier),
-		fmt.Sprintf("Архетип: %s · Роль: %s · Тип атаки: %s",
-			tpl.ArchetypeID,
-			roleLabelRu(tpl.Role),
-			unitdata.AttackKindDisplayRU(tpl.AttackKind)),
-	}
-	if tpl.InspectNote != "" {
-		out = append(out, tpl.InspectNote)
-	}
-	return out
-}
-
-func abilityListRu(ids []battlepkg.AbilityID) string {
-	if len(ids) == 0 {
-		return "—"
-	}
-	var parts []string
-	for _, id := range ids {
-		parts = append(parts, abilityNameRu(id))
-	}
-	return strings.Join(parts, ", ")
-}
-
-func abilityNameRu(id battlepkg.AbilityID) string {
-	switch id {
-	case battlepkg.AbilityBasicAttack:
-		return "Базовая атака"
-	case battlepkg.AbilityRangedAttack:
-		return "Выстрел"
-	case battlepkg.AbilityHeal:
-		return "Лечение"
-	case battlepkg.AbilityBuff:
-		return "Усиление"
-	default:
-		return "?"
-	}
-}

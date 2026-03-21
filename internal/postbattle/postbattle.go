@@ -26,6 +26,8 @@ type Flow struct {
 	Outcome       battlepkg.BattleOutcome
 	RewardOffer   []progression.RewardKind
 	SelectedIndex int
+	// VictorySummaryLines — краткая сводка прогрессии (только победа, шаг результата).
+	VictorySummaryLines []string
 }
 
 // Reset сбрасывает flow (при выходе из боя или старте нового).
@@ -34,14 +36,20 @@ func (f *Flow) Reset() {
 	f.Outcome = battlepkg.BattleOutcomeNone
 	f.RewardOffer = nil
 	f.SelectedIndex = 0
+	f.VictorySummaryLines = nil
 }
 
 // Begin запускает post-battle после завершённого боя (показ результата).
-func (f *Flow) Begin(outcome battlepkg.BattleOutcome) {
+// victorySummary — строки сводки прогрессии (только при победе); иначе nil.
+func (f *Flow) Begin(outcome battlepkg.BattleOutcome, victorySummary []string) {
 	f.Step = StepResult
 	f.Outcome = outcome
 	f.RewardOffer = nil
 	f.SelectedIndex = 0
+	f.VictorySummaryLines = nil
+	if outcome == battlepkg.BattleOutcomeVictory && len(victorySummary) > 0 {
+		f.VictorySummaryLines = victorySummary
+	}
 }
 
 // IsActive возвращает true, пока игрок на экране результата/награды, а не в активном бою.
@@ -123,7 +131,7 @@ func (f *Flow) Update(roster *party.Party, screenW, screenH int) (endBattle bool
 		}
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 			mx, my := ebiten.CursorPosition()
-			layout := ui.ComputePostBattleLayout(screenW, screenH, false, 0)
+			layout := ui.ComputePostBattleLayout(screenW, screenH, false, 0, len(f.VictorySummaryLines))
 			if layout.HitResultContinue(mx, my) {
 				return f.confirmResultStep(roster)
 			}
@@ -141,7 +149,7 @@ func (f *Flow) Update(roster *party.Party, screenW, screenH int) (endBattle bool
 		}
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 			mx, my := ebiten.CursorPosition()
-			layout := ui.ComputePostBattleLayout(screenW, screenH, true, n)
+			layout := ui.ComputePostBattleLayout(screenW, screenH, true, n, 0)
 			if idx := layout.RewardOptionIndexAt(mx, my); idx >= 0 && idx < n {
 				return f.confirmRewardSelection(roster, idx)
 			}
