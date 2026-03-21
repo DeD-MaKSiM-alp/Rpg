@@ -35,6 +35,9 @@ type BattleContext struct {
 
 	// LayoutStyle: 0 = v1 table HUD, 1 = v2 Disciples-like (set by game before Update/Draw).
 	LayoutStyle int
+
+	// Feedback — краткоживущие визуальные эффекты (урон/лечение/числа); не доменное состояние.
+	Feedback BattleFeedbackState
 }
 
 // BuildBattleContextFromEncounter создаёт BattleContext из Encounter.
@@ -347,13 +350,13 @@ func (c *BattleContext) PhaseString() string {
 func (c *BattleContext) ResultString() string {
 	switch c.Result {
 	case ResultVictory:
-		return "Victory"
+		return "Победа"
 	case ResultDefeat:
-		return "Defeat"
+		return "Поражение"
 	case ResultEscape:
-		return "Escape"
+		return "Отступление"
 	}
-	return "-"
+	return "—"
 }
 
 // FormationSummary возвращает краткое описание построения для UI.
@@ -382,6 +385,12 @@ func (c *BattleContext) ToBattleOutcome() BattleOutcome {
 func (c *BattleContext) ApplyActionResult(r ActionResult) {
 	if r.Actor == 0 {
 		return
+	}
+	if r.Damage > 0 && r.Target != 0 {
+		c.pushDamageFeedback(r.Target, r.Damage, r.Killed)
+	}
+	if r.HealAmount > 0 && r.Target != 0 {
+		c.pushHealFeedback(r.Target, r.HealAmount)
 	}
 	c.UpdateResultIfFinished()
 }

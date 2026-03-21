@@ -9,6 +9,19 @@ func pointInRect(x, y float32, r HUDRect) bool {
 	return x >= r.X && y >= r.Y && x <= r.X+r.W && y <= r.Y+r.H
 }
 
+// pointHitsUnit — roster-карточка или токен на поле (v2), единый hit-test для одного UnitID.
+func (l BattleHUDLayout) pointHitsUnit(id UnitID, mxf, myf float32) bool {
+	if r, ok := l.UnitRects[id]; ok && pointInRect(mxf, myf, r) {
+		return true
+	}
+	if l.BattlefieldTokens != nil {
+		if r, ok := l.BattlefieldTokens[id]; ok && pointInRect(mxf, myf, r) {
+			return true
+		}
+	}
+	return false
+}
+
 func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, bool) {
 	if b == nil || actor == nil || actor.Side != TeamPlayer {
 		return BattleAction{}, false
@@ -47,15 +60,12 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 					validSet[td.UnitID] = true
 				}
 			}
-			for id, r := range layout.UnitRects {
-				if !validSet[id] {
-					continue
-				}
+			for id := range validSet {
 				u := b.Units[id]
 				if u == nil || u.Side == actor.Side {
 					continue
 				}
-				if pointInRect(mxf, myf, r) {
+				if layout.pointHitsUnit(id, mxf, myf) {
 					pt.HoverTargetUnitID = id
 					if leftClick {
 						req := ActionRequest{Actor: actor.ID, Ability: AbilityBasicAttack, Target: UnitTarget(id)}
@@ -158,6 +168,7 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 			sideToScan = b.EnemyTeam(actor.Side)
 		}
 
+	slotLoop:
 		for _, row := range []BattleRow{BattleRowFront, BattleRowBack} {
 			for i := 0; i < 3; i++ {
 				slot := b.Slot(sideToScan, row, i)
@@ -168,29 +179,26 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 				if u == nil {
 					continue
 				}
-				r, ok := layout.UnitRects[u.ID]
-				if !ok {
+				if !layout.pointHitsUnit(u.ID, mxf, myf) {
 					continue
 				}
-				if pointInRect(mxf, myf, r) {
-					pt.HoverTargetUnitID = u.ID
-					if leftClick && validSet[u.ID] && pt.Phase == PlayerChooseTarget {
-						// Click on valid target = execute immediately (no Confirm phase).
-						pt.SelectedTarget = UnitTarget(u.ID)
-						req := ActionRequest{
-							Actor:   actor.ID,
-							Ability: pt.SelectedAbilityID,
-							Target:  pt.SelectedTarget,
-						}
-						if ValidateAction(b, req).OK {
-							if act, v2 := ToBattleAction(b, req); v2.OK {
-								pt.Phase = PlayerResolveAction
-								return act, true
-							}
+				pt.HoverTargetUnitID = u.ID
+				if leftClick && validSet[u.ID] && pt.Phase == PlayerChooseTarget {
+					// Click on valid target = execute immediately (no Confirm phase).
+					pt.SelectedTarget = UnitTarget(u.ID)
+					req := ActionRequest{
+						Actor:   actor.ID,
+						Ability: pt.SelectedAbilityID,
+						Target:  pt.SelectedTarget,
+					}
+					if ValidateAction(b, req).OK {
+						if act, v2 := ToBattleAction(b, req); v2.OK {
+							pt.Phase = PlayerResolveAction
+							return act, true
 						}
 					}
-					break
 				}
+				break slotLoop
 			}
 		}
 	}
@@ -234,4 +242,3 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 
 	return action, performed
 }
-

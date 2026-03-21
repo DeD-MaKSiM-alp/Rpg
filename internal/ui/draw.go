@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -50,5 +49,5 @@ func DrawResolutionIndicator(screen *ebiten.Image, hudFace *text.GoTextFace, scr
 		H: lineH,
 	}
 	metrics := battlepkg.HUDMetrics{LineH: lineH}
-	drawSingleLineInRect(screen, hudFace, r, fmt.Sprintf("Resolution: %dx%d", screenWidth, screenHeight), metrics, color.RGBA{R: 200, G: 200, B: 200, A: 255})
+	drawSingleLineInRect(screen, hudFace, r, fmt.Sprintf("Resolution: %dx%d", screenWidth, screenHeight), metrics, Theme.TextMuted)
 }

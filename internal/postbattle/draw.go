@@ -1,6 +1,8 @@
 package postbattle
 
 import (
+	"github.com/hajimehoshi/ebiten/v2"
+
 	battlepkg "mygame/internal/battle"
 	"mygame/internal/progression"
 	"mygame/internal/ui"
@@ -11,20 +13,37 @@ func BuildPostBattleParams(f *Flow, screenW, screenH int) ui.PostBattleParams {
 	var resultText string
 	switch f.Outcome {
 	case battlepkg.BattleOutcomeVictory:
-		resultText = "Victory!"
+		resultText = "Победа!"
 	case battlepkg.BattleOutcomeDefeat:
-		resultText = "Defeat"
+		resultText = "Поражение"
 	case battlepkg.BattleOutcomeRetreat:
-		resultText = "Escaped"
+		resultText = "Отступление"
 	default:
-		resultText = "Battle ended"
+		resultText = "Бой завершён"
 	}
+	isReward := f.Step == StepReward
+	optN := len(f.RewardOffer)
+	layout := ui.ComputePostBattleLayout(screenW, screenH, isReward, optN)
+	mx, my := ebiten.CursorPosition()
+
 	params := ui.PostBattleParams{
-		ResultText:    resultText,
-		IsRewardStep:  f.Step == StepReward,
-		SelectedIndex: f.SelectedIndex,
-		ScreenWidth:   screenW,
-		ScreenHeight:  screenH,
+		ResultText:         resultText,
+		IsRewardStep:       isReward,
+		SelectedIndex:      f.SelectedIndex,
+		ScreenWidth:        screenW,
+		ScreenHeight:       screenH,
+		ConfirmRewardLabel: "Подтвердить",
+	}
+	if f.Step == StepResult {
+		if f.Outcome == battlepkg.BattleOutcomeVictory {
+			params.ContinueButtonLabel = "Продолжить"
+		} else {
+			params.ContinueButtonLabel = "В мир"
+		}
+		params.HoverContinue = layout.HitResultContinue(mx, my)
+	}
+	if isReward {
+		params.HoverRewardConfirm = layout.HitRewardConfirm(mx, my)
 	}
 	if params.IsRewardStep && len(f.RewardOffer) > 0 {
 		params.OptionLabels = make([]string, len(f.RewardOffer))

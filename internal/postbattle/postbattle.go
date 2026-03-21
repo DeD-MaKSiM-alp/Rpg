@@ -62,6 +62,44 @@ func wrapRewardIndex(idx, n int) int {
 	return idx
 }
 
+// confirmResultStep — один канонический переход с экрана результата (победа → награда, иначе → в мир).
+func (f *Flow) confirmResultStep(roster *party.Party) (endBattle bool) {
+	if f.Step != StepResult {
+		return false
+	}
+	leader := roster.Leader()
+	if leader == nil {
+		return true
+	}
+	if f.Outcome == battlepkg.BattleOutcomeVictory {
+		f.RewardOffer = progression.GenerateRewardOffer(leader, progression.RewardOfferCount)
+		if len(f.RewardOffer) == 0 {
+			return true
+		}
+		f.Step = StepReward
+		f.SelectedIndex = 0
+		return false
+	}
+	return true
+}
+
+// confirmRewardSelection применяет выбранную награду и завершает post-battle.
+func (f *Flow) confirmRewardSelection(roster *party.Party, rewardIndex int) (endBattle bool) {
+	if f.Step != StepReward {
+		return false
+	}
+	leader := roster.Leader()
+	if leader == nil {
+		return true
+	}
+	n := len(f.RewardOffer)
+	if n <= 0 || rewardIndex < 0 || rewardIndex >= n {
+		return false
+	}
+	progression.ApplyReward(leader, f.RewardOffer[rewardIndex])
+	return true
+}
+
 // Update обрабатывает один кадр ввода в post-battle. Если нужно завершить бой и вернуться в мир — возвращает true.
 // Награды применяются к лидеру отряда (party.Leader).
 func (f *Flow) Update(roster *party.Party, screenW, screenH int) (endBattle bool) {
@@ -81,18 +119,17 @@ func (f *Flow) Update(roster *party.Party, screenW, screenH int) (endBattle bool
 	switch f.Step {
 	case StepResult:
 		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-			if f.Outcome == battlepkg.BattleOutcomeVictory {
-				f.RewardOffer = progression.GenerateRewardOffer(leader, progression.RewardOfferCount)
-				if len(f.RewardOffer) == 0 {
-					return true
-				}
-				f.Step = StepReward
-				f.SelectedIndex = 0
-			} else {
-				return true
+			return f.confirmResultStep(roster)
+		}
+		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+			mx, my := ebiten.CursorPosition()
+			layout := ui.ComputePostBattleLayout(screenW, screenH, false, 0)
+			if layout.HitResultContinue(mx, my) {
+				return f.confirmResultStep(roster)
 			}
 		}
 	case StepReward:
+		n = len(f.RewardOffer)
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
 			f.SelectedIndex = wrapRewardIndex(f.SelectedIndex-1, n)
 		}
@@ -100,21 +137,19 @@ func (f *Flow) Update(roster *party.Party, screenW, screenH int) (endBattle bool
 			f.SelectedIndex = wrapRewardIndex(f.SelectedIndex+1, n)
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-			progression.ApplyReward(leader, f.RewardOffer[f.SelectedIndex])
-			return true
+			return f.confirmRewardSelection(roster, f.SelectedIndex)
 		}
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-			if idx := f.rewardOptionAtCursor(screenW, screenH); idx >= 0 && idx < n {
-				progression.ApplyReward(leader, f.RewardOffer[idx])
-				return true
+			mx, my := ebiten.CursorPosition()
+			layout := ui.ComputePostBattleLayout(screenW, screenH, true, n)
+			if idx := layout.RewardOptionIndexAt(mx, my); idx >= 0 && idx < n {
+				return f.confirmRewardSelection(roster, idx)
+			}
+			if layout.HitRewardConfirm(mx, my) {
+				return f.confirmRewardSelection(roster, f.SelectedIndex)
 			}
 		}
 	}
 	return false
 }
 
-func (f *Flow) rewardOptionAtCursor(screenW, screenH int) int {
-	mx, my := ebiten.CursorPosition()
-	layout := ui.ComputePostBattleLayout(screenW, screenH, true, len(f.RewardOffer))
-	return layout.RewardOptionIndexAt(mx, my)
-}

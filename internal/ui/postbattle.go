@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"image/color"
-
 	"github.com/hajimehoshi/ebiten/v2"
 	text "github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -18,24 +16,28 @@ type PostBattleRect struct {
 // PostBattleLayout — каноническая геометрия post-battle overlay (отрисовка и hit-test).
 // Единственный источник истины: ComputePostBattleLayout.
 type PostBattleLayout struct {
-	ScreenW, ScreenH int
+	ScreenW, ScreenH               int
 	PanelX, PanelY, PanelW, PanelH float32
 	InnerX, InnerY, InnerW         float32
 	LineH                          float32
 	Pad                            float32
 	// RewardOptionRects — области клика и подсветки строк награды (совпадают с отрисовкой).
 	RewardOptionRects []PostBattleRect
+	// ResultContinueButton — шаг результата боя: явное продолжение (мышь + тот же layout, что и draw).
+	ResultContinueButton PostBattleRect
+	// RewardConfirmButton — шаг выбора награды: подтвердить текущий выбор (аналог Space/Enter).
+	RewardConfirmButton PostBattleRect
 }
 
 // postBattle metrics — одна точка правды для чисел layout (draw + hit-test).
 const (
-	postBattleLineH   = float32(22)
-	postBattlePad     = float32(24)
-	postBattlePanelW  = float32(400)
-	postBattleRowH    = float32(32)
-	postBattleRowGap  = float32(4)
-	postBattleBaseH   = float32(220)
-	postBattleRewardH = float32(120) // высота панели без строк опций (заголовок + choose + hint)
+	postBattleLineH    = float32(22)
+	postBattlePad      = float32(24)
+	postBattlePanelW   = float32(400)
+	postBattleRowH     = float32(32)
+	postBattleRowGap   = float32(4)
+	postBattleButtonH  = float32(36)
+	postBattleButtonW  = float32(200)
 )
 
 // ComputePostBattleLayout вычисляет layout post-battle экрана для заданного размера окна.
@@ -57,9 +59,20 @@ func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCoun
 	if panelW > w-postBattlePad*2 {
 		panelW = w - postBattlePad*2
 	}
-	panelH := postBattleBaseH
-	if isRewardStep && optionCount > 0 {
-		panelH = postBattleRewardH + float32(optionCount)*36 // 36 = rowH + gap (как в цикле отрисовки)
+	lineH := postBattleLineH
+
+	var panelH float32
+	if isRewardStep {
+		n := optionCount
+		if n < 0 {
+			n = 0
+		}
+		// Высота внутренней области: заголовок + строки награды + подсказка + кнопка «Подтвердить».
+		innerH := lineH*3.5 + float32(n)*(postBattleRowH+postBattleRowGap) + 4 + lineH + 8 + postBattleButtonH + 8
+		panelH = postBattlePad*2 + innerH
+	} else {
+		// Результат боя: заголовок + подсказка + кнопка «Продолжить» / «В мир».
+		panelH = postBattlePad*2 + lineH*3 + 12 + postBattleButtonH + 16
 	}
 	panelX := (w - panelW) / 2
 	panelY := (h - panelH) / 2
@@ -69,19 +82,53 @@ func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCoun
 	l.InnerY = panelY + postBattlePad
 	l.InnerW = panelW - postBattlePad*2
 
-	if isRewardStep && optionCount > 0 {
-		// Первая строка награды: y = innerY + lineH*3.5; подсветка: y-2, высота rowH+4 (как в DrawPostBattleOverlay).
-		firstY := l.InnerY + postBattleLineH*3.5
-		l.RewardOptionRects = make([]PostBattleRect, optionCount)
-		for i := 0; i < optionCount; i++ {
-			y := firstY + float32(i)*(postBattleRowH+postBattleRowGap)
-			l.RewardOptionRects[i] = PostBattleRect{
-				X: l.InnerX,
-				Y: y - 2,
-				W: l.InnerW,
-				H: postBattleRowH + 4,
-			}
+	btnW := postBattleButtonW
+	if btnW > l.InnerW-16 {
+		btnW = l.InnerW - 16
+	}
+	if btnW < 100 {
+		btnW = l.InnerW - 16
+	}
+	btnX := l.InnerX + (l.InnerW-btnW)*0.5
+
+	if !isRewardStep {
+		l.ResultContinueButton = PostBattleRect{
+			X: btnX,
+			Y: l.InnerY + lineH*3 + 12,
+			W: btnW,
+			H: postBattleButtonH,
 		}
+		return l
+	}
+
+	n := optionCount
+	if n < 0 {
+		n = 0
+	}
+	firstY := l.InnerY + lineH*3.5
+	l.RewardOptionRects = make([]PostBattleRect, n)
+	for i := 0; i < n; i++ {
+		y := firstY + float32(i)*(postBattleRowH+postBattleRowGap)
+		l.RewardOptionRects[i] = PostBattleRect{
+			X: l.InnerX,
+			Y: y - 2,
+			W: l.InnerW,
+			H: postBattleRowH + 4,
+		}
+	}
+	var hintY float32
+	if n > 0 {
+		yAfter := firstY + float32(n)*(postBattleRowH+postBattleRowGap)
+		hintY = yAfter + 4
+	} else {
+		hintY = l.InnerY + lineH*3.5 + 4
+	}
+	confirmY := hintY + lineH + 8
+	l.RewardConfirmButton = PostBattleRect{
+		X: btnX,
+		Y: confirmY,
+		W: btnW,
+		H: postBattleButtonH,
 	}
 	return l
 }
@@ -98,6 +145,25 @@ func (l PostBattleLayout) RewardOptionIndexAt(mx, my int) int {
 	return -1
 }
 
+func postBattlePointInRect(mx, my int, r PostBattleRect) bool {
+	if r.W <= 0 || r.H <= 0 {
+		return false
+	}
+	mxf := float32(mx)
+	myf := float32(my)
+	return mxf >= r.X && mxf <= r.X+r.W && myf >= r.Y && myf <= r.Y+r.H
+}
+
+// HitResultContinue — клик по кнопке продолжения на экране результата.
+func (l PostBattleLayout) HitResultContinue(mx, my int) bool {
+	return postBattlePointInRect(mx, my, l.ResultContinueButton)
+}
+
+// HitRewardConfirm — клик по кнопке подтверждения выбранной награды.
+func (l PostBattleLayout) HitRewardConfirm(mx, my int) bool {
+	return postBattlePointInRect(mx, my, l.RewardConfirmButton)
+}
+
 // PostBattleParams — параметры для отрисовки post-battle overlay (game передаёт готовые строки).
 type PostBattleParams struct {
 	ResultText    string
@@ -107,6 +173,11 @@ type PostBattleParams struct {
 	SelectedIndex int
 	ScreenWidth   int
 	ScreenHeight  int
+	// Кнопки (явный mouse path; Space/Enter остаётся альтернативой).
+	ContinueButtonLabel string
+	ConfirmRewardLabel  string
+	HoverContinue       bool
+	HoverRewardConfirm  bool
 }
 
 // DrawPostBattleOverlay рисует полупрозрачный overlay: результат боя и (при победе) выбор награды.
@@ -117,12 +188,10 @@ func DrawPostBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p Pos
 	layout := ComputePostBattleLayout(p.ScreenWidth, p.ScreenHeight, p.IsRewardStep, len(p.OptionLabels))
 	w := float32(p.ScreenWidth)
 	h := float32(p.ScreenHeight)
-	// Dim background
-	vector.FillRect(screen, 0, 0, w, h, color.RGBA{R: 0, G: 0, B: 0, A: 200}, false)
+	vector.FillRect(screen, 0, 0, w, h, Theme.OverlayDim, false)
 
-	// Panel background
-	vector.FillRect(screen, layout.PanelX, layout.PanelY, layout.PanelW, layout.PanelH, color.RGBA{R: 28, G: 28, B: 34, A: 255}, false)
-	vector.StrokeRect(screen, layout.PanelX, layout.PanelY, layout.PanelW, layout.PanelH, 2, color.RGBA{R: 100, G: 100, B: 120, A: 255}, false)
+	vector.FillRect(screen, layout.PanelX, layout.PanelY, layout.PanelW, layout.PanelH, Theme.PostBattlePanelBG, false)
+	vector.StrokeRect(screen, layout.PanelX, layout.PanelY, layout.PanelW, layout.PanelH, 2, Theme.PostBattleBorder, false)
 
 	innerX := layout.InnerX
 	innerY := layout.InnerY
@@ -131,14 +200,20 @@ func DrawPostBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p Pos
 	metrics := battlepkg.HUDMetrics{LineH: lineH}
 
 	// Result line
-	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY, W: innerW, H: lineH * 1.5}, p.ResultText, metrics, color.White)
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY, W: innerW, H: lineH * 1.5}, p.ResultText, metrics, Theme.TextPrimary)
 
 	if !p.IsRewardStep {
-		drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY + lineH*2, W: innerW, H: lineH}, "SPACE / ENTER — continue", metrics, color.RGBA{R: 180, G: 180, B: 180, A: 255})
+		drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY + lineH*2, W: innerW, H: lineH}, "Пробел / Enter — продолжить или кнопка ниже", metrics, Theme.TextMuted)
+		lbl := p.ContinueButtonLabel
+		if lbl == "" {
+			lbl = "Продолжить"
+		}
+		rc := layout.ResultContinueButton
+		drawPostBattlePrimaryButton(screen, hudFace, rc, lbl, p.HoverContinue, metrics)
 		return
 	}
 
-	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY + lineH*2, W: innerW, H: lineH}, "Choose reward:", metrics, color.RGBA{R: 220, G: 220, B: 220, A: 255})
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY + lineH*2, W: innerW, H: lineH}, "Выберите награду:", metrics, Theme.TextSecondary)
 
 	y := innerY + lineH*3.5
 	for i := 0; i < len(p.OptionLabels); i++ {
@@ -147,16 +222,36 @@ func DrawPostBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p Pos
 		if i < len(p.OptionDescs) && p.OptionDescs[i] != "" {
 			label = label + " — " + p.OptionDescs[i]
 		}
-		textCol := color.RGBA{R: 200, G: 200, B: 200, A: 255}
+		textCol := Theme.TextSecondary
 		if i == p.SelectedIndex && i < len(layout.RewardOptionRects) {
-			textCol = color.RGBA{R: 255, G: 255, B: 255, A: 255}
-			fill := color.RGBA{R: 55, G: 65, B: 90, A: 255}
+			textCol = Theme.TextPrimary
 			r := layout.RewardOptionRects[i]
-			vector.FillRect(screen, r.X, r.Y, r.W, r.H, fill, false)
-			vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 1, color.RGBA{R: 120, G: 140, B: 200, A: 255}, false)
+			vector.FillRect(screen, r.X, r.Y, r.W, r.H, Theme.PostBattleRowSelect, false)
+			vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 1, Theme.PostBattleRowBrd, false)
 		}
 		drawSingleLineInRect(screen, hudFace, rect{X: innerX + 8, Y: y, W: innerW - 16, H: rowH}, label, metrics, textCol)
 		y += rowH + postBattleRowGap
 	}
-	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y + 4, W: innerW, H: lineH}, "ARROWS — select   SPACE / ENTER — confirm", metrics, color.RGBA{R: 140, G: 140, B: 150, A: 255})
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y + 4, W: innerW, H: lineH}, "Стрелки — выбор · Пробел / Enter или кнопка ниже", metrics, Theme.TextMuted)
+	cl := p.ConfirmRewardLabel
+	if cl == "" {
+		cl = "Подтвердить"
+	}
+	drawPostBattlePrimaryButton(screen, hudFace, layout.RewardConfirmButton, cl, p.HoverRewardConfirm, metrics)
+}
+
+func drawPostBattlePrimaryButton(screen *ebiten.Image, hudFace *text.GoTextFace, r PostBattleRect, label string, hover bool, metrics battlepkg.HUDMetrics) {
+	if r.W <= 0 || r.H <= 0 {
+		return
+	}
+	fill := Theme.ButtonBG
+	border := Theme.ButtonBorder
+	if hover {
+		fill = Theme.ButtonHoverBG
+		border = Theme.ButtonHoverBorder
+	}
+	vector.FillRect(screen, r.X, r.Y, r.W, r.H, fill, false)
+	vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 1, border, false)
+	rr := rect{X: r.X, Y: r.Y, W: r.W, H: r.H}
+	drawSingleLineInRect(screen, hudFace, rr, label, metrics, Theme.TextPrimary)
 }

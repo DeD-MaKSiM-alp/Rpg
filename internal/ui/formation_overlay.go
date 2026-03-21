@@ -8,42 +8,53 @@ import (
 	text "github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
+	battlepkg "mygame/internal/battle"
 	"mygame/internal/party"
 )
 
-// DrawFormationOverlay — минимальный экран порядка отряда в explore (канонический порядок = party.Active).
+// DrawFormationOverlay — порядок отряда (formation) в едином стиле с battle/explore foundation.
 func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, selected int, screenW, screenH int) {
 	if hudFace == nil || p == nil {
 		return
 	}
-	sw, sh := float32(screenW), float32(screenH)
-	vector.FillRect(screen, 0, 0, sw, sh, color.RGBA{0, 0, 0, 200}, false)
+	sw := float32(screenW)
+	vector.FillRect(screen, 0, 0, sw, float32(screenH), Theme.OverlayDim, false)
 
-	pad := float32(24)
+	pad := float32(20)
 	lineH := uiLineH
-	x := pad
-	y := pad
+	metrics := battlepkg.HUDMetrics{LineH: lineH}
 
-	title := "Порядок отряда → построение в бою"
-	op := &text.DrawOptions{}
-	op.GeoM.Translate(float64(x), float64(y))
-	op.ColorScale.ScaleWithColor(color.RGBA{R: 255, G: 255, B: 255, A: 255})
-	text.Draw(screen, title, hudFace, op)
-	y += lineH * 1.4
-
-	sub := "Сверху вниз: передний ряд (3), затем задний — как при входе в бой (PlayerSlotForPartyIndex)."
-	op2 := &text.DrawOptions{}
-	op2.GeoM.Translate(float64(x), float64(y))
-	op2.ColorScale.ScaleWithColor(color.RGBA{R: 190, G: 195, B: 200, A: 255})
-	text.Draw(screen, sub, hudFace, op2)
-	y += lineH * 2.2
+	panelW := float32(520)
+	if sw-pad*2 < panelW {
+		panelW = sw - pad*2
+	}
+	panelX := (sw - panelW) * 0.5
+	panelY := pad * 1.2
 
 	n := len(p.Active)
+	rowH := lineH*2.4 + 10
+	headerH := lineH * 4.2
+	footerH := lineH * 1.6
+	panelH := headerH
+	if n > 0 {
+		panelH += float32(n)*rowH + 8
+	}
+	panelH += footerH
+
+	vector.FillRect(screen, panelX, panelY, panelW, panelH, Theme.PanelBG, false)
+	vector.StrokeRect(screen, panelX, panelY, panelW, panelH, 1, Theme.PanelBorder, false)
+	DrawThinAccentLine(screen, panelX+10, panelY+8, panelW-20)
+
+	innerX := panelX + 16
+	y := panelY + 14
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH * 1.1}, "Порядок отряда · построение в бою", metrics, Theme.TextPrimary)
+	y += lineH * 1.35
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH * 1.2},
+		"Сверху вниз: передний ряд (3), затем задний (слоты = PlayerSlotForPartyIndex).", metrics, Theme.TextSecondary)
+	y += lineH * 2.0
+
 	if n == 0 {
-		op3 := &text.DrawOptions{}
-		op3.GeoM.Translate(float64(x), float64(y))
-		op3.ColorScale.ScaleWithColor(color.RGBA{R: 200, G: 100, B: 100, A: 255})
-		text.Draw(screen, "Нет участников.", hudFace, op3)
+		drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH}, "Нет участников.", metrics, Theme.TextDanger)
 		return
 	}
 
@@ -51,54 +62,52 @@ func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *par
 		h := p.Active[i]
 		slot := party.FormationSlotCaption(i)
 		role := party.MemberRoleCaption(i)
-		mark := "  "
+		ry := y
+		rowW := panelW - 32
+		fill := Theme.PanelBGDeep
+		border := Theme.AllyAccent
 		if i == selected {
-			mark = "▶ "
+			fill = Theme.AbilitySelectedBG
+			border = Theme.ActiveTurn
 		}
-		line := fmt.Sprintf("%s%d. %s · %s · HP %d/%d", mark, i+1, role, slot, h.CurrentHP, h.MaxHP)
-		col := color.RGBA{R: 220, G: 225, B: 230, A: 255}
+		vector.FillRect(screen, innerX, ry, rowW, rowH, fill, false)
+		vector.StrokeRect(screen, innerX, ry, rowW, rowH, 2, border, false)
+
+		lbl := fmt.Sprintf("%d. %s", i+1, role)
 		if i == selected {
-			col = color.RGBA{R: 255, G: 230, B: 120, A: 255}
+			lbl = "▶ " + lbl
 		}
-		opL := &text.DrawOptions{}
-		opL.GeoM.Translate(float64(x), float64(y))
-		opL.ColorScale.ScaleWithColor(col)
-		text.Draw(screen, line, hudFace, opL)
-		y += lineH * 1.25
+		col := Theme.TextPrimary
+		if h.CurrentHP <= 0 {
+			col = Theme.DeadText
+		} else if i == selected {
+			col = color.RGBA{R: 255, G: 235, B: 160, A: 255}
+		}
+		drawSingleLineInRect(screen, hudFace, rect{X: innerX + 10, Y: ry + 6, W: rowW - 20, H: lineH}, lbl, metrics, col)
+
+		slotShort := slot
+		if len([]rune(slotShort)) > 38 {
+			rs := []rune(slotShort)
+			slotShort = string(rs[:35]) + "…"
+		}
+		drawSingleLineInRect(screen, hudFace, rect{X: innerX + 10, Y: ry + 6 + lineH*1.05, W: rowW - 100, H: lineH * 0.95}, slotShort, metrics, Theme.TextMuted)
+
+		hpTxt := fmt.Sprintf("%d/%d", h.CurrentHP, h.MaxHP)
+		if h.CurrentHP <= 0 {
+			hpTxt = "выбыл"
+		}
+		drawSingleLineInRect(screen, hudFace, rect{X: innerX + rowW - 88, Y: ry + 6, W: 78, H: lineH}, hpTxt, metrics, Theme.TextSecondary)
+
+		barY := ry + rowH - 9
+		DrawHPBarMicro(screen, innerX+10, barY, rowW-20, 5, h.CurrentHP, h.MaxHP, h.CurrentHP > 0, false)
+
+		y += rowH + 6
 	}
 
-	y += lineH * 0.5
-	help := "↑↓ выбор   ←→ сдвиг в списке (меняет слот в бою)   Esc — выход"
+	y += lineH * 0.35
+	help := "↑↓ выбор   ←→ сдвиг (слот в бою)   Esc / F5 — выход"
 	if n < 2 {
-		help = "Нужно минимум 2 участника, чтобы менять порядок.   Esc — выход"
+		help = "Нужно ≥2 участника для сдвига.   Esc / F5 — выход"
 	}
-	opH := &text.DrawOptions{}
-	opH.GeoM.Translate(float64(x), float64(y))
-	opH.ColorScale.ScaleWithColor(color.RGBA{R: 160, G: 170, B: 185, A: 255})
-	text.Draw(screen, help, hudFace, opH)
-}
-
-// DrawExploreFormationHint — подсказки в explore: F5 (порядок), R (отдых), опционально баннер после отдыха.
-// Снизу вверх: F5, R, при наличии — зелёный баннер после отдыха.
-func DrawExploreFormationHint(screen *ebiten.Image, hudFace *text.GoTextFace, screenW, screenH int, restFeedback string) {
-	if hudFace == nil || screenH < 40 {
-		return
-	}
-	yF5 := float64(screenH) - 26
-	yR := yF5 - 22
-	yFeed := yR - 22
-	op := &text.DrawOptions{}
-	op.GeoM.Translate(10, yF5)
-	op.ColorScale.ScaleWithColor(color.RGBA{R: 170, G: 175, B: 185, A: 255})
-	text.Draw(screen, "F5: порядок отряда (слоты в бою как в списке)", hudFace, op)
-	opR := &text.DrawOptions{}
-	opR.GeoM.Translate(10, yR)
-	opR.ColorScale.ScaleWithColor(color.RGBA{R: 165, G: 170, B: 180, A: 255})
-	text.Draw(screen, "R: отдых — +HP живым (доля MaxHP), 0 HP не поднимает; затем ход мира", hudFace, opR)
-	if restFeedback != "" {
-		opF := &text.DrawOptions{}
-		opF.GeoM.Translate(10, yFeed)
-		opF.ColorScale.ScaleWithColor(color.RGBA{R: 120, G: 220, B: 160, A: 255})
-		text.Draw(screen, restFeedback, hudFace, opF)
-	}
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH}, help, metrics, Theme.TextMuted)
 }

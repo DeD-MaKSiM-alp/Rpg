@@ -68,7 +68,7 @@ func splitV(r rect, topH, gap float32) (rect, rect) {
 func drawHUDText(screen *ebiten.Image, pickupCount int, hudFace *text.GoTextFace) {
 	op := &text.DrawOptions{}
 	op.GeoM.Translate(10, 20)
-	op.ColorScale.ScaleWithColor(color.White)
+	op.ColorScale.ScaleWithColor(Theme.TextPrimary)
 	text.Draw(screen, fmt.Sprintf("Pickups: %d", pickupCount), hudFace, op)
 }
 
@@ -229,18 +229,14 @@ func drawLinesInRect(screen *ebiten.Image, face *text.GoTextFace, r rect, lines 
 // drawPanelBox draws panel background, border, optional title-row separator, and title text.
 // Title is drawn in a slightly brighter tone so it reads as header; a thin line under title separates it from content.
 func drawPanelBox(screen *ebiten.Image, panelRect rect, titleRow rect, title string, hudFace *text.GoTextFace, metrics battlepkg.HUDMetrics) {
-	bg := color.RGBA{R: 28, G: 28, B: 28, A: 255}
-	border := color.RGBA{R: 120, G: 120, B: 120, A: 255}
-	titleSepColor := color.RGBA{R: 55, G: 55, B: 55, A: 255}
-	vector.FillRect(screen, panelRect.X, panelRect.Y, panelRect.W, panelRect.H, bg, false)
-	vector.StrokeRect(screen, panelRect.X, panelRect.Y, panelRect.W, panelRect.H, 1, border, false)
+	vector.FillRect(screen, panelRect.X, panelRect.Y, panelRect.W, panelRect.H, Theme.PanelBG, false)
+	vector.StrokeRect(screen, panelRect.X, panelRect.Y, panelRect.W, panelRect.H, 1, Theme.PanelBorder, false)
 
 	if title != "" && titleRow.W > 0 && titleRow.H > 0 {
-		drawSingleLineInRect(screen, hudFace, titleRow, title, metrics, color.RGBA{R: 230, G: 230, B: 230, A: 255})
+		drawSingleLineInRect(screen, hudFace, titleRow, title, metrics, Theme.TextPrimary)
 		sepY := titleRow.Y + titleRow.H
 		if sepY < panelRect.Y+panelRect.H-1 {
-			vector.StrokeLine(screen, panelRect.X, sepY, panelRect.X+panelRect.W, sepY, 1, titleSepColor, false)
+			vector.StrokeLine(screen, panelRect.X, sepY, panelRect.X+panelRect.W, sepY, 1, Theme.PanelTitleSep, false)
 		}
 	}
 }
-

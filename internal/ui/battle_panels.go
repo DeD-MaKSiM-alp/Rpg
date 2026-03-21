@@ -4,7 +4,6 @@ package ui
 
 import (
 	"fmt"
-	"image/color"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -22,15 +21,11 @@ func battleToRect(hr battlepkg.HUDRect) rect {
 
 // drawBattleOverlayPanel рисует затемнённый фон и центральную панель боевого overlay.
 func drawBattleOverlayPanel(screen *ebiten.Image, screenWidth, screenHeight int, layout battlepkg.BattleHUDLayout) rect {
-	overlayColor := color.RGBA{R: 0, G: 0, B: 0, A: 180}
-	panelColor := color.RGBA{R: 40, G: 40, B: 40, A: 255}
-	panelBorderColor := color.RGBA{R: 180, G: 180, B: 180, A: 255}
-
-	vector.FillRect(screen, 0, 0, float32(screenWidth), float32(screenHeight), overlayColor, false)
+	vector.FillRect(screen, 0, 0, float32(screenWidth), float32(screenHeight), Theme.OverlayDim, false)
 
 	ov := layout.Overlay
-	vector.FillRect(screen, ov.X, ov.Y, ov.W, ov.H, panelColor, false)
-	vector.StrokeRect(screen, ov.X, ov.Y, ov.W, ov.H, battlePanelBorder, panelBorderColor, false)
+	vector.FillRect(screen, ov.X, ov.Y, ov.W, ov.H, Theme.PanelBG, false)
+	vector.StrokeRect(screen, ov.X, ov.Y, ov.W, ov.H, battlePanelBorder, Theme.PanelBorder, false)
 	return rect{X: ov.X, Y: ov.Y, W: ov.W, H: ov.H}
 }
 
@@ -41,11 +36,11 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	// Top block hierarchy: title primary, info rows secondary.
 	titleRow := battleToRect(layout.TitleRow)
 	if titleRow.W > 0 && titleRow.H > 0 {
-		title := "Battle"
+		title := "Бой"
 		if battle != nil && len(battle.Encounter.Enemies) > 0 {
-			title = fmt.Sprintf("Battle: enemy #%d", battle.Encounter.Enemies[0].EnemyID)
+			title = fmt.Sprintf("Бой: враг #%d", battle.Encounter.Enemies[0].EnemyID)
 		}
-		drawSingleLineInRect(screen, hudFace, titleRow, title, metrics, color.White)
+		drawSingleLineInRect(screen, hudFace, titleRow, title, metrics, Theme.TextPrimary)
 	}
 
 	if battle == nil {
@@ -57,28 +52,28 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 		var banner string
 		switch battle.Result {
 		case battlepkg.ResultVictory:
-			banner = "VICTORY"
+			banner = "ПОБЕДА"
 		case battlepkg.ResultDefeat:
-			banner = "DEFEAT"
+			banner = "ПОРАЖЕНИЕ"
 		case battlepkg.ResultEscape:
-			banner = "ESCAPE"
+			banner = "ОТСТУПЛЕНИЕ"
 		default:
 			banner = battle.ResultString()
 		}
-		drawSingleLineInRect(screen, hudFace, info1, banner, metrics, color.RGBA{R: 200, G: 200, B: 200, A: 255})
+		drawSingleLineInRect(screen, hudFace, info1, banner, metrics, Theme.TextSecondary)
 		info2 := battleToRect(layout.InfoRow2)
-		drawSingleLineInRect(screen, hudFace, info2, "SPACE/ENTER: continue", metrics, color.RGBA{R: 180, G: 180, B: 180, A: 255})
+		drawSingleLineInRect(screen, hudFace, info2, "Пробел / Enter — продолжить", metrics, Theme.TextMuted)
 	} else {
 		info1 := battleToRect(layout.InfoRow1)
-		line1 := fmt.Sprintf("Round %d | Phase: %s", battle.Round, battle.PhaseString())
-		drawSingleLineInRect(screen, hudFace, info1, line1, metrics, color.RGBA{R: 200, G: 200, B: 200, A: 255})
+		line1 := fmt.Sprintf("Раунд %d · фаза: %s", battle.Round, battle.PhaseString())
+		drawSingleLineInRect(screen, hudFace, info1, line1, metrics, Theme.TextSecondary)
 
 		info2 := battleToRect(layout.InfoRow2)
 		activeStr := battle.DisplayPhaseLabel()
 		if active := battle.ActiveUnit(); active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
 			activeStr = fmt.Sprintf("%s | %s", activeStr, battle.PlayerTurn.PhaseString())
 		}
-		drawSingleLineInRect(screen, hudFace, info2, fitTextToWidth(hudFace, activeStr, info2.W), metrics, color.RGBA{R: 180, G: 180, B: 180, A: 255})
+		drawSingleLineInRect(screen, hudFace, info2, fitTextToWidth(hudFace, activeStr, info2.W), metrics, Theme.TextMuted)
 	}
 
 	footerRect := battleToRect(layout.Footer)
@@ -95,6 +90,8 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	drawConfirmPanel(screen, hudFace, battle, confirmRect, layout)
 
 	drawFooterPanel(screen, hudFace, battle, footerRect, layout)
+
+	DrawBattleFeedbackFloats(screen, hudFace, battle, layout, metrics)
 }
 
 func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, side battlepkg.BattleSide, title string, layout battlepkg.BattleHUDLayout) {
@@ -139,7 +136,7 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 	labelH := metrics.LineH
 	drawRowLabel := func(label string, y float32) {
 		row := rect{X: inner.X, Y: y, W: inner.W, H: labelH}
-		drawSingleLineInRect(screen, hudFace, row, label, metrics, color.RGBA{R: 170, G: 170, B: 170, A: 255})
+		drawSingleLineInRect(screen, hudFace, row, label, metrics, Theme.TextMuted)
 	}
 
 	frontLabelY := inner.Y
@@ -150,6 +147,7 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 	drawRowLabel("FRONT", frontLabelY)
 	drawRowLabel("BACK", backLabelY)
 
+	enemySide := side == battlepkg.BattleSideEnemy
 	drawSlot := func(row battlepkg.BattleRow, idx int, x, y float32) {
 		slot := battle.Slot(side, row, idx)
 		var u *battlepkg.BattleUnit
@@ -157,26 +155,29 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 			u = battle.UnitInSlot(slot)
 		}
 
-		fill := color.RGBA{R: 45, G: 45, B: 45, A: 255}
-		border := color.RGBA{R: 90, G: 90, B: 90, A: 255}
-		textCol := color.RGBA{R: 230, G: 230, B: 230, A: 255}
+		fill := Theme.PanelBGDeep
+		border := Theme.AllyAccent
+		if enemySide {
+			border = Theme.EnemyAccent
+		}
+		textCol := Theme.TextPrimary
 
 		if u == nil {
-			fill = color.RGBA{R: 35, G: 35, B: 35, A: 255}
-			textCol = color.RGBA{R: 120, G: 120, B: 120, A: 255}
+			fill = Theme.EmptySlot
+			textCol = Theme.TextMuted
 		} else if !u.IsAlive() {
-			fill = color.RGBA{R: 25, G: 25, B: 25, A: 255}
-			textCol = color.RGBA{R: 120, G: 120, B: 120, A: 255}
+			fill = Theme.DeadFill
+			textCol = Theme.DeadText
 		}
 
 		if u != nil && u.ID == selectedTargetID {
-			border = color.RGBA{R: 240, G: 80, B: 80, A: 255}
+			border = Theme.SelectedKill
 		} else if u != nil && u.ID == hoverTargetID {
-			border = color.RGBA{R: 120, G: 190, B: 255, A: 255}
+			border = Theme.HoverTarget
 		} else if u != nil && validSet[u.ID] {
-			border = color.RGBA{R: 80, G: 150, B: 255, A: 255}
+			border = Theme.ValidTarget
 		} else if active != nil && u != nil && u.ID == active.ID {
-			border = color.RGBA{R: 255, G: 215, B: 80, A: 255}
+			border = Theme.ActiveTurn
 		}
 
 		w := float32(0)
@@ -195,6 +196,11 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		}
 		vector.FillRect(screen, x, y, w, h, fill, false)
 		vector.StrokeRect(screen, x, y, w, h, 2, border, false)
+		if u != nil {
+			if k, in := battle.FeedbackFlashIntensity(u.ID); k >= 0 && in > 0 {
+				drawFeedbackOverlayRect(screen, rect{X: x, Y: y, W: w, H: h}, k, in)
+			}
+		}
 
 		line1 := "EMPTY"
 		line2 := ""
@@ -220,6 +226,10 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 			row2 := rect{X: x + 6, Y: y + metrics.LineH, W: w - 6, H: metrics.LineH}
 			drawSingleLineInRect(screen, hudFace, row2, line2, metrics, textCol)
 		}
+		if u != nil && u.IsAlive() && w > 8 && h > metrics.LineH*2+4 {
+			barY := y + h - 6
+			DrawHPBarMicro(screen, x+4, barY, w-8, 4, u.State.HP, u.MaxHP(), true, enemySide)
+		}
 	}
 
 	for i := 0; i < 3; i++ {
@@ -239,7 +249,7 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	if active == nil || active.Side != battlepkg.TeamPlayer || battle.Phase != battlepkg.PhaseAwaitAction {
 		titleRow := battleToRect(layout.AbilitiesTitleRow)
 		if titleRow.W > 0 && titleRow.H > 0 {
-			drawSingleLineInRect(screen, hudFace, titleRow, "(waiting)", metrics, color.RGBA{R: 150, G: 150, B: 150, A: 255})
+			drawSingleLineInRect(screen, hudFace, titleRow, "(waiting)", metrics, Theme.TextMuted)
 		}
 		return
 	}
@@ -255,18 +265,18 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		rowRect := battleToRect(layout.AbilityItemRects[i])
 		a := battlepkg.GetAbility(id)
 		prefix := " "
-		col := color.RGBA{R: 220, G: 220, B: 220, A: 255}
-		bg := color.RGBA{R: 35, G: 35, B: 35, A: 255}
-		border := color.RGBA{R: 70, G: 70, B: 70, A: 255}
+		col := Theme.TextPrimary
+		bg := Theme.AbilityBG
+		border := Theme.AbilityBorder
 		if id == sel && battle.PlayerTurn.Phase == battlepkg.PlayerChooseAbility {
 			prefix = "▶"
-			bg = color.RGBA{R: 52, G: 52, B: 28, A: 255}
-			col = color.RGBA{R: 255, G: 230, B: 100, A: 255}
-			border = color.RGBA{R: 170, G: 170, B: 90, A: 255}
+			bg = Theme.AbilitySelectedBG
+			col = Theme.TextPrimary
+			border = Theme.AbilitySelectedBrd
 		} else if hoverIdx == i && battle.PlayerTurn.Phase == battlepkg.PlayerChooseAbility {
-			bg = color.RGBA{R: 40, G: 55, B: 70, A: 255}
-			col = color.RGBA{R: 180, G: 220, B: 255, A: 255}
-			border = color.RGBA{R: 140, G: 190, B: 255, A: 255}
+			bg = Theme.AbilityHoverBG
+			col = Theme.TextSecondary
+			border = Theme.HoverTarget
 		}
 		vector.FillRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, bg, false)
 		vector.StrokeRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, 1, border, false)
@@ -289,7 +299,7 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	if active == nil || active.Side != battlepkg.TeamPlayer || battle.Phase != battlepkg.PhaseAwaitAction {
 		summaryRect := battleToRect(layout.ActionSummary)
 		if summaryRect.W > 0 && summaryRect.H > 0 {
-			drawSingleLineInRect(screen, hudFace, summaryRect, "(enemy turn)", metrics, color.RGBA{R: 150, G: 150, B: 150, A: 255})
+			drawSingleLineInRect(screen, hudFace, summaryRect, "(enemy turn)", metrics, Theme.TextMuted)
 		}
 		return
 	}
@@ -337,21 +347,21 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	for i := range summaryLines {
 		summaryLines[i] = fitTextToWidth(hudFace, summaryLines[i], maxSummaryW)
 	}
-	_ = drawLinesInRect(screen, hudFace, summaryRect, summaryLines, metrics, color.White, 0)
+	_ = drawLinesInRect(screen, hudFace, summaryRect, summaryLines, metrics, Theme.TextPrimary, 0)
 
 	backR := battleToRect(layout.BackButton)
 	drawButton := func(r rect, label string, enabled, hovered bool) {
-		baseFill := color.RGBA{R: 40, G: 40, B: 40, A: 255}
-		baseBorder := color.RGBA{R: 140, G: 140, B: 140, A: 255}
-		textCol := color.RGBA{R: 255, G: 255, B: 255, A: 255}
+		baseFill := Theme.ButtonBG
+		baseBorder := Theme.ButtonBorder
+		textCol := Theme.TextPrimary
 		if !enabled {
-			baseFill = color.RGBA{R: 30, G: 30, B: 30, A: 255}
-			baseBorder = color.RGBA{R: 90, G: 90, B: 90, A: 255}
-			textCol = color.RGBA{R: 180, G: 180, B: 180, A: 255}
+			baseFill = Theme.PanelBGDeep
+			baseBorder = Theme.PanelBorder
+			textCol = Theme.DisabledFG
 		}
 		if enabled && hovered {
-			baseFill = color.RGBA{R: 60, G: 80, B: 100, A: 255}
-			baseBorder = color.RGBA{R: 200, G: 220, B: 255, A: 255}
+			baseFill = Theme.ButtonHoverBG
+			baseBorder = Theme.ButtonHoverBorder
 		}
 		vector.FillRect(screen, r.X, r.Y, r.W, r.H, baseFill, false)
 		vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 2, baseBorder, false)
@@ -360,7 +370,7 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	}
 	// Back only (Confirm removed from battle UX)
 	if backR.W > 0 && backR.H > 0 {
-		drawButton(backR, "Back", true, pt.HoverBackButton)
+		drawButton(backR, "Назад", true, pt.HoverBackButton)
 	}
 }
 
@@ -390,61 +400,59 @@ func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *bat
 		for i := range logLines {
 			logLines[i] = fitTextToWidth(hudFace, logLines[i], logRect.W)
 		}
-		_ = drawLinesInRect(screen, hudFace, logRect, logLines, metrics, color.RGBA{R: 220, G: 220, B: 220, A: 255}, 0)
+		_ = drawLinesInRect(screen, hudFace, logRect, logLines, metrics, Theme.TextSecondary, 0)
 	}
 
 	if controlsRect.W > 0 && controlsRect.H > 0 {
-		controls := "LMB/RMB · Esc: retreat"
+		controls := "ЛКМ/ПКМ · Esc: отступить"
 		if active := battle.ActiveUnit(); active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
 			if battle.PlayerTurn.SelectedAbilityID == battlepkg.AbilityBasicAttack {
-				controls = "Arrows+Enter or click enemy · Esc: retreat"
+				controls = "Стрелки+Enter или клик по врагу · Esc: отступить"
 			} else if battle.PlayerTurn.Phase == battlepkg.PlayerChooseTarget {
-				controls = "Arrows+Enter or click target · Back/Esc: cancel"
+				controls = "Стрелки+Enter или клик по цели · Назад/Esc: отмена"
 			} else {
-				controls = "Arrows+Enter or click ability · Back/Esc: cancel"
+				controls = "Стрелки+Enter или клик по способности · Назад/Esc: отмена"
 			}
 		}
-		drawSingleLineInRect(screen, hudFace, controlsRect, controls, metrics, color.RGBA{R: 155, G: 155, B: 155, A: 255})
+		drawSingleLineInRect(screen, hudFace, controlsRect, controls, metrics, Theme.TextMuted)
 	}
 }
 
 // drawBattleScreenV2 рисует battle screen в стиле Disciples: центр = сцена, слева/справа ростеры, внизу панель команд, сверху минимальный TopBar.
 func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, layout battlepkg.BattleHUDLayout) {
 	metrics := layout.Metrics
-	rosterBg := color.RGBA{R: 28, G: 28, B: 32, A: 255}
-	rosterBorder := color.RGBA{R: 75, G: 75, B: 85, A: 255}
-	bottomPanelBg := color.RGBA{R: 32, G: 32, B: 38, A: 255}
-	bottomPanelBorder := color.RGBA{R: 70, G: 70, B: 80, A: 255}
-	topBarBg := color.RGBA{R: 26, G: 26, B: 30, A: 255}
-	topBarBorder := color.RGBA{R: 55, G: 55, B: 62, A: 255}
 
 	// 1) Battlefield (center) — сцена: тёмный фон + чуть светлее центр (placeholder под арт)
 	bf := layout.Battlefield
 	if bf.W > 0 && bf.H > 0 {
-		vector.FillRect(screen, bf.X, bf.Y, bf.W, bf.H, color.RGBA{R: 18, G: 18, B: 24, A: 255}, false)
+		vector.FillRect(screen, bf.X, bf.Y, bf.W, bf.H, Theme.SceneTint, false)
 		insetPx := float32(24)
 		if bf.W > insetPx*2 && bf.H > insetPx*2 {
 			cx, cy := bf.X+insetPx, bf.Y+insetPx
 			cw, ch := bf.W-insetPx*2, bf.H-insetPx*2
-			vector.FillRect(screen, cx, cy, cw, ch, color.RGBA{R: 24, G: 24, B: 32, A: 255}, false)
+			vector.FillRect(screen, cx, cy, cw, ch, Theme.PanelBGDeep, false)
 		}
-		vector.StrokeRect(screen, bf.X, bf.Y, bf.W, bf.H, 1, color.RGBA{R: 48, G: 48, B: 56, A: 255}, false)
+		vector.StrokeRect(screen, bf.X, bf.Y, bf.W, bf.H, 1, Theme.PanelBorder, false)
 	}
+
+	DrawBattlefieldV2Scene(screen, hudFace, battle, layout)
 
 	// 2) Left / Right rosters — боковые панели, визуально отделены от сцены
 	lr := layout.LeftRoster
 	if lr.W > 0 && lr.H > 0 {
-		vector.FillRect(screen, lr.X, lr.Y, lr.W, lr.H, rosterBg, false)
-		vector.StrokeRect(screen, lr.X, lr.Y, lr.W, lr.H, 1, rosterBorder, false)
-		lab := rect{X: lr.X + 6, Y: lr.Y + 4, W: lr.W - 12, H: metrics.LineH * 0.95}
-		drawSingleLineInRect(screen, hudFace, lab, fitTextToWidth(hudFace, "СОЮЗНИКИ (ряд: перед→зад)", lab.W), metrics, color.RGBA{R: 160, G: 165, B: 175, A: 255})
+		vector.FillRect(screen, lr.X, lr.Y, lr.W, lr.H, Theme.PanelBG, false)
+		vector.StrokeRect(screen, lr.X, lr.Y, lr.W, lr.H, 1, Theme.PanelBorder, false)
+		DrawThinAccentLine(screen, lr.X+4, lr.Y+4, lr.W-8)
+		lab := rect{X: lr.X + 6, Y: lr.Y + 8, W: lr.W - 12, H: metrics.LineH * 0.95}
+		drawSingleLineInRect(screen, hudFace, lab, fitTextToWidth(hudFace, "СОЮЗНИКИ · перед→зад", lab.W), metrics, Theme.TextSecondary)
 	}
 	rr := layout.RightRoster
 	if rr.W > 0 && rr.H > 0 {
-		vector.FillRect(screen, rr.X, rr.Y, rr.W, rr.H, rosterBg, false)
-		vector.StrokeRect(screen, rr.X, rr.Y, rr.W, rr.H, 1, rosterBorder, false)
-		lab := rect{X: rr.X + 6, Y: rr.Y + 4, W: rr.W - 12, H: metrics.LineH * 0.95}
-		drawSingleLineInRect(screen, hudFace, lab, fitTextToWidth(hudFace, "ВРАГИ (ряд: перед→зад)", lab.W), metrics, color.RGBA{R: 160, G: 165, B: 175, A: 255})
+		vector.FillRect(screen, rr.X, rr.Y, rr.W, rr.H, Theme.PanelBG, false)
+		vector.StrokeRect(screen, rr.X, rr.Y, rr.W, rr.H, 1, Theme.PanelBorder, false)
+		DrawThinAccentLine(screen, rr.X+4, rr.Y+4, rr.W-8)
+		lab := rect{X: rr.X + 6, Y: rr.Y + 8, W: rr.W - 12, H: metrics.LineH * 0.95}
+		drawSingleLineInRect(screen, hudFace, lab, fitTextToWidth(hudFace, "ВРАГИ · перед→зад", lab.W), metrics, Theme.TextSecondary)
 	}
 
 	// 3) Unit cards in rosters
@@ -454,30 +462,37 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 			continue
 		}
 		r := battleToRect(hr)
-		fill := color.RGBA{R: 42, G: 42, B: 48, A: 255}
-		border := color.RGBA{R: 85, G: 85, B: 95, A: 255}
-		textCol := color.RGBA{R: 228, G: 228, B: 228, A: 255}
+		fill := Theme.PanelBGDeep
+		border := Theme.AllyAccent
+		textCol := Theme.TextPrimary
+		if u.Side == battlepkg.TeamEnemy {
+			border = Theme.EnemyAccent
+		}
 		if !u.IsAlive() {
-			fill = color.RGBA{R: 24, G: 24, B: 26, A: 255}
-			textCol = color.RGBA{R: 110, G: 110, B: 110, A: 255}
+			fill = Theme.DeadFill
+			textCol = Theme.DeadText
 		}
 		active := battle.ActiveUnit()
 		if active != nil && active.ID == u.ID {
-			border = color.RGBA{R: 255, G: 210, B: 70, A: 255}
+			border = Theme.ActiveTurn
 		} else if u.IsAlive() && u.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction &&
 			active != nil && active.Side == battlepkg.TeamPlayer && active.ID != u.ID {
 			// Живой союзник, ожидающий своего хода в очереди инициативы.
-			border = color.RGBA{R: 75, G: 95, B: 115, A: 255}
+			border = Theme.WaitAlly
 		}
 		pt := &battle.PlayerTurn
 		if pt.HoverTargetUnitID == u.ID {
-			border = color.RGBA{R: 115, G: 185, B: 255, A: 255}
+			border = Theme.HoverTarget
 		}
 		if pt.SelectedTarget.Kind == battlepkg.TargetKindUnit && pt.SelectedTarget.UnitID == u.ID {
-			border = color.RGBA{R: 235, G: 70, B: 70, A: 255}
+			border = Theme.SelectedKill
 		}
 		vector.FillRect(screen, r.X, r.Y, r.W, r.H, fill, false)
+		vector.FillRect(screen, r.X, r.Y, 4, r.H, rosterIdentityStripColor(u), false)
 		vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 2, border, false)
+		if k, in := battle.FeedbackFlashIntensity(u.ID); k >= 0 && in > 0 {
+			drawFeedbackOverlayRect(screen, r, k, in)
+		}
 		name := u.Name()
 		if len([]rune(name)) > 10 {
 			rs := []rune(name)
@@ -492,19 +507,23 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		}
 		row1 := rect{X: r.X + 8, Y: r.Y, W: r.W - 16, H: metrics.LineH}
 		drawSingleLineInRect(screen, hudFace, row1, fitTextToWidth(hudFace, name, r.W-16), metrics, textCol)
-		hpStr := "DEAD"
+		hpStr := "Погиб"
 		if u.IsAlive() {
-			hpStr = fmt.Sprintf("HP %d/%d", u.State.HP, u.MaxHP())
+			hpStr = fmt.Sprintf("ОЗ %d/%d", u.State.HP, u.MaxHP())
 		}
 		row2 := rect{X: r.X + 8, Y: r.Y + metrics.LineH, W: r.W - 16, H: metrics.LineH}
 		drawSingleLineInRect(screen, hudFace, row2, hpStr, metrics, textCol)
+		if u.IsAlive() && r.H > metrics.LineH*2+8 {
+			barY := r.Y + r.H - 6
+			DrawHPBarMicro(screen, r.X+6, barY, r.W-12, 4, u.State.HP, u.MaxHP(), true, u.Side == battlepkg.TeamEnemy)
+		}
 	}
 
 	// 4) Bottom panel — control panel: Active | Target → Abilities → Summary → Hint → Buttons
 	bp := layout.BottomPanel
 	if bp.W > 0 && bp.H > 0 {
-		vector.FillRect(screen, bp.X, bp.Y, bp.W, bp.H, bottomPanelBg, false)
-		vector.StrokeRect(screen, bp.X, bp.Y, bp.W, bp.H, 1, bottomPanelBorder, false)
+		vector.FillRect(screen, bp.X, bp.Y, bp.W, bp.H, Theme.PanelBG, false)
+		vector.StrokeRect(screen, bp.X, bp.Y, bp.W, bp.H, 1, Theme.PanelBorder, false)
 	}
 	activeR := battleToRect(layout.V2BottomActive)
 	if activeR.W > 0 && activeR.H > 0 && battle != nil {
@@ -517,7 +536,7 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 				s = fmt.Sprintf("Ход врага: %s", active.Name())
 			}
 		}
-		drawSingleLineInRect(screen, hudFace, activeR, fitTextToWidth(hudFace, s, activeR.W), metrics, color.RGBA{R: 215, G: 215, B: 215, A: 255})
+		drawSingleLineInRect(screen, hudFace, activeR, fitTextToWidth(hudFace, s, activeR.W), metrics, Theme.TextPrimary)
 	}
 	targetR := battleToRect(layout.V2BottomTarget)
 	if targetR.W > 0 && targetR.H > 0 && battle != nil {
@@ -531,7 +550,7 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		} else if pt.SelectedTarget.Kind == battlepkg.TargetKindSelf {
 			s = "self"
 		}
-		drawSingleLineInRect(screen, hudFace, targetR, fitTextToWidth(hudFace, s, targetR.W), metrics, color.RGBA{R: 195, G: 195, B: 195, A: 255})
+		drawSingleLineInRect(screen, hudFace, targetR, fitTextToWidth(hudFace, s, targetR.W), metrics, Theme.TextSecondary)
 	}
 	// Ability row (special abilities only; basic attack = default, click enemy)
 	for i, hr := range layout.AbilityItemRects {
@@ -544,15 +563,16 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 			break
 		}
 		a := battlepkg.GetAbility(abs[i])
-		col := color.RGBA{R: 218, G: 218, B: 218, A: 255}
-		bg := color.RGBA{R: 38, G: 38, B: 44, A: 255}
-		brd := color.RGBA{R: 72, G: 72, B: 82, A: 255}
+		col := Theme.TextPrimary
+		bg := Theme.AbilityBG
+		brd := Theme.AbilityBorder
 		if battle.PlayerTurn.SelectedAbilityID == abs[i] {
-			col = color.RGBA{R: 255, G: 228, B: 95, A: 255}
-			brd = color.RGBA{R: 165, G: 165, B: 85, A: 255}
+			col = Theme.TextPrimary
+			bg = Theme.AbilitySelectedBG
+			brd = Theme.AbilitySelectedBrd
 		}
 		if battle.PlayerTurn.HoverAbilityIndex == i {
-			brd = color.RGBA{R: 130, G: 180, B: 255, A: 255}
+			brd = Theme.HoverTarget
 		}
 		vector.FillRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, bg, false)
 		vector.StrokeRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, 1, brd, false)
@@ -566,11 +586,11 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		if active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
 			pt := &battle.PlayerTurn
 			if pt.SelectedAbilityID == battlepkg.AbilityBasicAttack {
-				lines = append(lines, fitTextToWidth(hudFace, "Attack · click enemy", summaryR.W))
+				lines = append(lines, fitTextToWidth(hudFace, "Атака · клик по врагу", summaryR.W))
 				if pt.HoverTargetUnitID != 0 && battle.Units[pt.HoverTargetUnitID] != nil {
 					preview, v := battlepkg.PreviewAction(battle, battlepkg.ActionRequest{Actor: active.ID, Ability: battlepkg.AbilityBasicAttack, Target: battlepkg.UnitTarget(pt.HoverTargetUnitID)})
 					if v.OK && preview.HasDamage() {
-						lines = append(lines, fmt.Sprintf("dmg %d-%d", preview.DamageMin, preview.DamageMax))
+						lines = append(lines, fmt.Sprintf("урон %d–%d", preview.DamageMin, preview.DamageMax))
 					}
 				}
 			} else {
@@ -579,7 +599,7 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 				if pt.SelectedTarget.Kind == battlepkg.TargetKindUnit && battle.Units[pt.SelectedTarget.UnitID] != nil {
 					targetStr = battle.Units[pt.SelectedTarget.UnitID].Name()
 				} else if pt.SelectedTarget.Kind == battlepkg.TargetKindSelf {
-					targetStr = "self"
+					targetStr = "себя"
 				}
 				line1 := fmt.Sprintf("%s → %s", a.Name, targetStr)
 				lines = append(lines, fitTextToWidth(hudFace, line1, summaryR.W))
@@ -587,9 +607,9 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 				preview, v := battlepkg.PreviewAction(battle, req)
 				if v.OK && (preview.HasDamage() || preview.HasHeal()) {
 					if preview.HasDamage() {
-						lines = append(lines, fmt.Sprintf("dmg %d-%d", preview.DamageMin, preview.DamageMax))
+						lines = append(lines, fmt.Sprintf("урон %d–%d", preview.DamageMin, preview.DamageMax))
 					} else {
-						lines = append(lines, fmt.Sprintf("heal %d-%d", preview.HealMin, preview.HealMax))
+						lines = append(lines, fmt.Sprintf("лечение %d–%d", preview.HealMin, preview.HealMax))
 					}
 				}
 			}
@@ -600,7 +620,7 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		if len(lines) > 2 {
 			lines = lines[:2]
 		}
-		_ = drawLinesInRect(screen, hudFace, summaryR, lines, metrics, color.RGBA{R: 240, G: 240, B: 240, A: 255}, 2)
+		_ = drawLinesInRect(screen, hudFace, summaryR, lines, metrics, Theme.TextPrimary, 2)
 	}
 	// Hint — default: "Click enemy to attack"; special: phase-specific
 	logR := battleToRect(layout.V2BottomLog)
@@ -610,61 +630,61 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		pt := &battle.PlayerTurn
 		isDefaultAttack := active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction && pt.SelectedAbilityID == battlepkg.AbilityBasicAttack
 		if isDefaultAttack {
-			hint = "Enter: target mode · Arrows · Enter: attack · Esc: retreat"
+			hint = "Enter: выбор цели · стрелки · Enter: атака · Esc: отступить"
 		} else if active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
 			switch pt.Phase {
 			case battlepkg.PlayerChooseTarget:
-				hint = "Arrows: target · Enter: execute · Back/Esc: cancel"
+				hint = "Стрелки: цель · Enter: выполнить · Назад/Esc: отмена"
 			default:
-				hint = "Arrows: ability · Enter: choose · Back/Esc: cancel"
+				hint = "Стрелки: способность · Enter: выбрать · Назад/Esc: отмена"
 			}
 		} else {
 			if len(battle.BattleLog) > 0 {
 				hint = strings.TrimSpace(battle.BattleLog[len(battle.BattleLog)-1])
 			}
 			if hint == "" {
-				hint = "Esc: retreat"
+				hint = "Esc: отступить"
 			}
 		}
-		drawSingleLineInRect(screen, hudFace, logR, fitTextToWidth(hudFace, hint, logR.W), metrics, color.RGBA{R: 145, G: 145, B: 150, A: 255})
+		drawSingleLineInRect(screen, hudFace, logR, fitTextToWidth(hudFace, hint, logR.W), metrics, Theme.TextMuted)
 	}
 	// Buttons — Back only (Confirm removed from battle UX)
 	backR := battleToRect(layout.BackButton)
 	pt := &battle.PlayerTurn
 	drawButton := func(r rect, label string, enabled, hovered bool) {
-		fill := color.RGBA{R: 38, G: 38, B: 44, A: 255}
-		brd := color.RGBA{R: 125, G: 125, B: 138, A: 255}
-		tcol := color.RGBA{R: 255, G: 255, B: 255, A: 255}
+		fill := Theme.ButtonBG
+		brd := Theme.ButtonBorder
+		tcol := Theme.TextPrimary
 		if !enabled {
-			fill = color.RGBA{R: 28, G: 28, B: 32, A: 255}
-			tcol = color.RGBA{R: 170, G: 170, B: 170, A: 255}
+			fill = Theme.PanelBGDeep
+			tcol = Theme.DisabledFG
 		}
 		if enabled && hovered {
-			fill = color.RGBA{R: 55, G: 72, B: 95, A: 255}
-			brd = color.RGBA{R: 185, G: 210, B: 255, A: 255}
+			fill = Theme.ButtonHoverBG
+			brd = Theme.ButtonHoverBorder
 		}
 		vector.FillRect(screen, r.X, r.Y, r.W, r.H, fill, false)
 		vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 2, brd, false)
 		drawSingleLineInRect(screen, hudFace, r, label, metrics, tcol)
 	}
 	if backR.W > 0 && backR.H > 0 {
-		drawButton(backR, "Back", true, pt.HoverBackButton)
+		drawButton(backR, "Назад", true, pt.HoverBackButton)
 	}
 
 	// 5) TopBar — лёгкая status line, не перебивает сцену
 	tb := layout.TopBar
 	if tb.W > 0 && tb.H > 0 {
-		vector.FillRect(screen, tb.X, tb.Y, tb.W, tb.H, topBarBg, false)
-		vector.StrokeRect(screen, tb.X, tb.Y, tb.W, tb.H, 1, topBarBorder, false)
+		vector.FillRect(screen, tb.X, tb.Y, tb.W, tb.H, Theme.PanelBGDeep, false)
+		vector.StrokeRect(screen, tb.X, tb.Y, tb.W, tb.H, 1, Theme.PanelBorder, false)
 	}
 	topLine := battleToRect(layout.V2TopBarLine)
 	if topLine.W > 0 && topLine.H > 0 && battle != nil {
 		s := fmt.Sprintf("R%d · %s", battle.Round, battle.PhaseString())
 		if battle.Result != battlepkg.ResultNone {
-			s = battle.ResultString() + " · SPACE/ENTER"
+			s = battle.ResultString() + " · Пробел/Enter"
 		} else {
 			s = fmt.Sprintf("R%d · %s", battle.Round, battle.DisplayPhaseLabel())
 		}
-		drawSingleLineInRect(screen, hudFace, topLine, fitTextToWidth(hudFace, s, topLine.W), metrics, color.RGBA{R: 195, G: 195, B: 200, A: 255})
+		drawSingleLineInRect(screen, hudFace, topLine, fitTextToWidth(hudFace, s, topLine.W), metrics, Theme.TextSecondary)
 	}
 }

@@ -72,6 +72,16 @@ type BattleHUDLayout struct {
 	AbilityItemRects []HUDRect
 	UnitRects        map[UnitID]HUDRect
 
+	// --- v2 battlefield tokens (center scene): токены юнитов + ячейки сетки для отрисовки/hit-test ---
+	BattlefieldTokens    map[UnitID]HUDRect // hit-test дублирует roster: клик по токену = клик по карточке
+	BattlefieldSlotCells []HUDRect          // 12 ячеек: союзник front 0..2, back 0..2, враг front 0..2, back 0..2
+	// Подложки и подписи рядов: передний = ближе к центру столкновения (линия между сторонами), задний = к внешнему краю.
+	BattlefieldRowLabels   []BattlefieldRowLabel
+	BattlefieldPlayerBack  HUDRect
+	BattlefieldPlayerFront HUDRect
+	BattlefieldEnemyFront  HUDRect
+	BattlefieldEnemyBack   HUDRect
+
 	// --- compatibility / legacy (not used by v1 render; set in one place at end of Compute) ---
 	TopInfoPrimary   HUDRect // alias InfoRow1
 	TopInfoSecondary HUDRect // alias InfoRow2
@@ -145,6 +155,12 @@ func computeHUDMetrics(screenW, screenH int) HUDMetrics {
 	return m
 }
 
+// BattlefieldRowLabel — подпись ряда на поле боя (v2): «Передний» у линии столкновения, «Задний» у внешнего края стороны.
+type BattlefieldRowLabel struct {
+	Rect HUDRect
+	Text string
+}
+
 // ComputeBattleHUDLayout builds a battle HUD layout for the given screen size and
 // current battle state. It is the single source of truth for all major HUD rects.
 // Uses b.LayoutStyle: 0 = v1 table, 1 = v2 Disciples-like.
@@ -153,6 +169,107 @@ func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLa
 		return b.computeLayoutV2(screenW, screenH)
 	}
 	return b.computeLayoutV1(screenW, screenH)
+}
+
+// battlefieldV2Geometry — результат раскладки поля боя (v2).
+type battlefieldV2Geometry struct {
+	tokens      map[UnitID]HUDRect
+	slots       []HUDRect
+	labels      []BattlefieldRowLabel
+	playerBack  HUDRect
+	playerFront HUDRect
+	enemyFront  HUDRect
+	enemyBack   HUDRect
+}
+
+// computeBattlefieldPlacements — геометрия токенов и ячеек (v2).
+// Передний ряд (BattleRowFront) — полоса ближе к вертикальной линии столкновения (центр между сторонами).
+// Задний ряд (BattleRowBack) — полоса ближе к внешнему краю своей половины поля.
+// Внутри полосы 3 слота по вертикали (индекс слота 0..2 сверху вниз) — соответствует «линии» фронта/тыла.
+// Порядок BattlefieldSlotCells: игрок front 0..2, back 0..2, враг front 0..2, back 0..2.
+func computeBattlefieldPlacements(b *BattleContext, bf HUDRect, metrics HUDMetrics) battlefieldV2Geometry {
+	var out battlefieldV2Geometry
+	if b == nil || bf.W <= 0 || bf.H <= 0 {
+		return out
+	}
+	out.tokens = make(map[UnitID]HUDRect)
+	out.slots = make([]HUDRect, 0, 12)
+	out.labels = make([]BattlefieldRowLabel, 0, 4)
+
+	inner := hudInset(bf, metrics.Pad*1.2)
+	midGap := metrics.Gap * 2.5
+	halfW := (inner.W - midGap) * 0.5
+	if halfW < 48 {
+		halfW = 48
+	}
+	depthGap := metrics.Gap * 1.25
+	depthW := (halfW - depthGap) * 0.5
+	if depthW < 22 {
+		depthW = 22
+	}
+	maxDepth := (halfW - depthGap) * 0.5
+	if depthW > maxDepth {
+		depthW = maxDepth
+	}
+	labelH := metrics.LineH * 1.15
+	contentTop := inner.Y + labelH + 6
+	contentH := inner.Y + inner.H - contentTop
+	if contentH < 1 {
+		contentH = 1
+	}
+	slotH := contentH / 3
+
+	placeSide := func(side BattleSide, zoneLeft float32) {
+		var frontX, backX float32
+		if side == BattleSidePlayer {
+			backX = zoneLeft
+			frontX = zoneLeft + depthW + depthGap
+		} else {
+			frontX = zoneLeft
+			backX = zoneLeft + depthW + depthGap
+		}
+		out.labels = append(out.labels, BattlefieldRowLabel{
+			Rect: HUDRect{X: backX, Y: inner.Y + 2, W: depthW, H: labelH},
+			Text: "Задний",
+		})
+		out.labels = append(out.labels, BattlefieldRowLabel{
+			Rect: HUDRect{X: frontX, Y: inner.Y + 2, W: depthW, H: labelH},
+			Text: "Передний",
+		})
+		if side == BattleSidePlayer {
+			out.playerBack = HUDRect{X: backX, Y: inner.Y, W: depthW, H: inner.H}
+			out.playerFront = HUDRect{X: frontX, Y: inner.Y, W: depthW, H: inner.H}
+		} else {
+			out.enemyFront = HUDRect{X: frontX, Y: inner.Y, W: depthW, H: inner.H}
+			out.enemyBack = HUDRect{X: backX, Y: inner.Y, W: depthW, H: inner.H}
+		}
+		tokenW := depthW * 0.88
+		tokenH := slotH * 0.88
+		for _, row := range []BattleRow{BattleRowFront, BattleRowBack} {
+			stripX := frontX
+			if row == BattleRowBack {
+				stripX = backX
+			}
+			for i := 0; i < 3; i++ {
+				cellY := contentTop + float32(i)*slotH
+				out.slots = append(out.slots, HUDRect{X: stripX, Y: cellY, W: depthW, H: slotH})
+				slot := b.Slot(side, row, i)
+				if slot == nil || slot.Occupied == 0 {
+					continue
+				}
+				u := b.Units[slot.Occupied]
+				if u == nil {
+					continue
+				}
+				tx := stripX + (depthW-tokenW)*0.5
+				ty := cellY + (slotH-tokenH)*0.5
+				out.tokens[u.ID] = HUDRect{X: tx, Y: ty, W: tokenW, H: tokenH}
+			}
+		}
+	}
+	placeSide(BattleSidePlayer, inner.X)
+	placeSide(BattleSideEnemy, inner.X+halfW+midGap)
+	return out
 }
 
 // computeLayoutV2 builds Disciples-like layout: TopBar, LeftRoster, RightRoster, Battlefield, BottomPanel.
@@ -294,6 +411,15 @@ func (b *BattleContext) computeLayoutV2(screenW, screenH int) BattleHUDLayout {
 			}
 		}
 	}
+
+	geo := computeBattlefieldPlacements(b, layout.Battlefield, metrics)
+	layout.BattlefieldTokens = geo.tokens
+	layout.BattlefieldSlotCells = geo.slots
+	layout.BattlefieldRowLabels = geo.labels
+	layout.BattlefieldPlayerBack = geo.playerBack
+	layout.BattlefieldPlayerFront = geo.playerFront
+	layout.BattlefieldEnemyFront = geo.enemyFront
+	layout.BattlefieldEnemyBack = geo.enemyBack
 
 	// Legacy/alias placeholders so v1 code paths don't read garbage
 	layout.Overlay = layout.Battlefield

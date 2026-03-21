@@ -110,21 +110,21 @@ func hasAbility(abils []battlepkg.AbilityID, id battlepkg.AbilityID) bool {
 func RewardLabel(r RewardKind) string {
 	switch r {
 	case RewardMaxHP:
-		return "+2 Max HP"
+		return "+2 макс. ОЗ"
 	case RewardAttack:
-		return "+1 Attack"
+		return "+1 атака"
 	case RewardDefense:
-		return "+1 Defense"
+		return "+1 защита"
 	case RewardInitiative:
-		return "+1 Initiative"
+		return "+1 инициатива"
 	case RewardAbilityHeal:
-		return "Unlock: Heal"
+		return "Открыть: Лечение"
 	case RewardAbilityRanged:
-		return "Unlock: Shoot"
+		return "Открыть: Выстрел"
 	case RewardHealUpgrade:
-		return "Heal +2"
+		return "Лечение +2"
 	case RewardBasicAttackUpgrade:
-		return "Basic Attack +1"
+		return "Базовая атака +1"
 	default:
 		return "?"
 	}
@@ -134,21 +134,21 @@ func RewardLabel(r RewardKind) string {
 func RewardDescription(r RewardKind) string {
 	switch r {
 	case RewardMaxHP:
-		return "Increases maximum health"
+		return "Больше максимального здоровья"
 	case RewardAttack:
-		return "Increases attack damage"
+		return "Больше урона атак"
 	case RewardDefense:
-		return "Reduces incoming damage"
+		return "Меньше входящего урона"
 	case RewardInitiative:
-		return "Act earlier in turn order"
+		return "Раньше в порядке ходов"
 	case RewardAbilityHeal:
-		return "Gain Heal ability (ally)"
+		return "Способность «Лечение» (союзник)"
 	case RewardAbilityRanged:
-		return "Gain Shoot ability (ranged)"
+		return "Способность «Выстрел» (дальний бой)"
 	case RewardHealUpgrade:
-		return "Heal restores more HP"
+		return "Лечение восстанавливает больше ОЗ"
 	case RewardBasicAttackUpgrade:
-		return "Basic attack deals +1 damage"
+		return "Базовая атака: +1 урон"
 	default:
 		return ""
 	}

@@ -31,6 +31,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	ui.DrawHUD(screen, g.pickupCount, g.hudFace)
 
 	if g.mode == ModeExplore {
+		ui.DrawExplorePartyStrip(screen, g.hudFace, &g.party, ScreenWidth)
 		ui.DrawExploreFormationHint(screen, g.hudFace, ScreenWidth, ScreenHeight, g.exploreRestMsg)
 	}
 

@@ -228,6 +228,7 @@ func (b *BattleContext) Update() BattleOutcome {
 	if b == nil {
 		return BattleOutcomeNone
 	}
+	b.tickFeedback()
 
 	// PhaseFinishedWaitInput: ждём подтверждения (SPACE/ENTER) перед закрытием.
 	if b.Phase == PhaseFinishedWaitInput {
