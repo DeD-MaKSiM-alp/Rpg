@@ -35,7 +35,7 @@ type UnitBaseStats struct {
 	Attack           int
 	Defense          int
 	Initiative       int
-	HealPower        int // 0 = use default 2 in resolve
+	HealPower        int // bonus added to base heal (2); progression rewards stack here
 	BasicAttackBonus int // extra damage for basic attack only
 }
 
@@ -126,11 +126,17 @@ func (u *CombatUnit) MaxHP() int   { return u.Def.Base.MaxHP }
 func (u *CombatUnit) Attack() int {
 	return u.Def.Base.Attack + u.Def.Base.BasicAttackBonus + u.State.Modifiers.AttackBonus
 }
+// HealPower returns heal amount for AbilityHeal: base 2 + bonus from progression (Def.Base.HealPower).
+// Treating stored value as bonus avoids the bug where bonus +2 produced Def.Base.HealPower==2, same as default.
 func (u *CombatUnit) HealPower() int {
-	if u == nil || u.Def.Base.HealPower <= 0 {
+	if u == nil {
 		return 2
 	}
-	return u.Def.Base.HealPower
+	bonus := u.Def.Base.HealPower
+	if bonus < 0 {
+		bonus = 0
+	}
+	return 2 + bonus
 }
 func (u *CombatUnit) Defense() int {
 	return u.Def.Base.Defense + u.State.Modifiers.DefenseBonus

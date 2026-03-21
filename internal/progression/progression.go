@@ -1,32 +1,11 @@
-package game
+package progression
 
 import (
 	"math/rand"
+
 	battlepkg "mygame/internal/battle"
+	"mygame/internal/hero"
 )
-
-// PlayerProgression — персистентные боевые параметры игрока между боями (источник истины для следующего боя).
-type PlayerProgression struct {
-	MaxHP            int
-	Attack           int
-	Defense          int
-	Initiative       int
-	HealPower        int   // 0 = default 2 in resolve
-	BasicAttackBonus int   // extra damage for basic attack only
-	Abilities        []battlepkg.AbilityID
-}
-
-// DefaultProgression возвращает стартовую прогрессию.
-func DefaultProgression() PlayerProgression {
-	return PlayerProgression{
-		MaxHP:      10,
-		Attack:     2,
-		Defense:    0,
-		Initiative: 2,
-		HealPower:  0,
-		Abilities:  []battlepkg.AbilityID{battlepkg.AbilityBasicAttack},
-	}
-}
 
 // RewardKind — тип награды после победы.
 type RewardKind int
@@ -54,27 +33,28 @@ var rewardPool = []RewardKind{
 	RewardBasicAttackUpgrade,
 }
 
-const rewardOfferCount = 3
+// RewardOfferCount — сколько вариантов награды показывать после победы.
+const RewardOfferCount = 3
 
 // CanOffer возвращает true, если награду r имеет смысл предлагать при текущей прогрессии (нет дублей/бесполезных).
-func CanOffer(prog *PlayerProgression, r RewardKind) bool {
+func CanOffer(h *hero.Hero, r RewardKind) bool {
 	switch r {
 	case RewardAbilityHeal:
-		return !hasAbility(prog.Abilities, battlepkg.AbilityHeal)
+		return !hasAbility(h.Abilities, battlepkg.AbilityHeal)
 	case RewardAbilityRanged:
-		return !hasAbility(prog.Abilities, battlepkg.AbilityRangedAttack)
+		return !hasAbility(h.Abilities, battlepkg.AbilityRangedAttack)
 	case RewardHealUpgrade:
-		return hasAbility(prog.Abilities, battlepkg.AbilityHeal)
+		return hasAbility(h.Abilities, battlepkg.AbilityHeal)
 	default:
 		return true
 	}
 }
 
-// GenerateRewardOffer возвращает 2 или 3 награды из пула, применимых к текущей прогрессии (без дублей unlock и т.п.).
-func GenerateRewardOffer(prog *PlayerProgression, count int) []RewardKind {
+// GenerateRewardOffer возвращает награды из пула, применимых к текущей прогрессии (без дублей unlock и т.п.).
+func GenerateRewardOffer(h *hero.Hero, count int) []RewardKind {
 	var valid []RewardKind
 	for _, r := range rewardPool {
-		if CanOffer(prog, r) {
+		if CanOffer(h, r) {
 			valid = append(valid, r)
 		}
 	}
@@ -84,36 +64,35 @@ func GenerateRewardOffer(prog *PlayerProgression, count int) []RewardKind {
 	if count > len(valid) {
 		count = len(valid)
 	}
-	// Shuffle and take first count
 	shuffled := make([]RewardKind, len(valid))
 	copy(shuffled, valid)
 	rand.Shuffle(len(shuffled), func(i, j int) { shuffled[i], shuffled[j] = shuffled[j], shuffled[i] })
 	return shuffled[:count]
 }
 
-// ApplyReward применяет выбранную награду к прогрессии.
-func ApplyReward(prog *PlayerProgression, r RewardKind) {
+// ApplyReward применяет выбранную награду к каноническому герою.
+func ApplyReward(h *hero.Hero, r RewardKind) {
 	switch r {
 	case RewardMaxHP:
-		prog.MaxHP += 2
+		h.MaxHP += 2
 	case RewardAttack:
-		prog.Attack += 1
+		h.Attack += 1
 	case RewardDefense:
-		prog.Defense += 1
+		h.Defense += 1
 	case RewardInitiative:
-		prog.Initiative += 1
+		h.Initiative += 1
 	case RewardAbilityHeal:
-		if !hasAbility(prog.Abilities, battlepkg.AbilityHeal) {
-			prog.Abilities = append(prog.Abilities, battlepkg.AbilityHeal)
+		if !hasAbility(h.Abilities, battlepkg.AbilityHeal) {
+			h.Abilities = append(h.Abilities, battlepkg.AbilityHeal)
 		}
 	case RewardAbilityRanged:
-		if !hasAbility(prog.Abilities, battlepkg.AbilityRangedAttack) {
-			prog.Abilities = append(prog.Abilities, battlepkg.AbilityRangedAttack)
+		if !hasAbility(h.Abilities, battlepkg.AbilityRangedAttack) {
+			h.Abilities = append(h.Abilities, battlepkg.AbilityRangedAttack)
 		}
 	case RewardHealUpgrade:
-		prog.HealPower += 2
+		h.HealPower += 2
 	case RewardBasicAttackUpgrade:
-		prog.BasicAttackBonus += 1
+		h.BasicAttackBonus += 1
 	}
 }
 

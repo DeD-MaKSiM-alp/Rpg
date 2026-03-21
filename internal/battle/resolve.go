@@ -2,7 +2,6 @@ package battle
 
 import "fmt"
 
-const healAmount = 2
 const buffAttackBonus = 1
 
 // ResolveAbility применяет действие по способности и возвращает результат. Единственная точка изменения HP/статов.

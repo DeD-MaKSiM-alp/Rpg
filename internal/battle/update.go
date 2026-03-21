@@ -212,22 +212,6 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit) (BattleA
 			return act, true
 		}
 
-	case PlayerConfirmAction:
-		// Legacy: no longer entered in normal UX; only Back to recover.
-		if justBackPressed() {
-			if ability.TargetRule == TargetEnemySingle || ability.TargetRule == TargetAllySingle {
-				p.Phase = PlayerChooseTarget
-			} else {
-				p.Phase = PlayerChooseAbility
-				if HasBasicAttack(actor) {
-					p.SelectedAbilityID = AbilityBasicAttack
-					p.SelectedAbilityIndex = 0
-				}
-			}
-			p.Pending = ActionRequest{}
-			return BattleAction{}, false
-		}
-
 	case PlayerResolveAction:
 		// This phase is consumed by battle loop; no input expected.
 		return BattleAction{}, false

@@ -17,7 +17,6 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 	// Reset hover each frame; will be filled by hit-tests below.
 	b.PlayerTurn.HoverAbilityIndex = -1
 	b.PlayerTurn.HoverTargetUnitID = 0
-	b.PlayerTurn.HoverConfirmButton = false
 	b.PlayerTurn.HoverBackButton = false
 
 	// Only respond to mouse when it's player's turn and AwaitAction phase.
@@ -217,19 +216,7 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit) (BattleAction, 
 
 	// 4) Right click = quick cancel/back; return to default attack mode when going back to ChooseAbility.
 	if rightClick {
-		ability := GetAbility(pt.SelectedAbilityID)
 		switch pt.Phase {
-		case PlayerConfirmAction:
-			if ability.TargetRule == TargetEnemySingle || ability.TargetRule == TargetAllySingle {
-				pt.Phase = PlayerChooseTarget
-			} else {
-				pt.Phase = PlayerChooseAbility
-				if HasBasicAttack(actor) {
-					pt.SelectedAbilityID = AbilityBasicAttack
-					pt.SelectedAbilityIndex = 0
-				}
-			}
-			pt.Pending = ActionRequest{}
 		case PlayerChooseTarget:
 			pt.Phase = PlayerChooseAbility
 			if HasBasicAttack(actor) {

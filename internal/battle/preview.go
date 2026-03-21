@@ -40,8 +40,11 @@ func PreviewAction(ctx *BattleContext, req ActionRequest) (ActionPreview, Valida
 		return ActionPreview{DamageMin: dmg, DamageMax: dmg}, okResult()
 
 	case AbilityHeal:
-		// healAmount is the current battle constant; statuses/bonuses will come later.
-		return ActionPreview{HealMin: healAmount, HealMax: healAmount}, okResult()
+		if actor == nil {
+			return ActionPreview{}, okResult()
+		}
+		h := actor.HealPower()
+		return ActionPreview{HealMin: h, HealMax: h}, okResult()
 
 	default:
 		return ActionPreview{}, okResult()

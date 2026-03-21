@@ -123,7 +123,7 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 	pt := battle.PlayerTurn
 
 	validSet := map[battlepkg.UnitID]bool{}
-	if isPlayerTurn && (pt.Phase == battlepkg.PlayerChooseTarget || pt.Phase == battlepkg.PlayerConfirmAction) {
+	if isPlayerTurn && pt.Phase == battlepkg.PlayerChooseTarget {
 		for _, td := range pt.ValidTargets {
 			if td.Kind == battlepkg.TargetKindUnit {
 				validSet[td.UnitID] = true
@@ -132,11 +132,11 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 	}
 
 	selectedTargetID := battlepkg.UnitID(0)
-	if isPlayerTurn && (pt.Phase == battlepkg.PlayerChooseTarget || pt.Phase == battlepkg.PlayerConfirmAction) && pt.SelectedTarget.Kind == battlepkg.TargetKindUnit {
+	if isPlayerTurn && pt.Phase == battlepkg.PlayerChooseTarget && pt.SelectedTarget.Kind == battlepkg.TargetKindUnit {
 		selectedTargetID = pt.SelectedTarget.UnitID
 	}
 	hoverTargetID := battlepkg.UnitID(0)
-	if isPlayerTurn && (pt.Phase == battlepkg.PlayerChooseTarget || pt.Phase == battlepkg.PlayerConfirmAction) {
+	if isPlayerTurn && pt.Phase == battlepkg.PlayerChooseTarget {
 		hoverTargetID = pt.HoverTargetUnitID
 	}
 

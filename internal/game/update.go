@@ -8,29 +8,6 @@ import (
 	playerpkg "mygame/internal/player"
 )
 
-// post-battle reward panel layout (must match ui/postbattle.go)
-const (
-	postBattlePanelW   = 400
-	postBattlePad      = 24
-	postBattleLineH    = 22
-	postBattleOptionH  = 32
-	postBattleOptionGap = 4
-	postBattleOptionStartY = 77 // innerY + lineH*3.5 with innerY = panelY+pad
-)
-
-func wrapRewardIndex(idx, n int) int {
-	if n <= 0 {
-		return 0
-	}
-	for idx < 0 {
-		idx += n
-	}
-	if idx >= n {
-		idx %= n
-	}
-	return idx
-}
-
 // Update обрабатывает один кадр игры.
 func (g *Game) Update() error {
 	// Runtime resolution switch: F6 = previous preset, F7 = next preset (cyclic).
@@ -124,8 +101,10 @@ func (g *Game) updateBattleMode() {
 	}
 
 	// Post-battle flow: result screen → (on victory) reward selection → return to world.
-	if g.postBattleStep != PostBattleStepNone {
-		g.updatePostBattle()
+	if g.postBattle.IsActive() {
+		if g.postBattle.Update(&g.leader, ScreenWidth, ScreenHeight) {
+			g.endBattle()
+		}
 		return
 	}
 
@@ -136,94 +115,19 @@ func (g *Game) updateBattleMode() {
 	case battlepkg.BattleOutcomeVictory:
 		g.resolveBattleResult(outcome)
 		g.BattlesWon++
-		g.postBattleOutcome = outcome
-		g.postBattleStep = PostBattleStepResult
+		g.postBattle.Begin(outcome)
 		return
 	case battlepkg.BattleOutcomeDefeat:
 		g.resolveBattleResult(outcome)
-		g.postBattleOutcome = outcome
-		g.postBattleStep = PostBattleStepResult
+		g.postBattle.Begin(outcome)
 		return
 	case battlepkg.BattleOutcomeRetreat:
 		g.resolveBattleResult(outcome)
-		g.postBattleOutcome = outcome
-		g.postBattleStep = PostBattleStepResult
+		g.postBattle.Begin(outcome)
 		return
 	case battlepkg.BattleOutcomeNone:
 		return
 	}
-}
-
-func (g *Game) updatePostBattle() {
-	n := len(g.rewardOffer)
-	if n == 0 {
-		n = 1
-	}
-	g.rewardSelectedIndex = wrapRewardIndex(g.rewardSelectedIndex, n)
-
-	switch g.postBattleStep {
-	case PostBattleStepResult:
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-			if g.postBattleOutcome == battlepkg.BattleOutcomeVictory {
-				g.rewardOffer = GenerateRewardOffer(&g.progression, rewardOfferCount)
-				if len(g.rewardOffer) == 0 {
-					g.endBattle()
-				} else {
-					g.postBattleStep = PostBattleStepReward
-					g.rewardSelectedIndex = 0
-				}
-			} else {
-				g.endBattle()
-			}
-		}
-	case PostBattleStepReward:
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
-			g.rewardSelectedIndex = wrapRewardIndex(g.rewardSelectedIndex-1, n)
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
-			g.rewardSelectedIndex = wrapRewardIndex(g.rewardSelectedIndex+1, n)
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-			ApplyReward(&g.progression, g.rewardOffer[g.rewardSelectedIndex])
-			g.endBattle()
-			return
-		}
-		// Mouse: click on reward option (layout matches ui/postbattle.go)
-		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-			if idx := g.rewardOptionAtCursor(); idx >= 0 && idx < n {
-				ApplyReward(&g.progression, g.rewardOffer[idx])
-				g.endBattle()
-			}
-		}
-	}
-}
-
-func (g *Game) rewardOptionAtCursor() int {
-	mx, my := ebiten.CursorPosition()
-	w, h := ScreenWidth, ScreenHeight
-	panelW := postBattlePanelW
-	if panelW > w-postBattlePad*2 {
-		panelW = w - postBattlePad*2
-	}
-	panelX := (w - panelW) / 2
-	panelH := 220
-	if len(g.rewardOffer) > 0 {
-		panelH = 120 + len(g.rewardOffer)*36
-	}
-	panelY := (h - panelH) / 2
-	innerX := panelX + postBattlePad
-	innerW := panelW - postBattlePad*2
-	if mx < innerX || mx > innerX+innerW {
-		return -1
-	}
-	optionY := panelY + postBattlePad + postBattleOptionStartY
-	for i := 0; i < len(g.rewardOffer); i++ {
-		if my >= optionY && my < optionY+postBattleOptionH+postBattleOptionGap {
-			return i
-		}
-		optionY += postBattleOptionH + postBattleOptionGap
-	}
-	return -1
 }
 
 // resolveBattleResult применяет результат боя к миру (удаление врагов при победе и т.д.).

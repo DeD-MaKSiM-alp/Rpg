@@ -68,8 +68,7 @@ type BattleHUDLayout struct {
 	EnemyFormationTitleRow  HUDRect
 
 	// --- shared interactive rects (render + mouse) ---
-	BackButton    HUDRect
-	ConfirmButton HUDRect
+	BackButton       HUDRect
 	AbilityItemRects []HUDRect
 	UnitRects     map[UnitID]HUDRect
 
@@ -246,10 +245,9 @@ func (b *BattleContext) computeLayoutV2(screenW, screenH int) BattleHUDLayout {
 	layout.V2BottomLog = HUDRect{X: inner.X, Y: y, W: inner.W, H: lineH}
 	y += lineH + gap
 
-	// Buttons at bottom: Back only (Confirm removed from UX; ConfirmButton kept as zero for legacy)
+	// Buttons at bottom: Back only
 	buttonsY := inner.Y + inner.H - btnH
 	layout.BackButton = HUDRect{X: inner.X, Y: buttonsY, W: inner.W, H: btnH}
-	layout.ConfirmButton = HUDRect{}
 
 	// UnitRects: vertical cards with clearer spacing (Gap between cards).
 	layout.UnitRects = map[UnitID]HUDRect{}
@@ -493,9 +491,7 @@ func (b *BattleContext) computeLayoutV1(screenW, screenH int) BattleHUDLayout {
 		buttonsY := inner.Y + inner.H - btnH
 		layout.ActionButtons = HUDRect{X: inner.X, Y: buttonsY, W: inner.W, H: btnH}
 
-		// Back only (Confirm removed from UX; ConfirmButton kept as zero for legacy)
 		layout.BackButton = HUDRect{X: inner.X, Y: buttonsY, W: inner.W, H: btnH}
-		layout.ConfirmButton = HUDRect{}
 
 		titleH := metrics.LineH
 		summaryTop := inner.Y + titleH + metrics.SmallGap

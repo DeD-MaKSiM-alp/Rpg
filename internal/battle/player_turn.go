@@ -12,7 +12,6 @@ const (
 	PlayerTurnStart
 	PlayerChooseAbility
 	PlayerChooseTarget
-	PlayerConfirmAction
 	PlayerResolveAction
 	PlayerTurnEnd
 )
@@ -33,8 +32,7 @@ type PlayerTurnState struct {
 	HoverAbilityIndex int  // -1 if none
 	HoverTargetUnitID UnitID
 
-	HoverConfirmButton bool
-	HoverBackButton    bool
+	HoverBackButton bool
 
 	Pending ActionRequest
 }
@@ -57,8 +55,6 @@ func (p *PlayerTurnState) PhaseString() string {
 		return "ChooseAbility"
 	case PlayerChooseTarget:
 		return "ChooseTarget"
-	case PlayerConfirmAction:
-		return "Confirm"
 	case PlayerResolveAction:
 		return "Resolve"
 	case PlayerTurnEnd:

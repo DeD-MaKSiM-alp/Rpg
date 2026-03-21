@@ -10,8 +10,10 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	battlepkg "mygame/internal/battle"
+	"mygame/internal/hero"
 	inputpkg "mygame/internal/input"
 	playerpkg "mygame/internal/player"
+	"mygame/internal/postbattle"
 	"mygame/internal/ui"
 	"mygame/world"
 )
@@ -99,15 +101,6 @@ const (
 	ModeBattle
 )
 
-// PostBattleStep — шаг post-battle flow (result screen → reward → return to world).
-type PostBattleStep int
-
-const (
-	PostBattleStepNone PostBattleStep = iota
-	PostBattleStepResult
-	PostBattleStepReward
-)
-
 // Game — основная структура, описывающая состояние всей игры.
 type Game struct {
 	player      playerpkg.Player
@@ -120,17 +113,14 @@ type Game struct {
 	mode        GameMode
 	battle      *battlepkg.BattleContext
 
-	// Persistent progression between battles (source for next battle player unit).
-	progression PlayerProgression
+	// Leader — каноническая модель главного бойца (прогрессия, основа для боя). См. package hero.
+	leader hero.Hero
 
 	// BattlesWon — число выигранных боёв за сессию; используется для эскалации сложности врагов и генерации оффера наград.
 	BattlesWon int
 
-	// Post-battle flow: после Victory/Defeat/Retreat не сразу endBattle, а result → (reward при победе) → endBattle.
-	postBattleStep      PostBattleStep
-	postBattleOutcome   battlepkg.BattleOutcome
-	rewardOffer         []RewardKind // текущий набор наград на выбор (2–3 из пула)
-	rewardSelectedIndex int
+	// Post-battle: экран результата и выбор награды (оркестрация вынесена в postbattle.Flow).
+	postBattle postbattle.Flow
 
 	// BattleHUDStyle: 0 = v1 table (fallback/debug), 1 = v2 Disciples-like. Used to set battle.LayoutStyle each frame.
 	BattleHUDStyle int
@@ -142,16 +132,14 @@ type Game struct {
 // NewGame создаёт новый экземпляр игры (мир, игрок, UI-шрифт и т.д.).
 func NewGame(worldSeed, playerGridX, playerGridY int) *Game {
 	return &Game{
-		player:              *playerpkg.NewPlayer(playerGridX, playerGridY),
-		world:               world.NewWorld(worldSeed),
-		input:               inputpkg.New(),
-		hudFace:              ui.LoadHUDFace(),
-		mode:                 ModeExplore,
-		battle:               nil,
-		progression:          DefaultProgression(),
-		postBattleStep:       PostBattleStepNone,
-		rewardSelectedIndex:  0,
-		BattleHUDStyle:       1, // 1 = v2 Disciples-like (default), 0 = v1 table (debug fallback)
+		player:         *playerpkg.NewPlayer(playerGridX, playerGridY),
+		world:          world.NewWorld(worldSeed),
+		input:          inputpkg.New(),
+		hudFace:        ui.LoadHUDFace(),
+		mode:           ModeExplore,
+		battle:         nil,
+		leader:         hero.DefaultHero(),
+		BattleHUDStyle: 1, // 1 = v2 Disciples-like (default), 0 = v1 table (debug fallback)
 	}
 }
 
@@ -209,26 +197,15 @@ func (g *Game) startBattle(enemyID world.EntityID) {
 		return
 	}
 	g.mode = ModeBattle
-	g.postBattleStep = PostBattleStepNone
-	g.rewardOffer = nil
-	playerSeed := battlepkg.BuildPlayerCombatSeed(
-		g.progression.MaxHP,
-		g.progression.Attack,
-		g.progression.Defense,
-		g.progression.Initiative,
-		g.progression.Abilities,
-		g.progression.HealPower,
-		g.progression.BasicAttackBonus,
-	)
-	g.battle = battlepkg.BuildBattleContextFromEncounter(enc, &playerSeed, g.BattlesWon)
+	g.postBattle.Reset()
+	seed := g.leader.CombatUnitSeed()
+	g.battle = battlepkg.BuildBattleContextFromEncounter(enc, &seed, g.BattlesWon)
 }
 
 func (g *Game) endBattle() {
 	g.mode = ModeExplore
 	g.battle = nil
-	g.postBattleStep = PostBattleStepNone
-	g.postBattleOutcome = battlepkg.BattleOutcomeNone
-	g.rewardOffer = nil
+	g.postBattle.Reset()
 }
 
 func (g *Game) updateCamera() {
