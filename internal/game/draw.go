@@ -30,13 +30,23 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	ui.DrawHUD(screen, g.pickupCount, g.hudFace)
 
-	if g.mode == ModeExplore {
+	if g.mode == ModeExplore || g.mode == ModeRecruitOffer {
 		ui.DrawExplorePartyStrip(screen, g.hudFace, &g.party, ScreenWidth)
-		ui.DrawExploreFormationHint(screen, g.hudFace, ScreenWidth, ScreenHeight, g.exploreRestMsg)
+	}
+	if g.mode == ModeExplore {
+		ui.DrawExploreFormationHint(screen, g.hudFace, ScreenWidth, ScreenHeight, g.exploreRestMsg, g.exploreRecruitMsg)
+	}
+
+	if g.mode == ModeRecruitOffer {
+		ui.DrawRecruitOfferOverlay(screen, g.hudFace, ScreenWidth, ScreenHeight)
 	}
 
 	if g.mode == ModeFormation {
-		ui.DrawFormationOverlay(screen, g.hudFace, &g.party, g.formationSel, ScreenWidth, ScreenHeight)
+		ui.DrawFormationOverlay(screen, g.hudFace, &g.party, g.formationSel, ScreenWidth, ScreenHeight, g.formationInspectOpen)
+		if g.formationInspectOpen {
+			atCamp := g.world.PlayerStandsOnActiveRecruitCamp(g.player.GridX, g.player.GridY)
+			ui.DrawCharacterInspectOverlay(screen, g.hudFace, &g.party, g.formationSel, ScreenWidth, ScreenHeight, g.formationMsg, atCamp)
+		}
 	}
 
 	if g.mode == ModeExplore && debugShowInputDirection {

@@ -37,6 +37,7 @@ func BuildPostBattleParams(f *Flow, screenW, screenH int) ui.PostBattleParams {
 	if f.Step == StepResult {
 		if f.Outcome == battlepkg.BattleOutcomeVictory {
 			params.ContinueButtonLabel = "Продолжить"
+			params.ResultHintLine = "Выжившие в строю получили боевой опыт (+1). Пробел / Enter — далее к награде лидеру"
 		} else {
 			params.ContinueButtonLabel = "В мир"
 		}

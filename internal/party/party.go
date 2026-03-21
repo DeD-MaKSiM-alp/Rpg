@@ -1,20 +1,31 @@
 // Package party is the canonical roster layer between world/explore and battle.
-// A Party holds the persistent combat-capable members (Hero) in deployment order; the leader is Active[0].
-// Bench/reserve, hire/replace, and injured states can extend this struct later without changing the hero model.
+// Party = Active (в бою и построение) + Reserve/Bench (вне боя, не попадают в PlayerCombatSeeds).
+// Лидер — всегда Active[0]; найм/save/camp — отдельные этапы. Party-wide XP после побед: progression.ApplyVictoryCombatXPForActiveSurvivors.
 package party
 
 import (
+	"errors"
 	"fmt"
 
 	battlepkg "mygame/internal/battle"
 	"mygame/internal/hero"
 )
 
-// Party — канонический отряд игрока вне боя: упорядоченный список активных участников.
-// Active[0] — лидер (награды после боя, привязка к аватару на карте по смыслу).
+// MaxActiveBattleSlots — максимум участников в Active (ёмкость построения боя 3+3).
+const MaxActiveBattleSlots = battlepkg.MaxFrontRowUnits + battlepkg.MaxBackRowUnits
+
+// MaxPartyMembers — верхняя граница размера полного ростера (Active + Reserve).
+const MaxPartyMembers = 12
+
+// ErrPartyFull — нельзя добавить участника: достигнут MaxPartyMembers.
+var ErrPartyFull = errors.New("party: roster full")
+
+// Party — канонический отряд: Active (участвуют в бою в порядке списка) и Reserve (скамейка).
+// Active[0] — лидер (выбор награды после победы). Боевой опыт за победу получают все выжившие в активном строю.
 // Порядок Active задаёт построение в бою (см. battle.PlayerSlotForPartyIndex).
 type Party struct {
-	Active []hero.Hero
+	Active  []hero.Hero
+	Reserve []hero.Hero
 }
 
 // DefaultParty возвращает отряд из одного героя (обычный single-unit режим).
@@ -24,15 +35,32 @@ func DefaultParty() Party {
 	}
 }
 
-// TwoMemberDemoParty возвращает отряд из двух героев со стартовыми статами (для проверки multi-unit боя).
-// Обычный NewGame использует DefaultParty(); подставьте эту функцию вручную при отладке.
+// TwoMemberDemoParty — 2 в строю + 1 в резерве (проверка multi-unit и bench).
 func TwoMemberDemoParty() Party {
 	return Party{
 		Active: []hero.Hero{
 			hero.DefaultHero(),
 			hero.DefaultHero(),
 		},
+		Reserve: []hero.Hero{hero.DefaultHero()},
 	}
+}
+
+// HeroAtGlobalIndex возвращает указатель на героя по индексу списка formation:
+// [0, len(Active)) — строй, [len(Active), ...) — резерв.
+func (p *Party) HeroAtGlobalIndex(globalIdx int) *hero.Hero {
+	if p == nil {
+		return nil
+	}
+	na := len(p.Active)
+	if globalIdx >= 0 && globalIdx < na {
+		return &p.Active[globalIdx]
+	}
+	j := globalIdx - na
+	if j >= 0 && j < len(p.Reserve) {
+		return &p.Reserve[j]
+	}
+	return nil
 }
 
 // Leader возвращает указатель на лидера для мутации (прогрессия, награды).
@@ -80,6 +108,71 @@ func (p *Party) MoveActiveLater(i int) bool {
 	return true
 }
 
+// MoveActiveToReserve переносит участника с индексом i из Active в конец Reserve.
+// Инварианты: минимум один участник остаётся в Active; лидер — новый Active[0] после снятия.
+func (p *Party) MoveActiveToReserve(i int) bool {
+	if p == nil || i < 0 || i >= len(p.Active) {
+		return false
+	}
+	if len(p.Active) <= 1 {
+		return false
+	}
+	h := p.Active[i]
+	p.Active = append(p.Active[:i], p.Active[i+1:]...)
+	p.Reserve = append(p.Reserve, h)
+	return true
+}
+
+// MoveReserveToActive переносит участника с индексом j из Reserve в конец Active.
+// Не больше maxActiveBattleSlots в Active (ёмкость боя).
+func (p *Party) MoveReserveToActive(j int) bool {
+	if p == nil || j < 0 || j >= len(p.Reserve) {
+		return false
+	}
+	if len(p.Active) >= MaxActiveBattleSlots {
+		return false
+	}
+	h := p.Reserve[j]
+	p.Reserve = append(p.Reserve[:j], p.Reserve[j+1:]...)
+	p.Active = append(p.Active, h)
+	return true
+}
+
+// ActiveCount / ReserveCount — для UI.
+func (p *Party) ActiveCount() int {
+	if p == nil {
+		return 0
+	}
+	return len(p.Active)
+}
+
+func (p *Party) ReserveCount() int {
+	if p == nil {
+		return 0
+	}
+	return len(p.Reserve)
+}
+
+// TotalMembers — число героев в Active и Reserve.
+func (p *Party) TotalMembers() int {
+	if p == nil {
+		return 0
+	}
+	return len(p.Active) + len(p.Reserve)
+}
+
+// AddToReserve добавляет героя в конец резерва. Не меняет Active.
+func (p *Party) AddToReserve(h hero.Hero) error {
+	if p == nil {
+		return fmt.Errorf("party: nil")
+	}
+	if p.TotalMembers() >= MaxPartyMembers {
+		return ErrPartyFull
+	}
+	p.Reserve = append(p.Reserve, h)
+	return nil
+}
+
 // FormationSlotCaption описывает боевой слот для i-го по порядку участника (тот же индекс, что и battle.PlayerSlotForPartyIndex).
 func FormationSlotCaption(partyIndex int) string {
 	row, idx := battlepkg.PlayerSlotForPartyIndex(partyIndex)
@@ -92,9 +185,14 @@ func FormationSlotCaption(partyIndex int) string {
 // MemberRoleCaption короткая роль в списке (лидер / номер союзника).
 func MemberRoleCaption(index int) string {
 	if index == 0 {
-		return "Лидер (награды)"
+		return "Лидер (награда за бой)"
 	}
 	return fmt.Sprintf("Союзник %d", index)
+}
+
+// ReserveRowCaption — подпись строки в резерве (без боевого слота).
+func ReserveRowCaption(reserveIndex int) string {
+	return fmt.Sprintf("Резерв · %d", reserveIndex+1)
 }
 
 // --- Отдых в мире (минимальный recovery loop между боями) ---
@@ -117,17 +215,16 @@ func (p *Party) HasFightableMember() bool {
 
 // ApplyWorldRest восстанавливает канонический CurrentHP после «отдыха» в explore (вызывать вместе с advanceWorldTurn).
 // Правила:
-//   - для каждого участника с CurrentHP > 0: +max(1, MaxHP/RestRecoveryDivisor), clamp к MaxHP;
+//   - для каждого участника Active и Reserve с CurrentHP > 0: +max(1, MaxHP/RestRecoveryDivisor), clamp к MaxHP;
 //   - участников с 0 HP отдых не воскрешает (нужны будущие revive/camp);
-//   - если после этого никто не может сражаться (все 0), лидер получает 1 HP — аварийный выход из soft-lock.
+//   - если после этого никто в Active не может сражаться (все 0), лидер получает 1 HP — аварийный выход из soft-lock.
 func (p *Party) ApplyWorldRest() {
 	if p == nil || len(p.Active) == 0 {
 		return
 	}
-	for i := range p.Active {
-		h := &p.Active[i]
+	restOne := func(h *hero.Hero) {
 		if h.CurrentHP <= 0 {
-			continue
+			return
 		}
 		gain := h.MaxHP / RestRecoveryDivisor
 		if gain < 1 {
@@ -137,6 +234,12 @@ func (p *Party) ApplyWorldRest() {
 		if h.CurrentHP > h.MaxHP {
 			h.CurrentHP = h.MaxHP
 		}
+	}
+	for i := range p.Active {
+		restOne(&p.Active[i])
+	}
+	for i := range p.Reserve {
+		restOne(&p.Reserve[i])
 	}
 	if !p.HasFightableMember() {
 		p.Active[0].CurrentHP = 1

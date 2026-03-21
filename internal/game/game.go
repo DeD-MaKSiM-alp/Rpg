@@ -99,8 +99,10 @@ type GameMode int
 const (
 	ModeExplore GameMode = iota
 	ModeBattle
-	// ModeFormation — экран порядка party.Active в explore (до боя); влияет на слоты через PlayerCombatSeeds → PlayerSlotForPartyIndex.
+	// ModeFormation — экран состава: Active (строй) + Reserve, порядок Active; PlayerCombatSeeds только из Active.
 	ModeFormation
+	// ModeRecruitOffer — подтверждение найма с лагеря на карте (world PickupKindRecruitCamp).
+	ModeRecruitOffer
 )
 
 // Game — основная структура, описывающая состояние всей игры.
@@ -130,12 +132,26 @@ type Game struct {
 	// Временный debug: последнее направление, возвращённое ReadExploreInput (только для отрисовки).
 	debugInputDX, debugInputDY int
 
-	// formationSel — выбранная строка в ModeFormation (перестановка party.Active).
+	// formationSel — индекс строки в overlay: [0, len(Active)) строй, [len(Active), ...) резерв.
 	formationSel int
+	// formationInspectOpen — карточка бойца (I) поверх состава.
+	formationInspectOpen bool
 
 	// exploreRestMsg / exploreRestMsgTicks — краткая обратная связь после отдыха (R) в explore).
 	exploreRestMsg      string
 	exploreRestMsgTicks int
+
+	// exploreRecruitMsg — баннер после попытки рекрута (F9 в explore); этапный acquisition без мира.
+	exploreRecruitMsg      string
+	exploreRecruitMsgTicks int
+
+	// recruitOfferX/Y — клетка лагеря наёмников при ModeRecruitOffer (после подтверждения — MarkRecruitPickupCollected).
+	recruitOfferX int
+	recruitOfferY int
+
+	// formationMsg — баннер после promotion (P) на экране состава с открытой карточкой.
+	formationMsg      string
+	formationMsgTicks int
 }
 
 // NewGame создаёт новый экземпляр игры (мир, игрок, UI-шрифт и т.д.).

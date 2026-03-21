@@ -70,7 +70,8 @@ func GenerateRewardOffer(h *hero.Hero, count int) []RewardKind {
 	return shuffled[:count]
 }
 
-// ApplyReward применяет выбранную награду к каноническому герою.
+// ApplyReward применяет выбранную награду к лидеру (канонический герой выбора после победы).
+// Не дублирует party-wide боевой опыт (CombatExperience) — это отдельный слой.
 func ApplyReward(h *hero.Hero, r RewardKind) {
 	switch r {
 	case RewardMaxHP:

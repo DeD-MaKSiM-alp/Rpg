@@ -532,6 +532,7 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		if active != nil {
 			if active.Side == battlepkg.TeamPlayer {
 				s = fmt.Sprintf("Ваш ход: %s", active.Name())
+				s += battlepkg.PlayerTemplateIdentitySuffix(active)
 			} else {
 				s = fmt.Sprintf("Ход врага: %s", active.Name())
 			}

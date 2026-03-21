@@ -1,16 +1,26 @@
 package game
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 
 	battlepkg "mygame/internal/battle"
+	"mygame/internal/hero"
 	"mygame/internal/party"
 	playerpkg "mygame/internal/player"
+	"mygame/internal/progression"
+	"mygame/internal/unitdata"
+	"mygame/world"
 )
 
 // exploreRestFeedbackDurationTicks — длительность баннера после отдыха (R) в explore (~3s @ 60fps).
 const exploreRestFeedbackDurationTicks = 180
+
+// formationMsgDurationTicks — длительность баннера promotion на экране состава.
+const formationMsgDurationTicks = 180
 
 // Update обрабатывает один кадр игры.
 func (g *Game) Update() error {
@@ -40,6 +50,11 @@ func (g *Game) Update() error {
 	}
 	if g.mode == ModeFormation {
 		g.updateFormationMode()
+		return nil
+	}
+	// Recruit offer — отдельная мода: иначе updateExploreMode съедает ввод и не вызывается accept (см. recruit_camp_accept_bugfix_report).
+	if g.mode == ModeRecruitOffer {
+		g.updateRecruitOfferMode()
 		return nil
 	}
 	return g.updateExploreMode()
@@ -78,10 +93,39 @@ func (g *Game) updateExploreMode() error {
 			g.exploreRestMsg = ""
 		}
 	}
+	if g.exploreRecruitMsgTicks > 0 {
+		g.exploreRecruitMsgTicks--
+		if g.exploreRecruitMsgTicks <= 0 {
+			g.exploreRecruitMsg = ""
+		}
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyF9) {
+		if g.party.TotalMembers() >= party.MaxPartyMembers {
+			g.exploreRecruitMsg = fmt.Sprintf("Отряд полон (макс. %d)", party.MaxPartyMembers)
+			g.exploreRecruitMsgTicks = exploreRestFeedbackDurationTicks
+			return nil
+		}
+		idx := len(g.party.Reserve) + 1
+		h := hero.RecruitHeroFromEarlyPool(idx)
+		h.RecruitLabel = hero.RecruitDisplayName(idx)
+		if err := g.party.AddToReserve(h); err != nil {
+			if errors.Is(err, party.ErrPartyFull) {
+				g.exploreRecruitMsg = fmt.Sprintf("Отряд полон (макс. %d)", party.MaxPartyMembers)
+			} else {
+				g.exploreRecruitMsg = err.Error()
+			}
+		} else {
+			g.exploreRecruitMsg = fmt.Sprintf("В резерв: %s (F5 — состав)", hero.RecruitDisplayName(idx))
+		}
+		g.exploreRecruitMsgTicks = exploreRestFeedbackDurationTicks
+		return nil
+	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyF5) {
 		g.mode = ModeFormation
 		g.formationSel = 0
+		g.formationInspectOpen = false
 		if n := len(g.party.Active); n == 0 {
 			g.mode = ModeExplore
 		}
@@ -108,8 +152,8 @@ func (g *Game) updateExploreMode() error {
 
 	switch action.Type {
 	case ActionMove:
-		moved, enemyID, pickedUp := playerpkg.TryMovePlayer(&g.player, g.world, action.DX, action.DY)
-		if pickedUp {
+		moved, enemyID, pu := playerpkg.TryMovePlayer(&g.player, g.world, action.DX, action.DY)
+		if pu == world.PickupInteractResource {
 			g.pickupCount++
 		}
 		if !moved {
@@ -117,6 +161,12 @@ func (g *Game) updateExploreMode() error {
 		}
 		if enemyID != 0 {
 			g.startBattle(enemyID)
+			return nil
+		}
+		if pu == world.PickupInteractRecruitOffer {
+			g.mode = ModeRecruitOffer
+			g.recruitOfferX = g.player.GridX
+			g.recruitOfferY = g.player.GridY
 			return nil
 		}
 		g.advanceWorldTurn()
@@ -129,31 +179,83 @@ func (g *Game) updateExploreMode() error {
 }
 
 func (g *Game) updateFormationMode() {
-	n := len(g.party.Active)
-	if n == 0 {
+	if g.formationMsgTicks > 0 {
+		g.formationMsgTicks--
+		if g.formationMsgTicks <= 0 {
+			g.formationMsg = ""
+		}
+	}
+
+	na := len(g.party.Active)
+	nr := len(g.party.Reserve)
+	total := na + nr
+	if total == 0 {
 		g.mode = ModeExplore
+		g.formationInspectOpen = false
 		return
 	}
-	if g.formationSel >= n {
-		g.formationSel = n - 1
+	if g.formationSel >= total {
+		g.formationSel = total - 1
 	}
 	if g.formationSel < 0 {
 		g.formationSel = 0
 	}
 
+	// Карточка бойца: только навигация по списку и выход с листа.
+	if g.formationInspectOpen {
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyI) ||
+			inpututil.IsKeyJustPressed(ebiten.KeyF5) {
+			g.formationInspectOpen = false
+			return
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyP) {
+			h := g.party.HeroAtGlobalIndex(g.formationSel)
+			if h != nil {
+				atCamp := g.world.PlayerStandsOnActiveRecruitCamp(g.player.GridX, g.player.GridY)
+				gate := EvaluatePromotionGate(h, atCamp)
+				if !gate.Allowed {
+					g.formationMsg = gate.Message
+				} else if err := hero.TryPromoteHero(h); err != nil {
+					g.formationMsg = hero.PromotionErrUserMessage(err)
+				} else if tpl, ok := unitdata.GetUnitTemplate(h.UnitID); ok {
+					g.formationMsg = "Повышение: «" + tpl.DisplayName + "»"
+				} else {
+					g.formationMsg = "Повышение выполнено."
+				}
+				g.formationMsgTicks = formationMsgDurationTicks
+			}
+			return
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) && g.formationSel > 0 {
+			g.formationSel--
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) && g.formationSel < total-1 {
+			g.formationSel++
+		}
+		return
+	}
+
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyF5) {
 		g.mode = ModeExplore
+		g.formationInspectOpen = false
+		g.formationMsg = ""
+		g.formationMsgTicks = 0
+		return
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyI) {
+		g.formationInspectOpen = true
 		return
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) && g.formationSel > 0 {
 		g.formationSel--
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) && g.formationSel < n-1 {
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) && g.formationSel < total-1 {
 		g.formationSel++
 	}
 
-	if n >= 2 {
+	if na >= 2 && g.formationSel < na {
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
 			if g.party.MoveActiveEarlier(g.formationSel) {
 				g.formationSel--
@@ -162,6 +264,21 @@ func (g *Game) updateFormationMode() {
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
 			if g.party.MoveActiveLater(g.formationSel) {
 				g.formationSel++
+			}
+		}
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if g.formationSel < na {
+			if g.party.MoveActiveToReserve(g.formationSel) {
+				if g.formationSel >= len(g.party.Active) {
+					g.formationSel = len(g.party.Active) - 1
+				}
+			}
+		} else {
+			rj := g.formationSel - na
+			if g.party.MoveReserveToActive(rj) {
+				g.formationSel = len(g.party.Active) - 1
 			}
 		}
 	}
@@ -187,6 +304,7 @@ func (g *Game) updateBattleMode() {
 	switch outcome {
 	case battlepkg.BattleOutcomeVictory:
 		g.syncPartyFromBattle()
+		progression.ApplyVictoryCombatXPForActiveSurvivors(g.battle, &g.party)
 		g.resolveBattleResult(outcome)
 		g.BattlesWon++
 		g.postBattle.Begin(outcome)

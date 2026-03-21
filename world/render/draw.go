@@ -52,15 +52,16 @@ func drawTiles(screen *ebiten.Image, source DrawSource, cameraX, cameraY, endX, 
 			default:
 				tileColor = floorColor
 			}
-			screenX := float32((worldX-cameraX)*tileSize)
-			screenY := float32((worldY-cameraY)*tileSize)
+			screenX := float32((worldX - cameraX) * tileSize)
+			screenY := float32((worldY - cameraY) * tileSize)
 			vector.FillRect(screen, screenX, screenY, float32(tileSize), float32(tileSize), tileColor, false)
 		}
 	}
 }
 
 func drawPickups(screen *ebiten.Image, source DrawSource, cameraX, cameraY, endX, endY, tileSize int) {
-	pickupColor := color.RGBA{R: 240, G: 220, B: 60, A: 255}
+	pickupColorResource := color.RGBA{R: 240, G: 220, B: 60, A: 255}
+	pickupColorRecruit := color.RGBA{R: 80, G: 220, B: 220, A: 255}
 	pickupSize := float32(tileSize / 2)
 
 	for _, chunk := range source.Chunks() {
@@ -73,7 +74,11 @@ func drawPickups(screen *ebiten.Image, source DrawSource, cameraX, cameraY, endX
 			}
 			screenX := float32((pickup.X-cameraX)*tileSize) + float32(tileSize)/4
 			screenY := float32((pickup.Y-cameraY)*tileSize) + float32(tileSize)/4
-			vector.FillRect(screen, screenX, screenY, pickupSize, pickupSize, pickupColor, false)
+			pc := pickupColorResource
+			if pickup.Kind == entity.PickupKindRecruitCamp {
+				pc = pickupColorRecruit
+			}
+			vector.FillRect(screen, screenX, screenY, pickupSize, pickupSize, pc, false)
 		}
 	}
 }

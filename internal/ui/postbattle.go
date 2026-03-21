@@ -31,13 +31,13 @@ type PostBattleLayout struct {
 
 // postBattle metrics — одна точка правды для чисел layout (draw + hit-test).
 const (
-	postBattleLineH    = float32(22)
-	postBattlePad      = float32(24)
-	postBattlePanelW   = float32(400)
-	postBattleRowH     = float32(32)
-	postBattleRowGap   = float32(4)
-	postBattleButtonH  = float32(36)
-	postBattleButtonW  = float32(200)
+	postBattleLineH   = float32(22)
+	postBattlePad     = float32(24)
+	postBattlePanelW  = float32(400)
+	postBattleRowH    = float32(32)
+	postBattleRowGap  = float32(4)
+	postBattleButtonH = float32(36)
+	postBattleButtonW = float32(200)
 )
 
 // ComputePostBattleLayout вычисляет layout post-battle экрана для заданного размера окна.
@@ -173,6 +173,8 @@ type PostBattleParams struct {
 	SelectedIndex int
 	ScreenWidth   int
 	ScreenHeight  int
+	// ResultHintLine — подсказка под заголовком на шаге результата; пусто = дефолтная строка про Пробел/Enter.
+	ResultHintLine string
 	// Кнопки (явный mouse path; Space/Enter остаётся альтернативой).
 	ContinueButtonLabel string
 	ConfirmRewardLabel  string
@@ -203,7 +205,11 @@ func DrawPostBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p Pos
 	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY, W: innerW, H: lineH * 1.5}, p.ResultText, metrics, Theme.TextPrimary)
 
 	if !p.IsRewardStep {
-		drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY + lineH*2, W: innerW, H: lineH}, "Пробел / Enter — продолжить или кнопка ниже", metrics, Theme.TextMuted)
+		hint := p.ResultHintLine
+		if hint == "" {
+			hint = "Пробел / Enter — продолжить или кнопка ниже"
+		}
+		drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY + lineH*2, W: innerW, H: lineH}, hint, metrics, Theme.TextMuted)
 		lbl := p.ContinueButtonLabel
 		if lbl == "" {
 			lbl = "Продолжить"

@@ -9,11 +9,14 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	battlepkg "mygame/internal/battle"
+	"mygame/internal/hero"
 	"mygame/internal/party"
 )
 
-// DrawFormationOverlay — порядок отряда (formation) в едином стиле с battle/explore foundation.
-func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, selected int, screenW, screenH int) {
+// DrawFormationOverlay — порядок Active, резерв и подсказки (F5 в explore).
+// selected — глобальный индекс: [0, len(Active)) строки строя, [len(Active), len(Active)+len(Reserve)) — резерв.
+// inspectOpen — открыта карточка бойца (I); подсказки сокращаются до навигации по карточке.
+func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, selected int, screenW, screenH int, inspectOpen bool) {
 	if hudFace == nil || p == nil {
 		return
 	}
@@ -24,20 +27,27 @@ func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *par
 	lineH := uiLineH
 	metrics := battlepkg.HUDMetrics{LineH: lineH}
 
-	panelW := float32(520)
+	panelW := float32(560)
 	if sw-pad*2 < panelW {
 		panelW = sw - pad*2
 	}
 	panelX := (sw - panelW) * 0.5
 	panelY := pad * 1.2
 
-	n := len(p.Active)
+	na, nr := len(p.Active), len(p.Reserve)
 	rowH := lineH*2.4 + 10
 	headerH := lineH * 4.2
-	footerH := lineH * 1.6
+	footerH := lineH * 2.4
+	reserveTitleH := lineH * 1.15
 	panelH := headerH
-	if n > 0 {
-		panelH += float32(n)*rowH + 8
+	if na > 0 {
+		panelH += float32(na)*rowH + float32(max(0, na-1))*6 // max: stdlib Go 1.21+
+	}
+	if nr > 0 {
+		panelH += reserveTitleH + 6 + float32(nr)*rowH + float32(max(0, nr-1))*6
+	}
+	if na == 0 && nr == 0 {
+		panelH += lineH * 2
 	}
 	panelH += footerH
 
@@ -47,48 +57,45 @@ func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *par
 
 	innerX := panelX + 16
 	y := panelY + 14
-	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH * 1.1}, "Порядок отряда · построение в бою", metrics, Theme.TextPrimary)
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH * 1.1}, "Состав отряда · в бою и резерв", metrics, Theme.TextPrimary)
 	y += lineH * 1.35
 	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH * 1.2},
-		"Сверху вниз: передний ряд (3), затем задний (слоты = PlayerSlotForPartyIndex).", metrics, Theme.TextSecondary)
+		"В бою: до "+fmt.Sprintf("%d", party.MaxActiveBattleSlots)+" в строю; резерв не попадает в бой.", metrics, Theme.TextSecondary)
 	y += lineH * 2.0
 
-	if n == 0 {
+	if na == 0 && nr == 0 {
 		drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH}, "Нет участников.", metrics, Theme.TextDanger)
 		return
 	}
 
-	for i := 0; i < n; i++ {
-		h := p.Active[i]
-		slot := party.FormationSlotCaption(i)
-		role := party.MemberRoleCaption(i)
+	drawMemberRow := func(globalIdx int, h hero.Hero, slotCaption, roleCaption string, inReserve bool) {
 		ry := y
 		rowW := panelW - 32
 		fill := Theme.PanelBGDeep
 		border := Theme.AllyAccent
-		if i == selected {
+		if globalIdx == selected {
 			fill = Theme.AbilitySelectedBG
 			border = Theme.ActiveTurn
 		}
 		vector.FillRect(screen, innerX, ry, rowW, rowH, fill, false)
 		vector.StrokeRect(screen, innerX, ry, rowW, rowH, 2, border, false)
 
-		lbl := fmt.Sprintf("%d. %s", i+1, role)
-		if i == selected {
+		lbl := fmt.Sprintf("%s · %s", roleCaption, slotCaption)
+		if globalIdx == selected {
 			lbl = "▶ " + lbl
 		}
 		col := Theme.TextPrimary
 		if h.CurrentHP <= 0 {
 			col = Theme.DeadText
-		} else if i == selected {
+		} else if globalIdx == selected {
 			col = color.RGBA{R: 255, G: 235, B: 160, A: 255}
 		}
 		drawSingleLineInRect(screen, hudFace, rect{X: innerX + 10, Y: ry + 6, W: rowW - 20, H: lineH}, lbl, metrics, col)
 
-		slotShort := slot
-		if len([]rune(slotShort)) > 38 {
+		slotShort := slotCaption
+		if len([]rune(slotShort)) > 36 {
 			rs := []rune(slotShort)
-			slotShort = string(rs[:35]) + "…"
+			slotShort = string(rs[:33]) + "…"
 		}
 		drawSingleLineInRect(screen, hudFace, rect{X: innerX + 10, Y: ry + 6 + lineH*1.05, W: rowW - 100, H: lineH * 0.95}, slotShort, metrics, Theme.TextMuted)
 
@@ -96,7 +103,10 @@ func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *par
 		if h.CurrentHP <= 0 {
 			hpTxt = "выбыл"
 		}
-		drawSingleLineInRect(screen, hudFace, rect{X: innerX + rowW - 88, Y: ry + 6, W: 78, H: lineH}, hpTxt, metrics, Theme.TextSecondary)
+		if inReserve {
+			hpTxt = hpTxt + " · резерв"
+		}
+		drawSingleLineInRect(screen, hudFace, rect{X: innerX + rowW - 120, Y: ry + 6, W: 110, H: lineH}, hpTxt, metrics, Theme.TextSecondary)
 
 		barY := ry + rowH - 9
 		DrawHPBarMicro(screen, innerX+10, barY, rowW-20, 5, h.CurrentHP, h.MaxHP, h.CurrentHP > 0, false)
@@ -104,10 +114,34 @@ func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *par
 		y += rowH + 6
 	}
 
-	y += lineH * 0.35
-	help := "↑↓ выбор   ←→ сдвиг (слот в бою)   Esc / F5 — выход"
-	if n < 2 {
-		help = "Нужно ≥2 участника для сдвига.   Esc / F5 — выход"
+	for i := 0; i < na; i++ {
+		slot := party.FormationSlotCaption(i)
+		role := party.MemberRoleCaption(i)
+		drawMemberRow(i, p.Active[i], slot, role, false)
 	}
-	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH}, help, metrics, Theme.TextMuted)
+
+	if nr > 0 {
+		drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: reserveTitleH}, "— Резерв (не в бою) —", metrics, Theme.TextSecondary)
+		y += reserveTitleH + 6
+		for j := 0; j < nr; j++ {
+			gidx := na + j
+			role := party.ReserveRowCaption(j)
+			drawMemberRow(gidx, p.Reserve[j], "не участвует в бою", role, true)
+		}
+	}
+
+	y += lineH * 0.2
+	var help string
+	if inspectOpen {
+		help = "Карточка бойца · ↑↓ другой · P — повышение · I / Esc / F5 — закрыть"
+	} else {
+		help = "↑↓ выбор   I — карточка бойца   ←→ сдвиг слота (строй)   Enter — резерв↔строй   Esc / F5 — выход"
+		if na < 2 {
+			help = "↑↓ выбор   I — карточка   Enter — резерв↔строй   Esc / F5 — выход   (сдвиг слотов при ≥2 в строю)"
+		}
+		if na >= party.MaxActiveBattleSlots && nr > 0 {
+			help = "Строй полон (" + fmt.Sprintf("%d", party.MaxActiveBattleSlots) + "). Уберите в резерв, чтобы освободить место."
+		}
+	}
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH * 1.1}, help, metrics, Theme.TextMuted)
 }

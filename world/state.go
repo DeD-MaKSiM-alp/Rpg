@@ -88,6 +88,7 @@ func (w *World) newChunk(chunkX, chunkY, seed int) *mapdata.Chunk {
 		}
 	}
 	chunk.Pickups = w.generatePickupsForChunk(chunkX, chunkY, seed, chunk.Tiles)
+	chunk.Pickups = append(chunk.Pickups, w.generateRecruitCampPickups(chunkX, chunkY, seed, chunk.Tiles, chunk.Pickups)...)
 	w.generateEnemiesForChunk(chunkX, chunkY, seed, chunk.Tiles)
 	return chunk
 }
@@ -140,6 +141,21 @@ func (w *World) LoadedChunkCount() int {
 	return len(w.chunks)
 }
 
+// ActiveRecruitCampCount — число несобранных лагерей наёмников среди загруженных чанков (отладка/тесты).
+func (w *World) ActiveRecruitCampCount() int {
+	n := 0
+	for _, chunk := range w.chunks {
+		for i := range chunk.Pickups {
+			p := &chunk.Pickups[i]
+			if p.Collected || p.Kind != entity.PickupKindRecruitCamp {
+				continue
+			}
+			n++
+		}
+	}
+	return n
+}
+
 // ——— Проходимость и пикапы ———
 
 // IsWalkable возвращает, можно ли пройти по клетке.
@@ -149,8 +165,29 @@ func (w *World) IsWalkable(x, y int) bool {
 	return generation.IsTileWalkable(chunk.Tiles[localY][localX])
 }
 
-// CollectPickupAt собирает пикап в клетке; возвращает true, если что-то собрано.
-func (w *World) CollectPickupAt(worldX, worldY int) bool {
+// PlayerStandsOnActiveRecruitCamp — игрок на клетке с несобранным лагерём наёмников (лазурный маркер).
+// Используется для gameplay gating (например promotion), без сбора пикапа.
+func (w *World) PlayerStandsOnActiveRecruitCamp(worldX, worldY int) bool {
+	coord, _, _ := mapdata.WorldToChunkLocal(worldX, worldY)
+	chunk := w.getOrCreateChunk(coord)
+	for i := range chunk.Pickups {
+		p := &chunk.Pickups[i]
+		if p.Collected {
+			continue
+		}
+		if p.X != worldX || p.Y != worldY {
+			continue
+		}
+		if p.Kind == entity.PickupKindRecruitCamp {
+			return true
+		}
+	}
+	return false
+}
+
+// InteractPickupAfterMove обрабатывает пикап на клетке после перемещения игрока.
+// Обычные пикапы собираются сразу; лагерь рекрута возвращает PickupInteractRecruitOffer без сбора (до подтверждения в game).
+func (w *World) InteractPickupAfterMove(worldX, worldY int) PickupInteractionResult {
 	coord, _, _ := mapdata.WorldToChunkLocal(worldX, worldY)
 	chunk := w.getOrCreateChunk(coord)
 	key := mapdata.PickupKey{X: worldX, Y: worldY}
@@ -159,11 +196,38 @@ func (w *World) CollectPickupAt(worldX, worldY int) bool {
 		if p.Collected {
 			continue
 		}
-		if p.X == worldX && p.Y == worldY {
-			p.Collected = true
-			w.collectedPickups[key] = true
-			return true
+		if p.X != worldX || p.Y != worldY {
+			continue
 		}
+		if p.Kind == entity.PickupKindRecruitCamp {
+			return PickupInteractRecruitOffer
+		}
+		p.Collected = true
+		w.collectedPickups[key] = true
+		return PickupInteractResource
+	}
+	return PickupInteractNone
+}
+
+// MarkRecruitPickupCollected помечает лагерь рекрута собранным после успешного AddToReserve.
+func (w *World) MarkRecruitPickupCollected(worldX, worldY int) bool {
+	coord, _, _ := mapdata.WorldToChunkLocal(worldX, worldY)
+	chunk := w.getOrCreateChunk(coord)
+	key := mapdata.PickupKey{X: worldX, Y: worldY}
+	for i := range chunk.Pickups {
+		p := &chunk.Pickups[i]
+		if p.Collected {
+			continue
+		}
+		if p.X != worldX || p.Y != worldY {
+			continue
+		}
+		if p.Kind != entity.PickupKindRecruitCamp {
+			return false
+		}
+		p.Collected = true
+		w.collectedPickups[key] = true
+		return true
 	}
 	return false
 }
@@ -191,7 +255,120 @@ func (w *World) generatePickupsForChunk(chunkX, chunkY, seed int, tiles [][]mapd
 		if w.collectedPickups[key] {
 			return nil
 		}
-		return []entity.Pickup{{X: worldX, Y: worldY, Collected: false}}
+		return []entity.Pickup{{X: worldX, Y: worldY, Collected: false, Kind: entity.PickupKindResource}}
+	}
+	return nil
+}
+
+// pickupCellOccupied — уже есть несобранный пикап в клетке.
+func pickupCellOccupied(existing []entity.Pickup, worldX, worldY int) bool {
+	for _, p := range existing {
+		if p.Collected {
+			continue
+		}
+		if p.X == worldX && p.Y == worldY {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *World) recruitCampPickupAtCell(chunkX, chunkY, lx, ly int, tiles [][]mapdata.TileType, existing []entity.Pickup) []entity.Pickup {
+	tile := tiles[ly][lx]
+	if !generation.IsTileWalkable(tile) {
+		return nil
+	}
+	worldX := chunkX*mapdata.ChunkSize + lx
+	worldY := chunkY*mapdata.ChunkSize + ly
+	if worldX >= 0 && worldX <= 6 && worldY >= 0 && worldY <= 6 {
+		return nil
+	}
+	key := mapdata.PickupKey{X: worldX, Y: worldY}
+	if w.collectedPickups[key] || pickupCellOccupied(existing, worldX, worldY) {
+		return nil
+	}
+	return []entity.Pickup{{
+		X: worldX, Y: worldY, Collected: false,
+		Kind: entity.PickupKindRecruitCamp,
+	}}
+}
+
+// generateRecruitCampPickups — детерминированный лагерь наёмников (один на мир в чанке (0,0)).
+// Чанк стартовой зоны: лагерь должен попадать в типичный viewport при старте (~2,2; 800×600 → 16×12 тайлов),
+// иначе маркер вне экрана (раньше только чанк (1,0): world X ≥ 16; при (0,0) без приоритета — Y мог быть ≥ 8).
+func (w *World) generateRecruitCampPickups(chunkX, chunkY, seed int, tiles [][]mapdata.TileType, existing []entity.Pickup) []entity.Pickup {
+	if chunkX != 0 || chunkY != 0 {
+		return nil
+	}
+	// Типичный старт: камера на (2,2), 800×600 → 16×12 тайлов → видимы world X ∈ [−6, 9), Y ∈ [−4, 8).
+	// В чанке (0,0) это lx ∈ [0, 9], ly ∈ [0, 7] (минус исключённый квадрат 0–6 в recruitCampPickupAtCell).
+	for ly := 0; ly < 8; ly++ {
+		for lx := 0; lx < 10; lx++ {
+			if p := w.recruitCampPickupAtCell(chunkX, chunkY, lx, ly, tiles, existing); len(p) > 0 {
+				return p
+			}
+		}
+	}
+	// Остаток чанка: сначала нижняя половина по Y при больших X, затем ly ≥ 8.
+	for ly := 0; ly < 8; ly++ {
+		for lx := 10; lx < mapdata.ChunkSize; lx++ {
+			if p := w.recruitCampPickupAtCell(chunkX, chunkY, lx, ly, tiles, existing); len(p) > 0 {
+				return p
+			}
+		}
+	}
+	for ly := 8; ly < mapdata.ChunkSize; ly++ {
+		for lx := 0; lx < mapdata.ChunkSize; lx++ {
+			if p := w.recruitCampPickupAtCell(chunkX, chunkY, lx, ly, tiles, existing); len(p) > 0 {
+				return p
+			}
+		}
+	}
+	for attempt := 0; attempt < 32; attempt++ {
+		localX := mapdata.PositiveMod(generation.Hash2D(chunkX, chunkY, seed+4242+attempt*31), mapdata.ChunkSize)
+		localY := mapdata.PositiveMod(generation.Hash2D(chunkY, chunkX, seed+4343+attempt*37), mapdata.ChunkSize)
+		tile := tiles[localY][localX]
+		if !generation.IsTileWalkable(tile) {
+			continue
+		}
+		worldX := chunkX*mapdata.ChunkSize + localX
+		worldY := chunkY*mapdata.ChunkSize + localY
+		if worldX >= 0 && worldX <= 6 && worldY >= 0 && worldY <= 6 {
+			continue
+		}
+		key := mapdata.PickupKey{X: worldX, Y: worldY}
+		if w.collectedPickups[key] {
+			continue
+		}
+		if pickupCellOccupied(existing, worldX, worldY) {
+			continue
+		}
+		return []entity.Pickup{{
+			X: worldX, Y: worldY, Collected: false,
+			Kind: entity.PickupKindRecruitCamp,
+		}}
+	}
+	// Fallback: гарантировать лагерь, если в чанке есть хотя бы одна подходящая клетка.
+	for ly := 0; ly < mapdata.ChunkSize; ly++ {
+		for lx := 0; lx < mapdata.ChunkSize; lx++ {
+			tile := tiles[ly][lx]
+			if !generation.IsTileWalkable(tile) {
+				continue
+			}
+			worldX := chunkX*mapdata.ChunkSize + lx
+			worldY := chunkY*mapdata.ChunkSize + ly
+			if worldX >= 0 && worldX <= 6 && worldY >= 0 && worldY <= 6 {
+				continue
+			}
+			key := mapdata.PickupKey{X: worldX, Y: worldY}
+			if w.collectedPickups[key] || pickupCellOccupied(existing, worldX, worldY) {
+				continue
+			}
+			return []entity.Pickup{{
+				X: worldX, Y: worldY, Collected: false,
+				Kind: entity.PickupKindRecruitCamp,
+			}}
+		}
 	}
 	return nil
 }

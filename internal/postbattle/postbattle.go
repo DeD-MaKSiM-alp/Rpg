@@ -101,7 +101,7 @@ func (f *Flow) confirmRewardSelection(roster *party.Party, rewardIndex int) (end
 }
 
 // Update обрабатывает один кадр ввода в post-battle. Если нужно завершить бой и вернуться в мир — возвращает true.
-// Награды применяются к лидеру отряда (party.Leader).
+// Выбор награды после победы применяется к лидеру (party.Leader); боевой опыт партии начисляется в game до этого flow.
 func (f *Flow) Update(roster *party.Party, screenW, screenH int) (endBattle bool) {
 	if f.Step == StepNone {
 		return false
@@ -152,4 +152,3 @@ func (f *Flow) Update(roster *party.Party, screenW, screenH int) (endBattle bool
 	}
 	return false
 }
-

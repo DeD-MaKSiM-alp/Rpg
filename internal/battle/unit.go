@@ -29,6 +29,16 @@ type UnitSide = BattleSide
 // UnitRole — доменное имя роли (алиас на Role).
 type UnitRole = Role
 
+// TemplateAttackKind — дизайн-тип атаки из шаблона (identity/UI); не заменяет боевую дальность (см. IsRanged).
+type TemplateAttackKind int
+
+const (
+	TemplateAttackUnknown TemplateAttackKind = iota
+	TemplateAttackMelee
+	TemplateAttackRanged
+	TemplateAttackHeal
+)
+
 // UnitBaseStats — базовые статы архетипа/шаблона (definition layer).
 type UnitBaseStats struct {
 	MaxHP            int
@@ -47,10 +57,18 @@ type AbilityLoadout struct {
 // CombatUnitDefinition — archetype/template layer.
 // Не содержит battle runtime (HP/Alive), не содержит world identity.
 type CombatUnitDefinition struct {
-	ArchetypeID string // стабильный ID архетипа (для прогрессии/контента)
+	// TemplateUnitID — канонический id шаблона юнита (не боевой UnitID int). Пусто = legacy / враг без шаблона игрока.
+	TemplateUnitID string
+	FactionID      string
+	LineID         string
+	Tier           int
+	// ArchetypeID — ключ архетипа из шаблона (например melee_generalist); для игрока без шаблона часто "player".
+	ArchetypeID string
 	DisplayName string
-	Role        UnitRole
-	Base        UnitBaseStats
+	Role UnitRole
+	// IdentityAttackKind — из шаблона; для отладки/UI. Боевая дальность по-прежнему через IsRanged.
+	IdentityAttackKind TemplateAttackKind
+	Base               UnitBaseStats
 
 	// Profile: базовые свойства архетипа, влияющие на таргетинг/правила.
 	IsRanged bool
@@ -150,4 +168,15 @@ func (u *CombatUnit) Initiative() int {
 func (u *CombatUnit) IsRanged() bool { return u.Def.IsRanged }
 func (u *CombatUnit) Abilities() []AbilityID {
 	return u.Def.Loadout.Abilities
+}
+
+// PlayerTemplateIdentitySuffix — суффикс для HUD/логов: " · template_unit_id" для союзника с каноническим шаблоном.
+func PlayerTemplateIdentitySuffix(u *CombatUnit) string {
+	if u == nil || u.Side != BattleSidePlayer {
+		return ""
+	}
+	if u.Def.TemplateUnitID == "" {
+		return ""
+	}
+	return " · " + u.Def.TemplateUnitID
 }
