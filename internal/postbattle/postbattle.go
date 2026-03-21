@@ -6,7 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 
 	battlepkg "mygame/internal/battle"
-	"mygame/internal/hero"
+	"mygame/internal/party"
 	"mygame/internal/progression"
 	"mygame/internal/ui"
 )
@@ -63,9 +63,14 @@ func wrapRewardIndex(idx, n int) int {
 }
 
 // Update обрабатывает один кадр ввода в post-battle. Если нужно завершить бой и вернуться в мир — возвращает true.
-func (f *Flow) Update(leader *hero.Hero, screenW, screenH int) (endBattle bool) {
+// Награды применяются к лидеру отряда (party.Leader).
+func (f *Flow) Update(roster *party.Party, screenW, screenH int) (endBattle bool) {
 	if f.Step == StepNone {
 		return false
+	}
+	leader := roster.Leader()
+	if leader == nil {
+		return true
 	}
 	n := len(f.RewardOffer)
 	if n == 0 {

@@ -2,6 +2,18 @@ package battle
 
 // NOTE: legacy reachable helpers are kept as thin wrappers around the unified validation layer.
 
+// PlayerSlotForPartyIndex сопоставляет порядок участника в партии (0..5) слоту построения игрока:
+// сначала передний ряд (индексы 0..MaxFrontRowUnits-1), затем задний.
+func PlayerSlotForPartyIndex(partyIndex int) (BattleRow, int) {
+	if partyIndex < 0 {
+		partyIndex = 0
+	}
+	if partyIndex < MaxFrontRowUnits {
+		return BattleRowFront, partyIndex
+	}
+	return BattleRowBack, partyIndex - MaxFrontRowUnits
+}
+
 // LivingUnitsInRow возвращает живых юнитов команды в указанном ряду.
 func (c *BattleContext) LivingUnitsInRow(team TeamID, row RowType) []*BattleUnit {
 	st := c.SideState(team)

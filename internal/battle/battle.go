@@ -8,8 +8,8 @@ import (
 // BattleContext хранит состояние одного активного боя.
 // LayoutStyle selects battle screen composition: 0 = v1 table, 1 = v2 Disciples-like (center battlefield, side rosters, bottom panel).
 const (
-	LayoutStyleV1Table       = 0
-	LayoutStyleV2Disciples   = 1
+	LayoutStyleV1Table     = 0
+	LayoutStyleV2Disciples = 1
 )
 
 type BattleContext struct {
@@ -38,18 +38,21 @@ type BattleContext struct {
 }
 
 // BuildBattleContextFromEncounter создаёт BattleContext из Encounter.
-// playerSeed: если не nil, используется для игрока (persistent progression); иначе DefaultPlayerCombatUnitSeed().
+// playerSeeds: сиды всех активных участников партии (party.Party.PlayerCombatSeeds()).
+// Каждый сид получает отдельный UnitID и слот: сначала заполняется передний ряд (индексы 0..2), затем задний (0..2).
+// Если len(playerSeeds)==0, используется один DefaultPlayerCombatUnitSeed() (тесты/утилиты).
+// Сиды сверх ёмкости построения (MaxFrontRowUnits+MaxBackRowUnits) отбрасываются.
 // escalationLevel: 0 = базовая сложность; 1+ = усиление врагов (по числу выигранных боёв).
-func BuildBattleContextFromEncounter(enc Encounter, playerSeed *CombatUnitSeed, escalationLevel int) *BattleContext {
+func BuildBattleContextFromEncounter(enc Encounter, playerSeeds []CombatUnitSeed, escalationLevel int) *BattleContext {
 	if len(enc.Enemies) == 0 {
 		return nil
 	}
 	ctx := &BattleContext{
-		Encounter:   enc,
-		Units:       make(map[UnitID]*BattleUnit),
-		Sides:       make(map[BattleSide]*BattleSideState),
-		Phase:       PhaseStart,
-		Result:      ResultNone,
+		Encounter: enc,
+		Units:     make(map[UnitID]*BattleUnit),
+		Sides:     make(map[BattleSide]*BattleSideState),
+		Phase:     PhaseStart,
+		Result:    ResultNone,
 	}
 	ctx.AddBattleLog("Бой начался.")
 
@@ -58,35 +61,63 @@ func BuildBattleContextFromEncounter(enc Encounter, playerSeed *CombatUnitSeed, 
 	ctx.Sides[BattleSideEnemy] = NewBattleSideState(BattleSideEnemy)
 
 	spawnUnit := func(id UnitID, side BattleSide, seed CombatUnitSeed) *BattleUnit {
+		startHP := seed.Def.Base.MaxHP
+		if seed.InitialHP > 0 {
+			startHP = seed.InitialHP
+			if startHP > seed.Def.Base.MaxHP {
+				startHP = seed.Def.Base.MaxHP
+			}
+		}
+		if startHP <= 0 {
+			startHP = 1
+		}
 		u := &BattleUnit{
 			ID:     id,
 			Side:   side,
 			Def:    seed.Def,
 			Origin: seed.Origin,
 			State: CombatUnitState{
-				HP:    seed.Def.Base.MaxHP,
+				HP:    startHP,
 				Alive: true,
 			},
 		}
 		return u
 	}
 
-	// Player team: one unit, front row; seed from progression or default.
-	ps := DefaultPlayerCombatUnitSeed()
-	if playerSeed != nil {
-		ps = *playerSeed
+	// --- Player team: все активные члены партии (порядок сидов = порядок слотов). ---
+	seeds := playerSeeds
+	if len(seeds) == 0 {
+		seeds = []CombatUnitSeed{DefaultPlayerCombatUnitSeed()}
 	}
-	playerUnit := spawnUnit(UnitID(1), BattleSidePlayer, ps)
-	ctx.Units[playerUnit.ID] = playerUnit
-	_ = ctx.PlaceUnit(playerUnit.ID, BattleSlotID{Side: BattleSidePlayer, Row: BattleRowFront, Index: 0})
+	maxAllies := MaxFrontRowUnits + MaxBackRowUnits
+	if len(seeds) > maxAllies {
+		seeds = seeds[:maxAllies]
+		ctx.AddBattleLog("Предупреждение: часть отряда не поместилась в построение.")
+	}
 
-	// Enemy team (first MaxFrontRowUnits in front, rest in back)
+	nextID := UnitID(1)
+	for i := range seeds {
+		s := seeds[i]
+		partyIdx := i
+		if s.Origin.PartyActiveIndex >= 0 {
+			partyIdx = s.Origin.PartyActiveIndex
+		}
+		s.Def.DisplayName = PlayerAllyDisplayName(partyIdx)
+		u := spawnUnit(nextID, BattleSidePlayer, s)
+		ctx.Units[u.ID] = u
+		row, idx := PlayerSlotForPartyIndex(i)
+		_ = ctx.PlaceUnit(u.ID, BattleSlotID{Side: BattleSidePlayer, Row: row, Index: idx})
+		nextID++
+	}
+
+	// --- Enemy team: ID идут после всех союзников (first MaxFrontRowUnits in front, rest in back). ---
 	for i, e := range enc.Enemies {
 		if i >= MaxFrontRowUnits+MaxBackRowUnits {
 			break
 		}
 		seed := BuildEnemyCombatUnitSeed(e, escalationLevel)
-		uid := UnitID(2 + i)
+		uid := nextID
+		nextID++
 		u := spawnUnit(uid, BattleSideEnemy, seed)
 		ctx.Units[uid] = u
 
@@ -237,7 +268,7 @@ func (c *BattleContext) AdvanceTurn() {
 	c.Phase = PhaseTurnStart
 }
 
-// DisplayPhaseLabel возвращает текст фазы для UI (ход игрока / ход врага / завершён).
+// DisplayPhaseLabel возвращает текст фазы для UI: всегда с именем текущего юнита (acting ally / acting enemy).
 func (c *BattleContext) DisplayPhaseLabel() string {
 	if c.Phase == PhaseFinishedWaitInput || c.Result != ResultNone {
 		return "Бой завершён"
@@ -247,12 +278,12 @@ func (c *BattleContext) DisplayPhaseLabel() string {
 		return "Бой завершён"
 	}
 	if u.Side == TeamPlayer {
-		return ">>> ХОД ИГРОКА <<<"
+		return fmt.Sprintf("Ход союзника: %s", u.Name())
 	}
-	return ">>> ХОД ВРАГА <<<"
+	return fmt.Sprintf("Ход врага: %s", u.Name())
 }
 
-// TeamFirstHP возвращает HP первого живого юнита команды (для UI).
+// TeamFirstHP возвращает HP «первого» живого юнита в порядке обхода слотов (диагностика; не идентификатор главного героя).
 func (c *BattleContext) TeamFirstHP(team TeamID) int {
 	live := c.LivingUnits(team)
 	if len(live) == 0 {
@@ -353,4 +384,12 @@ func (c *BattleContext) ApplyActionResult(r ActionResult) {
 		return
 	}
 	c.UpdateResultIfFinished()
+}
+
+// PlayerAllyDisplayName — подпись для i-го активного участника партии на поле (0 = лидер).
+func PlayerAllyDisplayName(index int) string {
+	if index == 0 {
+		return "Игрок"
+	}
+	return fmt.Sprintf("Союзник %d", index)
 }

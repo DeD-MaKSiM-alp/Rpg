@@ -264,9 +264,9 @@ This section reflects the current implementation so future work can be planned s
 - **Outcome boundary exists**: internal `Result` mapped to external `BattleOutcome`, applied back to world in `resolveBattleResult`.
 
 ### What is simplified / temporary
-- **Player side is hardcoded to a single unit** (“Игрок”) in `BuildBattleContextFromEncounter`:
-  - no party composition from persistent player data;
-  - no slots model beyond a simple `Slot int` and `Row`.
+- **Player side spawns one unit per active party member** (up to front+back capacity) from `party.Party` → `PlayerCombatSeeds()` in `BuildBattleContextFromEncounter`; slots map via `PlayerSlotForPartyIndex`.
+  - Command UX is still per–active-unit (turn order); no party-level command mode.
+  - Persistent post-battle sync of HP/injuries back into `hero.Hero` is still not implemented.
 - **Player action selection is stubbed**:
   - player presses SPACE to execute the *first available ability* with the *first reachable target*.
   - no action menu, no target selection UI.
@@ -279,7 +279,7 @@ This section reflects the current implementation so future work can be planned s
 - **Effects model is not yet explicit**:
   - `ActionResult` is a very small result struct; no effect queue/log/event stream, no multi-target resolution.
 - **BattleResult is incomplete**:
-  - only removes world enemies on victory; no XP/rewards, no player party post-state propagation.
+  - world enemies removed on victory; rewards on leader; **hero.CurrentHP** synced from battle via `PartyActiveIndex` after each resolved outcome (minimal party persistence).
 
 ### Missing for the target contract
 - Canonical **side/slot model** (fixed slot sets per row, empty slots, stable Position IDs).

@@ -35,6 +35,8 @@ func BuildEncounterFromWorld(w *world.World, enemyID entity.EntityID) (Encounter
 type CombatUnitSeed struct {
 	Def    CombatUnitDefinition
 	Origin CombatUnitOrigin
+	// InitialHP: если >0 — стартовое HP в бою (каноническое CurrentHP героя); если 0 — используется Def.Base.MaxHP.
+	InitialHP int
 }
 
 // BuildEnemyCombatUnitSeed преобразует EncounterEnemy в CombatUnitSeed.
@@ -60,7 +62,7 @@ func BuildEnemyCombatUnitSeed(e EncounterEnemy, escalationLevel int) CombatUnitS
 			IsRanged: tpl.IsRanged,
 			Loadout:  AbilityLoadout{Abilities: abils},
 		},
-		Origin: CombatUnitOrigin{WorldEnemyID: e.EnemyID},
+		Origin: CombatUnitOrigin{WorldEnemyID: e.EnemyID, PartyActiveIndex: -1},
 	}
 }
 
@@ -90,5 +92,6 @@ func BuildPlayerCombatSeed(maxHP, attack, defense, initiative int, abilities []A
 			IsRanged: false,
 			Loadout:  AbilityLoadout{Abilities: abilities},
 		},
+		InitialHP: 0,
 	}
 }

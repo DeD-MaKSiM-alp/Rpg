@@ -10,8 +10,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	battlepkg "mygame/internal/battle"
-	"mygame/internal/hero"
 	inputpkg "mygame/internal/input"
+	"mygame/internal/party"
 	playerpkg "mygame/internal/player"
 	"mygame/internal/postbattle"
 	"mygame/internal/ui"
@@ -99,6 +99,8 @@ type GameMode int
 const (
 	ModeExplore GameMode = iota
 	ModeBattle
+	// ModeFormation — экран порядка party.Active в explore (до боя); влияет на слоты через PlayerCombatSeeds → PlayerSlotForPartyIndex.
+	ModeFormation
 )
 
 // Game — основная структура, описывающая состояние всей игры.
@@ -113,8 +115,8 @@ type Game struct {
 	mode        GameMode
 	battle      *battlepkg.BattleContext
 
-	// Leader — каноническая модель главного бойца (прогрессия, основа для боя). См. package hero.
-	leader hero.Hero
+	// Party — канонический отряд (ростер); лидер Active[0] получает награды, сиды для боя — PlayerCombatSeeds().
+	party party.Party
 
 	// BattlesWon — число выигранных боёв за сессию; используется для эскалации сложности врагов и генерации оффера наград.
 	BattlesWon int
@@ -127,6 +129,13 @@ type Game struct {
 
 	// Временный debug: последнее направление, возвращённое ReadExploreInput (только для отрисовки).
 	debugInputDX, debugInputDY int
+
+	// formationSel — выбранная строка в ModeFormation (перестановка party.Active).
+	formationSel int
+
+	// exploreRestMsg / exploreRestMsgTicks — краткая обратная связь после отдыха (R) в explore).
+	exploreRestMsg      string
+	exploreRestMsgTicks int
 }
 
 // NewGame создаёт новый экземпляр игры (мир, игрок, UI-шрифт и т.д.).
@@ -138,7 +147,7 @@ func NewGame(worldSeed, playerGridX, playerGridY int) *Game {
 		hudFace:        ui.LoadHUDFace(),
 		mode:           ModeExplore,
 		battle:         nil,
-		leader:         hero.DefaultHero(),
+		party:          party.DefaultParty(),
 		BattleHUDStyle: 1, // 1 = v2 Disciples-like (default), 0 = v1 table (debug fallback)
 	}
 }
@@ -198,8 +207,14 @@ func (g *Game) startBattle(enemyID world.EntityID) {
 	}
 	g.mode = ModeBattle
 	g.postBattle.Reset()
-	seed := g.leader.CombatUnitSeed()
-	g.battle = battlepkg.BuildBattleContextFromEncounter(enc, &seed, g.BattlesWon)
+	g.exploreRestMsg = ""
+	g.exploreRestMsgTicks = 0
+	seeds := g.party.PlayerCombatSeeds()
+	if len(seeds) == 0 {
+		g.mode = ModeExplore
+		return
+	}
+	g.battle = battlepkg.BuildBattleContextFromEncounter(enc, seeds, g.BattlesWon)
 }
 
 func (g *Game) endBattle() {

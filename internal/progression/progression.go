@@ -75,6 +75,7 @@ func ApplyReward(h *hero.Hero, r RewardKind) {
 	switch r {
 	case RewardMaxHP:
 		h.MaxHP += 2
+		h.CurrentHP += 2
 	case RewardAttack:
 		h.Attack += 1
 	case RewardDefense:

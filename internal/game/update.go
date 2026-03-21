@@ -5,8 +5,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 
 	battlepkg "mygame/internal/battle"
+	"mygame/internal/party"
 	playerpkg "mygame/internal/player"
 )
+
+// exploreRestFeedbackDurationTicks — длительность баннера после отдыха (R) в explore (~3s @ 60fps).
+const exploreRestFeedbackDurationTicks = 180
 
 // Update обрабатывает один кадр игры.
 func (g *Game) Update() error {
@@ -32,6 +36,10 @@ func (g *Game) Update() error {
 			}
 		}
 		g.updateBattleMode()
+		return nil
+	}
+	if g.mode == ModeFormation {
+		g.updateFormationMode()
 		return nil
 	}
 	return g.updateExploreMode()
@@ -64,6 +72,32 @@ func (g *Game) advanceWorldTurn() {
 
 // updateExploreMode: Input → PlayerAction → применение действия → при успехе завершение хода → world turn → возможный бой.
 func (g *Game) updateExploreMode() error {
+	if g.exploreRestMsgTicks > 0 {
+		g.exploreRestMsgTicks--
+		if g.exploreRestMsgTicks <= 0 {
+			g.exploreRestMsg = ""
+		}
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyF5) {
+		g.mode = ModeFormation
+		g.formationSel = 0
+		if n := len(g.party.Active); n == 0 {
+			g.mode = ModeExplore
+		}
+		return nil
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
+		if len(g.party.Active) > 0 {
+			g.party.ApplyWorldRest()
+			g.exploreRestMsg = party.RestExploreBanner
+			g.exploreRestMsgTicks = exploreRestFeedbackDurationTicks
+			g.advanceWorldTurn()
+		}
+		return nil
+	}
+
 	action := g.readPlayerAction()
 
 	if action.Type == ActionNone {
@@ -94,6 +128,45 @@ func (g *Game) updateExploreMode() error {
 	return nil
 }
 
+func (g *Game) updateFormationMode() {
+	n := len(g.party.Active)
+	if n == 0 {
+		g.mode = ModeExplore
+		return
+	}
+	if g.formationSel >= n {
+		g.formationSel = n - 1
+	}
+	if g.formationSel < 0 {
+		g.formationSel = 0
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyF5) {
+		g.mode = ModeExplore
+		return
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) && g.formationSel > 0 {
+		g.formationSel--
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) && g.formationSel < n-1 {
+		g.formationSel++
+	}
+
+	if n >= 2 {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+			if g.party.MoveActiveEarlier(g.formationSel) {
+				g.formationSel--
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+			if g.party.MoveActiveLater(g.formationSel) {
+				g.formationSel++
+			}
+		}
+	}
+}
+
 func (g *Game) updateBattleMode() {
 	if g.battle == nil {
 		g.endBattle()
@@ -102,7 +175,7 @@ func (g *Game) updateBattleMode() {
 
 	// Post-battle flow: result screen → (on victory) reward selection → return to world.
 	if g.postBattle.IsActive() {
-		if g.postBattle.Update(&g.leader, ScreenWidth, ScreenHeight) {
+		if g.postBattle.Update(&g.party, ScreenWidth, ScreenHeight) {
 			g.endBattle()
 		}
 		return
@@ -113,15 +186,18 @@ func (g *Game) updateBattleMode() {
 
 	switch outcome {
 	case battlepkg.BattleOutcomeVictory:
+		g.syncPartyFromBattle()
 		g.resolveBattleResult(outcome)
 		g.BattlesWon++
 		g.postBattle.Begin(outcome)
 		return
 	case battlepkg.BattleOutcomeDefeat:
+		g.syncPartyFromBattle()
 		g.resolveBattleResult(outcome)
 		g.postBattle.Begin(outcome)
 		return
 	case battlepkg.BattleOutcomeRetreat:
+		g.syncPartyFromBattle()
 		g.resolveBattleResult(outcome)
 		g.postBattle.Begin(outcome)
 		return

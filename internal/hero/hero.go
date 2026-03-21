@@ -1,16 +1,16 @@
-// Package hero holds the canonical out-of-combat model of the player's combat identity (leader unit).
-// World position lives in player.Player; battle runtime lives in battle.CombatUnit; this struct is the
-// persistent bridge: progression mutates it, and CombatUnitSeed() projects it into a battle seed.
+// Package hero holds one combat-capable character's persistent stats between battles.
+// World position lives in player.Player; the roster lives in party.Party; battle runtime lives in battle.CombatUnit.
+// Progression mutates hero.Hero (usually the party leader); CombatUnitSeed() projects into battle seeds.
 package hero
 
 import (
 	battlepkg "mygame/internal/battle"
 )
 
-// Hero — каноническое состояние «главного» бойца отряда между боями (статы, способности).
-// В будущем сюда же логично добавить Party []Hero или ссылки на слоты отряда; пока один лидер = вся party.
+// Hero — состояние одного бойца между боями (статы, способности). Сборка отряда — в party.Party.
 type Hero struct {
 	MaxHP            int
+	CurrentHP        int // каноническое HP между боями; 0 = недоступен для следующего боя (пока нет лечения/лагеря)
 	Attack           int
 	Defense          int
 	Initiative       int
@@ -21,7 +21,7 @@ type Hero struct {
 
 // DefaultHero возвращает стартового героя (эквивалент прежней DefaultProgression).
 func DefaultHero() Hero {
-	return Hero{
+	h := Hero{
 		MaxHP:      10,
 		Attack:     2,
 		Defense:    0,
@@ -29,12 +29,18 @@ func DefaultHero() Hero {
 		HealPower:  0,
 		Abilities:  []battlepkg.AbilityID{battlepkg.AbilityBasicAttack},
 	}
+	h.CurrentHP = h.MaxHP
+	return h
 }
 
-// CombatUnitSeed строит вход для battle.BuildBattleContextFromEncounter из канонического состояния.
-// Единая точка проекции hero → бой; не дублировать разбор полей в game.
+// CanEnterBattle true, если герой может получить сид для боя (есть HP).
+func (h *Hero) CanEnterBattle() bool {
+	return h != nil && h.CurrentHP > 0
+}
+
+// CombatUnitSeed строит один combat seed; party.Party.PlayerCombatSeeds() собирает сиды всего активного ростера.
 func (h *Hero) CombatUnitSeed() battlepkg.CombatUnitSeed {
-	return battlepkg.BuildPlayerCombatSeed(
+	s := battlepkg.BuildPlayerCombatSeed(
 		h.MaxHP,
 		h.Attack,
 		h.Defense,
@@ -43,4 +49,11 @@ func (h *Hero) CombatUnitSeed() battlepkg.CombatUnitSeed {
 		h.HealPower,
 		h.BasicAttackBonus,
 	)
+	if h.CurrentHP > 0 {
+		s.InitialHP = h.CurrentHP
+		if s.InitialHP > h.MaxHP {
+			s.InitialHP = h.MaxHP
+		}
+	}
+	return s
 }

@@ -30,11 +30,11 @@ type BattleHUDLayout struct {
 	Battlefield HUDRect // center scene (main visual)
 	BottomPanel HUDRect // command/info strip at bottom
 
-	V2TopBarLine   HUDRect // single line inside TopBar
-	V2BottomActive HUDRect // active unit summary in BottomPanel
-	V2BottomTarget HUDRect // target summary in BottomPanel
+	V2TopBarLine    HUDRect // single line inside TopBar
+	V2BottomActive  HUDRect // active unit summary in BottomPanel
+	V2BottomTarget  HUDRect // target summary in BottomPanel
 	V2BottomSummary HUDRect // ability/target/preview line in BottomPanel
-	V2BottomLog    HUDRect // one-line log or hint in BottomPanel
+	V2BottomLog     HUDRect // one-line log or hint in BottomPanel
 
 	// --- v1 core layout (used by battle HUD v1 render when Style==0) ---
 	Overlay  HUDRect // main panel
@@ -56,9 +56,9 @@ type BattleHUDLayout struct {
 	AbilitiesTitleRow HUDRect
 	AbilityList       HUDRect
 
-	ActionTitleRow   HUDRect
-	ActionSummary    HUDRect
-	ActionButtons    HUDRect
+	ActionTitleRow HUDRect
+	ActionSummary  HUDRect
+	ActionButtons  HUDRect
 
 	FooterTitleRow HUDRect
 	CombatLog      HUDRect
@@ -70,7 +70,7 @@ type BattleHUDLayout struct {
 	// --- shared interactive rects (render + mouse) ---
 	BackButton       HUDRect
 	AbilityItemRects []HUDRect
-	UnitRects     map[UnitID]HUDRect
+	UnitRects        map[UnitID]HUDRect
 
 	// --- compatibility / legacy (not used by v1 render; set in one place at end of Compute) ---
 	TopInfoPrimary   HUDRect // alias InfoRow1
@@ -259,6 +259,13 @@ func (b *BattleContext) computeLayoutV2(screenW, screenH int) BattleHUDLayout {
 				roster = layout.RightRoster
 			}
 			innerR := hudInset(roster, cardPad)
+			// Место под подпись колонки в drawBattleScreenV2 («СОЮЗНИКИ…» / «ВРАГИ…»).
+			headerReserve := metrics.LineH * 1.2
+			innerR.Y += headerReserve
+			innerR.H -= headerReserve
+			if innerR.H < 0 {
+				innerR.H = 0
+			}
 			cardGap := metrics.Gap
 			nSlots := 6
 			cardH := (innerR.H - float32(nSlots-1)*cardGap) / float32(nSlots)
@@ -273,9 +280,10 @@ func (b *BattleContext) computeLayoutV2(screenW, screenH int) BattleHUDLayout {
 						continue
 					}
 					u := b.Units[slot.Occupied]
-					if u == nil || !u.IsAlive() {
+					if u == nil {
 						continue
 					}
+					// Включаем павших: те же слоты, что и в formation; hit-test/подсветка согласованы с runtime.
 					slotY := innerR.Y + float32(idx)*(cardH+cardGap)
 					if slotY+cardH > innerR.Y+innerR.H {
 						break
@@ -544,7 +552,7 @@ func (b *BattleContext) computeLayoutV1(screenW, screenH int) BattleHUDLayout {
 		}
 	}
 
-	// 11) Unit rects in formation (only living units).
+	// 11) Unit rects in formation (все занятые слоты, включая павших — для UI и hit-test).
 	layout.UnitRects = map[UnitID]HUDRect{}
 	if b != nil {
 		// Helper: compute slot rects inside a formation panel.
@@ -577,7 +585,7 @@ func (b *BattleContext) computeLayoutV1(screenW, screenH int) BattleHUDLayout {
 						continue
 					}
 					u := b.Units[slot.Occupied]
-					if u == nil || !u.IsAlive() {
+					if u == nil {
 						continue
 					}
 					x := inner.X + float32(i)*cellW
@@ -600,4 +608,3 @@ func (b *BattleContext) computeLayoutV1(screenW, screenH int) BattleHUDLayout {
 
 	return layout
 }
-

@@ -13,6 +13,7 @@ func (p ActionPreview) HasDamage() bool { return p.DamageMax > 0 }
 func (p ActionPreview) HasHeal() bool   { return p.HealMax > 0 }
 
 // PreviewAction returns an approximate preview for a validated action request.
+// req.Actor must be the current acting unit (same as ActiveUnit when issuing a command).
 // Groundwork: later this can incorporate statuses, crits, resistances, AoE etc.
 func PreviewAction(ctx *BattleContext, req ActionRequest) (ActionPreview, ValidationResult) {
 	v := ValidateAction(ctx, req)
@@ -50,4 +51,3 @@ func PreviewAction(ctx *BattleContext, req ActionRequest) (ActionPreview, Valida
 		return ActionPreview{}, okResult()
 	}
 }
-

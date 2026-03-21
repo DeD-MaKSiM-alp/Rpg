@@ -68,8 +68,8 @@ type StatusInstance struct {
 
 // CombatModifiers — временные модификаторы боя (runtime layer).
 type CombatModifiers struct {
-	AttackBonus  int
-	DefenseBonus int
+	AttackBonus     int
+	DefenseBonus    int
 	InitiativeBonus int
 }
 
@@ -93,6 +93,8 @@ type CombatUnitState struct {
 // Не смешивается с definition/runtime: используется только для интеграции (награды, удаление world-enemy).
 type CombatUnitOrigin struct {
 	WorldEnemyID entity.EntityID // для enemy units; 0 для player units
+	// PartyActiveIndex: индекс в party.Active для союзника игрока; -1 если не привязан (враги, дефолтные сиды).
+	PartyActiveIndex int
 }
 
 // CombatUnit — каноническая runtime сущность боя.
@@ -101,8 +103,8 @@ type CombatUnit struct {
 	ID   UnitID
 	Side UnitSide
 
-	Def   CombatUnitDefinition
-	State CombatUnitState
+	Def    CombatUnitDefinition
+	State  CombatUnitState
 	Origin CombatUnitOrigin
 }
 
@@ -126,6 +128,7 @@ func (u *CombatUnit) MaxHP() int   { return u.Def.Base.MaxHP }
 func (u *CombatUnit) Attack() int {
 	return u.Def.Base.Attack + u.Def.Base.BasicAttackBonus + u.State.Modifiers.AttackBonus
 }
+
 // HealPower returns heal amount for AbilityHeal: base 2 + bonus from progression (Def.Base.HealPower).
 // Treating stored value as bonus avoids the bug where bonus +2 produced Def.Base.HealPower==2, same as default.
 func (u *CombatUnit) HealPower() int {

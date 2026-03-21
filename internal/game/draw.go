@@ -30,6 +30,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	ui.DrawHUD(screen, g.pickupCount, g.hudFace)
 
+	if g.mode == ModeExplore {
+		ui.DrawExploreFormationHint(screen, g.hudFace, ScreenWidth, ScreenHeight, g.exploreRestMsg)
+	}
+
+	if g.mode == ModeFormation {
+		ui.DrawFormationOverlay(screen, g.hudFace, &g.party, g.formationSel, ScreenWidth, ScreenHeight)
+	}
+
 	if g.mode == ModeExplore && debugShowInputDirection {
 		rawX, rawY := g.input.DebugRaw()
 		emitX, emitY := g.input.DebugEmit()

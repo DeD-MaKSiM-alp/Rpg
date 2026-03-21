@@ -74,15 +74,11 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 		drawSingleLineInRect(screen, hudFace, info1, line1, metrics, color.RGBA{R: 200, G: 200, B: 200, A: 255})
 
 		info2 := battleToRect(layout.InfoRow2)
-		active := battle.ActiveUnit()
-		activeStr := "-"
-		if active != nil {
-			activeStr = fmt.Sprintf("Active: %s (#%d)", active.Name(), active.ID)
-			if active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
-				activeStr = fmt.Sprintf("%s | %s", activeStr, battle.PlayerTurn.PhaseString())
-			}
+		activeStr := battle.DisplayPhaseLabel()
+		if active := battle.ActiveUnit(); active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
+			activeStr = fmt.Sprintf("%s | %s", activeStr, battle.PlayerTurn.PhaseString())
 		}
-		drawSingleLineInRect(screen, hudFace, info2, activeStr, metrics, color.RGBA{R: 180, G: 180, B: 180, A: 255})
+		drawSingleLineInRect(screen, hudFace, info2, fitTextToWidth(hudFace, activeStr, info2.W), metrics, color.RGBA{R: 180, G: 180, B: 180, A: 255})
 	}
 
 	footerRect := battleToRect(layout.Footer)
@@ -440,11 +436,15 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 	if lr.W > 0 && lr.H > 0 {
 		vector.FillRect(screen, lr.X, lr.Y, lr.W, lr.H, rosterBg, false)
 		vector.StrokeRect(screen, lr.X, lr.Y, lr.W, lr.H, 1, rosterBorder, false)
+		lab := rect{X: lr.X + 6, Y: lr.Y + 4, W: lr.W - 12, H: metrics.LineH * 0.95}
+		drawSingleLineInRect(screen, hudFace, lab, fitTextToWidth(hudFace, "СОЮЗНИКИ (ряд: перед→зад)", lab.W), metrics, color.RGBA{R: 160, G: 165, B: 175, A: 255})
 	}
 	rr := layout.RightRoster
 	if rr.W > 0 && rr.H > 0 {
 		vector.FillRect(screen, rr.X, rr.Y, rr.W, rr.H, rosterBg, false)
 		vector.StrokeRect(screen, rr.X, rr.Y, rr.W, rr.H, 1, rosterBorder, false)
+		lab := rect{X: rr.X + 6, Y: rr.Y + 4, W: rr.W - 12, H: metrics.LineH * 0.95}
+		drawSingleLineInRect(screen, hudFace, lab, fitTextToWidth(hudFace, "ВРАГИ (ряд: перед→зад)", lab.W), metrics, color.RGBA{R: 160, G: 165, B: 175, A: 255})
 	}
 
 	// 3) Unit cards in rosters
@@ -464,6 +464,10 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		active := battle.ActiveUnit()
 		if active != nil && active.ID == u.ID {
 			border = color.RGBA{R: 255, G: 210, B: 70, A: 255}
+		} else if u.IsAlive() && u.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction &&
+			active != nil && active.Side == battlepkg.TeamPlayer && active.ID != u.ID {
+			// Живой союзник, ожидающий своего хода в очереди инициативы.
+			border = color.RGBA{R: 75, G: 95, B: 115, A: 255}
 		}
 		pt := &battle.PlayerTurn
 		if pt.HoverTargetUnitID == u.ID {
@@ -479,8 +483,15 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 			rs := []rune(name)
 			name = string(rs[:10])
 		}
+		if active != nil && u.Side == battlepkg.TeamPlayer && u.IsAlive() {
+			if u.ID == active.ID {
+				name = "▶ " + name
+			} else {
+				name = "· " + name
+			}
+		}
 		row1 := rect{X: r.X + 8, Y: r.Y, W: r.W - 16, H: metrics.LineH}
-		drawSingleLineInRect(screen, hudFace, row1, name, metrics, textCol)
+		drawSingleLineInRect(screen, hudFace, row1, fitTextToWidth(hudFace, name, r.W-16), metrics, textCol)
 		hpStr := "DEAD"
 		if u.IsAlive() {
 			hpStr = fmt.Sprintf("HP %d/%d", u.State.HP, u.MaxHP())
@@ -500,7 +511,11 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		active := battle.ActiveUnit()
 		s := "—"
 		if active != nil {
-			s = active.Name()
+			if active.Side == battlepkg.TeamPlayer {
+				s = fmt.Sprintf("Ваш ход: %s", active.Name())
+			} else {
+				s = fmt.Sprintf("Ход врага: %s", active.Name())
+			}
 		}
 		drawSingleLineInRect(screen, hudFace, activeR, fitTextToWidth(hudFace, s, activeR.W), metrics, color.RGBA{R: 215, G: 215, B: 215, A: 255})
 	}
@@ -579,7 +594,8 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 				}
 			}
 		} else {
-			lines = append(lines, "(waiting)")
+			// Пауза анимации, ход врага, TurnStart и т.д. — одна строка из battle (имя текущего юнита).
+			lines = append(lines, fitTextToWidth(hudFace, battle.DisplayPhaseLabel(), summaryR.W))
 		}
 		if len(lines) > 2 {
 			lines = lines[:2]
@@ -643,11 +659,11 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 	}
 	topLine := battleToRect(layout.V2TopBarLine)
 	if topLine.W > 0 && topLine.H > 0 && battle != nil {
-		s := fmt.Sprintf("Round %d · %s", battle.Round, battle.PhaseString())
+		s := fmt.Sprintf("R%d · %s", battle.Round, battle.PhaseString())
 		if battle.Result != battlepkg.ResultNone {
 			s = battle.ResultString() + " · SPACE/ENTER"
-		} else if active := battle.ActiveUnit(); active != nil {
-			s = fmt.Sprintf("Round %d · %s · %s", battle.Round, battle.PhaseString(), active.Name())
+		} else {
+			s = fmt.Sprintf("R%d · %s", battle.Round, battle.DisplayPhaseLabel())
 		}
 		drawSingleLineInRect(screen, hudFace, topLine, fitTextToWidth(hudFace, s, topLine.W), metrics, color.RGBA{R: 195, G: 195, B: 200, A: 255})
 	}
