@@ -10,42 +10,22 @@ func FormationHitTestGlobalIndex(screenW, screenH, mx, my int, p *party.Party) i
 	if p == nil {
 		return -1
 	}
-	sw := float32(screenW)
-	pad := float32(20)
-	lineH := uiLineH
-	panelW := float32(560)
-	if sw-pad*2 < panelW {
-		panelW = sw - pad*2
-	}
-	panelX := (sw - panelW) * 0.5
-	panelY := pad * 1.2
-
+	geom := ComputeFormationOverlayGeom(screenW, screenH, p, uiLineH)
+	panelX := geom.Panel.X
+	panelY := geom.Panel.Y
+	panelW := geom.Panel.W
 	na, nr := len(p.Active), len(p.Reserve)
-	rowH := lineH*2.4 + 10
-	headerH := lineH * 4.2
-	reserveTitleH := lineH * 1.15
-
-	panelH := headerH
-	if na > 0 {
-		panelH += float32(na)*rowH + float32(max(0, na-1))*6
-	}
-	if nr > 0 {
-		panelH += reserveTitleH + 6 + float32(nr)*rowH + float32(max(0, nr-1))*6
-	}
-	if na == 0 && nr == 0 {
-		panelH += lineH * 2
-	}
-	footerH := lineH * 2.4
-	panelH += footerH
+	rowH := geom.RowH
+	reserveTitleH := geom.ReserveTitleH
 
 	mxf := float32(mx)
 	myf := float32(my)
-	if mxf < panelX || mxf > panelX+panelW || myf < panelY || myf > panelY+panelH {
+	if mxf < panelX || mxf > panelX+panelW || myf < panelY || myf > panelY+geom.Panel.H {
 		return -1
 	}
 
-	innerX := panelX + 16
-	y := panelY + 14 + lineH*1.35 + lineH*2.0
+	innerX := geom.InnerX
+	y := geom.RowY0
 
 	hitRow := func(ry float32) bool {
 		return mxf >= innerX && mxf <= innerX+panelW-32 && myf >= ry && myf <= ry+rowH

@@ -17,9 +17,9 @@ func DrawDebugInputDirection(screen *ebiten.Image, rawDX, rawDY, emitDX, emitDY 
 }
 
 // DrawHUD рисует поверх кадра элементы HUD: предметы, знаки обучения, прогресс лидера, строка готовности повышения (если не пустая).
-// leader может быть nil; screenW — для обрезки длинных строк; promotionLine — из game.PromotionExploreHUDLine.
-func DrawHUD(screen *ebiten.Image, pickupCount, trainingMarks int, hudFace *text.GoTextFace, leader *hero.Hero, screenW int, promotionLine string) {
-	drawHUDText(screen, pickupCount, trainingMarks, hudFace, leader, screenW, promotionLine)
+// leader может быть nil; lay — зоны из ComputeScreenLayout / BuildExploreLayoutBundle; promotionLine — из game.PromotionExploreHUDLine.
+func DrawHUD(screen *ebiten.Image, pickupCount, trainingMarks int, hudFace *text.GoTextFace, leader *hero.Hero, lay ScreenLayout, promotionLine string) {
+	drawHUDText(screen, pickupCount, trainingMarks, hudFace, leader, lay, promotionLine)
 }
 
 // DrawBattleOverlay рисует поверх кадра HUD для боевого режима.
@@ -29,13 +29,13 @@ func DrawBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, battle *b
 	if battle == nil {
 		return
 	}
-	layout := battle.ComputeBattleHUDLayout(screenWidth, screenHeight)
+	layout := battle.ComputeBattleHUDLayoutAnchored(screenWidth, screenHeight)
 	if layout.Style == battlepkg.LayoutStyleV2Disciples {
-		drawBattleScreenV2(screen, hudFace, battle, layout, inspectOpenID, inspectOpen)
+		drawBattleScreenV2(screen, hudFace, battle, layout, inspectOpenID, inspectOpen, screenWidth, screenHeight)
 		return
 	}
 	drawBattleOverlayPanel(screen, screenWidth, screenHeight, layout)
-	drawBattleOverlayText(screen, hudFace, battle, layout)
+	drawBattleOverlayText(screen, hudFace, battle, layout, screenWidth, screenHeight)
 }
 
 // DrawResolutionIndicator рисует в правом верхнем углу строку "Resolution: WxH" (runtime switch по F6/F7).

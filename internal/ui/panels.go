@@ -67,35 +67,39 @@ func splitV(r rect, topH, gap float32) (rect, rect) {
 }
 
 // drawHUDText рисует текстовые блоки HUD (счётчик предметов, знаки обучения, прогресс лидера, повышение).
-func drawHUDText(screen *ebiten.Image, pickupCount, trainingMarks int, hudFace *text.GoTextFace, leader *hero.Hero, screenW int, promotionLine string) {
+// lay задаёт зону TopHUD и ширину строк (ScreenLayout из ComputeScreenLayout / BuildExploreLayoutBundle).
+func drawHUDText(screen *ebiten.Image, pickupCount, trainingMarks int, hudFace *text.GoTextFace, leader *hero.Hero, lay ScreenLayout, promotionLine string) {
 	if hudFace == nil {
 		return
 	}
-	maxW := float32(screenW) - 20
-	if maxW < 160 {
-		maxW = 400
+	maxW := lay.TopHUD.W - 16
+	if maxW < 120 {
+		maxW = 120
 	}
+	lineStep := float64(lay.Preset.LineH + 2)
+	x0 := float64(lay.TopHUD.X + 8)
+	y0 := float64(lay.TopHUD.Y + 8)
 	op := &text.DrawOptions{}
-	op.GeoM.Translate(10, 20)
+	op.GeoM.Translate(x0, y0)
 	op.ColorScale.ScaleWithColor(Theme.TextPrimary)
 	text.Draw(screen, fmt.Sprintf("Pickups: %d", pickupCount), hudFace, op)
 	op2 := &text.DrawOptions{}
-	op2.GeoM.Translate(10, 40)
+	op2.GeoM.Translate(x0, y0+lineStep)
 	op2.ColorScale.ScaleWithColor(Theme.TextSecondary)
 	text.Draw(screen, fmt.Sprintf("Знаки обучения: %d — повышение в лагере (F5→I, знаки тратятся там)", trainingMarks), hudFace, op2)
-	nextY := float64(60)
+	nextY := y0 + lineStep*2
 	if leader != nil {
 		line := trimTextToWidth(hudFace, FormatLeaderHUDProgressionLine(leader), maxW)
 		op3 := &text.DrawOptions{}
-		op3.GeoM.Translate(10, nextY)
+		op3.GeoM.Translate(x0, nextY)
 		op3.ColorScale.ScaleWithColor(Theme.TextMuted)
 		text.Draw(screen, line, hudFace, op3)
-		nextY = 80
+		nextY += lineStep
 	}
 	if strings.TrimSpace(promotionLine) != "" {
 		pl := trimTextToWidth(hudFace, promotionLine, maxW)
 		op4 := &text.DrawOptions{}
-		op4.GeoM.Translate(10, nextY)
+		op4.GeoM.Translate(x0, nextY)
 		op4.ColorScale.ScaleWithColor(Theme.RecoveryBanner)
 		text.Draw(screen, pl, hudFace, op4)
 	}

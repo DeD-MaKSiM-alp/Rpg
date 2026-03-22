@@ -20,6 +20,98 @@ func battleToRect(hr battlepkg.HUDRect) rect {
 	return rect{X: hr.X, Y: hr.Y, W: hr.W, H: hr.H}
 }
 
+func battleHUDTier(screenW, screenH int) ResolutionTier {
+	return TierFromScreen(screenW, screenH)
+}
+
+// battleCompactUnavailableHintRU сжимает типовые RU-подсказки gate для small tier (доменная логика в battle не меняется).
+func battleCompactUnavailableHintRU(tier ResolutionTier, msg string) string {
+	if tier != TierSmall || msg == "" {
+		return msg
+	}
+	msg = strings.TrimSpace(msg)
+	var rem int
+	if _, err := fmt.Sscanf(msg, "КД: ещё %d р.", &rem); err == nil {
+		return fmt.Sprintf("КД %dр", rem)
+	}
+	need, have := 0, 0
+	if n, err := fmt.Sscanf(msg, "Мана: нужно %d, сейчас %d", &need, &have); err == nil && n == 2 {
+		return fmt.Sprintf("мана %d/%d", have, need)
+	}
+	if n, err := fmt.Sscanf(msg, "Энергия: нужно %d, сейчас %d", &need, &have); err == nil && n == 2 {
+		return fmt.Sprintf("энерг. %d/%d", have, need)
+	}
+	return msg
+}
+
+func battleV1FooterControlsHintRU(battle *battlepkg.BattleContext, tier ResolutionTier) string {
+	if tier == TierSmall {
+		if active := battle.ActiveUnit(); active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
+			if battle.PlayerTurn.SelectedAbilityID == battlepkg.AbilityBasicAttack {
+				return "клик/Enter · Esc · ПКМ"
+			}
+			if battle.PlayerTurn.Phase == battlepkg.PlayerChooseTarget {
+				return "цель · Enter · Esc · ПКМ"
+			}
+			return "способн. · Enter · Esc · ПКМ"
+		}
+		return "Esc · ПКМ"
+	}
+	controls := "ЛКМ/ПКМ · Esc: отступить · ПКМ по юниту — сведения"
+	if active := battle.ActiveUnit(); active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
+		if battle.PlayerTurn.SelectedAbilityID == battlepkg.AbilityBasicAttack {
+			controls = "Стрелки+Enter или клик по врагу · Esc: отступить · ПКМ по юниту — сведения"
+		} else if battle.PlayerTurn.Phase == battlepkg.PlayerChooseTarget {
+			controls = "Стрелки+Enter или клик по цели · Назад/Esc: отмена · ПКМ по юниту — сведения"
+		} else {
+			controls = "Стрелки+Enter или клик по способности · Назад/Esc: отмена · ПКМ по юниту — сведения"
+		}
+	}
+	return controls
+}
+
+func battleV2BottomHintRU(battle *battlepkg.BattleContext, tier ResolutionTier) string {
+	if tier == TierSmall {
+		active := battle.ActiveUnit()
+		pt := &battle.PlayerTurn
+		isDefaultAttack := active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction && pt.SelectedAbilityID == battlepkg.AbilityBasicAttack
+		if isDefaultAttack {
+			return "Enter / Esc · ПКМ"
+		}
+		if active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
+			switch pt.Phase {
+			case battlepkg.PlayerChooseTarget:
+				return "←/→ · Enter · Esc · ПКМ"
+			default:
+				return "←/→ · Enter · Esc · ПКМ"
+			}
+		}
+		return "Esc · ПКМ"
+	}
+	active := battle.ActiveUnit()
+	pt := &battle.PlayerTurn
+	isDefaultAttack := active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction && pt.SelectedAbilityID == battlepkg.AbilityBasicAttack
+	if isDefaultAttack {
+		return "Enter: выбор цели · стрелки · Enter: атака · Esc: отступить · ПКМ по юниту — сведения"
+	}
+	if active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
+		switch pt.Phase {
+		case battlepkg.PlayerChooseTarget:
+			return "Стрелки: цель · Enter: выполнить · Назад/Esc: отмена · ПКМ по юниту — сведения"
+		default:
+			return "Стрелки: способность · Enter: выбрать · Назад/Esc: отмена · ПКМ по юниту — сведения"
+		}
+	}
+	hint := ""
+	if len(battle.BattleLog) > 0 {
+		hint = strings.TrimSpace(battle.BattleLog[len(battle.BattleLog)-1])
+	}
+	if hint == "" {
+		hint = "Esc: отступить"
+	}
+	return hint + " · ПКМ по юниту — сведения"
+}
+
 // abilityUnavailableStrokeColor — цвет рамки строки способности при блокировке (КД / мана / энергия).
 func abilityUnavailableStrokeColor(code battlepkg.ValidationCode) color.RGBA {
 	switch code {
@@ -45,8 +137,9 @@ func drawBattleOverlayPanel(screen *ebiten.Image, screenWidth, screenHeight int,
 }
 
 // drawBattleOverlayText рисует battle HUD v1: жёсткая сетка, только drawSingleLineInRect / drawLinesInRect.
-func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, layout battlepkg.BattleHUDLayout) {
+func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, layout battlepkg.BattleHUDLayout, screenW, screenH int) {
 	metrics := layout.Metrics
+	tier := battleHUDTier(screenW, screenH)
 
 	// Top block hierarchy: title primary, info rows secondary.
 	titleRow := battleToRect(layout.TitleRow)
@@ -89,7 +182,17 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 			activeStr = fmt.Sprintf("%s | %s", activeStr, battle.PlayerTurn.PhaseLabelRU())
 			activeStr = fmt.Sprintf("%s | %s", activeStr, battlepkg.ActorResourceLineRU(active))
 		}
-		drawSingleLineInRect(screen, hudFace, info2, fitTextToWidth(hudFace, activeStr, info2.W), metrics, Theme.TextMuted)
+		var info2Line string
+		if tier == TierSmall {
+			phaseOnly := battle.DisplayPhaseLabel()
+			if active := battle.ActiveUnit(); active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
+				phaseOnly = fmt.Sprintf("%s | %s", phaseOnly, battle.PlayerTurn.PhaseLabelRU())
+			}
+			info2Line = CompactLine(hudFace, activeStr, phaseOnly, info2.W)
+		} else {
+			info2Line = fitTextToWidth(hudFace, activeStr, info2.W)
+		}
+		drawSingleLineInRect(screen, hudFace, info2, info2Line, metrics, Theme.TextMuted)
 	}
 
 	footerRect := battleToRect(layout.Footer)
@@ -102,10 +205,10 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 	abilitiesRect := battleToRect(layout.Abilities)
 	confirmRect := battleToRect(layout.Action)
 
-	drawAbilityPanel(screen, hudFace, battle, abilitiesRect, layout)
-	drawConfirmPanel(screen, hudFace, battle, confirmRect, layout)
+	drawAbilityPanel(screen, hudFace, battle, abilitiesRect, layout, tier)
+	drawConfirmPanel(screen, hudFace, battle, confirmRect, layout, tier)
 
-	drawFooterPanel(screen, hudFace, battle, footerRect, layout)
+	drawFooterPanel(screen, hudFace, battle, footerRect, layout, tier)
 
 	DrawBattleFeedbackFloats(screen, hudFace, battle, layout, metrics)
 }
@@ -255,7 +358,7 @@ func drawFormationPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 	}
 }
 
-func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, layout battlepkg.BattleHUDLayout) {
+func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, layout battlepkg.BattleHUDLayout, tier ResolutionTier) {
 	metrics := layout.Metrics
 	drawPanelBox(screen, r, battleToRect(layout.AbilitiesTitleRow), "СПОСОБНОСТИ", hudFace, metrics)
 	if battle == nil {
@@ -312,25 +415,27 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		}
 		vector.StrokeRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, strokeW, strokeCol, false)
 
-		line1 := fmt.Sprintf("%s %s", prefix, battlepkg.PlayerAbilityLabelRU(id))
-		if cost := battlepkg.AbilityCostLinePlayerRU(battle, active, id); cost != "" {
-			line1 = line1 + "  ·  " + cost
-		}
-		line1 = fitTextToWidth(hudFace, line1, rowRect.W-12)
+		nameLine := fmt.Sprintf("%s %s", prefix, battlepkg.PlayerAbilityLabelRU(id))
+		nameLine = PrimaryLine(hudFace, nameLine, rowRect.W-12)
 		lineH := metrics.LineH
 		topRow := rect{X: rowRect.X + 6, Y: rowRect.Y + 2, W: rowRect.W - 12, H: lineH}
-		drawSingleLineInRect(screen, hudFace, topRow, line1, metrics, col)
-		if !gate.OK {
-			if msg := battlepkg.AbilityUnavailableHintRU(battle, active, id); msg != "" {
-				msg = fitTextToWidth(hudFace, msg, rowRect.W-12)
+		drawSingleLineInRect(screen, hudFace, topRow, nameLine, metrics, col)
+		if gate.OK {
+			if cost := battlepkg.AbilityCostLinePlayerRU(battle, active, id); cost != "" {
+				cost = fitTextToWidth(hudFace, cost, rowRect.W-12)
 				botRow := rect{X: rowRect.X + 6, Y: rowRect.Y + lineH + 2, W: rowRect.W - 12, H: lineH}
-				drawSingleLineInRect(screen, hudFace, botRow, msg, metrics, colMuted)
+				drawSingleLineInRect(screen, hudFace, botRow, cost, metrics, Theme.TextSecondary)
 			}
+		} else if msg := battlepkg.AbilityUnavailableHintRU(battle, active, id); msg != "" {
+			msg = battleCompactUnavailableHintRU(tier, msg)
+			msg = PrimaryLine(hudFace, msg, rowRect.W-12)
+			botRow := rect{X: rowRect.X + 6, Y: rowRect.Y + lineH + 2, W: rowRect.W - 12, H: lineH}
+			drawSingleLineInRect(screen, hudFace, botRow, msg, metrics, colMuted)
 		}
 	}
 }
 
-func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, layout battlepkg.BattleHUDLayout) {
+func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, layout battlepkg.BattleHUDLayout, tier ResolutionTier) {
 	metrics := layout.Metrics
 	drawPanelBox(screen, r, battleToRect(layout.ActionTitleRow), "ХОД", hudFace, metrics)
 	if battle == nil {
@@ -348,22 +453,26 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 
 	pt := battle.PlayerTurn
 
-	targetStr := battleActionTargetLabelRU(&pt, battle)
+	targetStr := battleActionTargetLabelRU(&pt, battle, tier)
 
-	abl := battlepkg.PlayerAbilityLabelRU(pt.SelectedAbilityID)
-	if c := battlepkg.AbilityCostLinePlayerRU(battle, active, pt.SelectedAbilityID); c != "" {
-		abl = abl + " · " + c
-	}
 	summaryRect := battleToRect(layout.ActionSummary)
-	summaryLines := []string{
-		fmt.Sprintf("Шаг: %s", pt.PhaseLabelRU()),
-		fmt.Sprintf("Способность: %s", abl),
-		battlepkg.ActorResourceLineRU(active),
-		fmt.Sprintf("Цель: %s", targetStr),
+	// Стоимость способности — только в списке способностей; ресурсы актёра — в верхней строке InfoRow2 (не дублируем).
+	var summaryLines []string
+	if tier == TierSmall {
+		summaryLines = []string{
+			fmt.Sprintf("Способность: %s", battlepkg.PlayerAbilityLabelRU(pt.SelectedAbilityID)),
+			fmt.Sprintf("Цель: %s", targetStr),
+		}
+	} else {
+		summaryLines = []string{
+			fmt.Sprintf("Шаг: %s", pt.PhaseLabelRU()),
+			fmt.Sprintf("Способность: %s", battlepkg.PlayerAbilityLabelRU(pt.SelectedAbilityID)),
+			fmt.Sprintf("Цель: %s", targetStr),
+		}
 	}
 
-	// Превью урона/лечения — пятая строка, если панель высока (базовые строки: шаг, способность+стоимость, ресурсы, цель).
-	if maxLinesForRect(metrics, summaryRect, 0, 0, metrics.LineH) >= 5 {
+	// Превью урона/лечения — если под панелью остаётся строка (после базового блока).
+	if maxLinesForRect(metrics, summaryRect, 0, 0, metrics.LineH) >= len(summaryLines)+1 {
 		req := battlepkg.ActionRequest{Actor: active.ID, Ability: pt.SelectedAbilityID, Target: pt.SelectedTarget}
 		preview, v := battlepkg.PreviewAction(battle, req)
 		if v.OK && (preview.HasDamage() || preview.HasHeal()) {
@@ -408,7 +517,7 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 	}
 }
 
-func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, layout battlepkg.BattleHUDLayout) {
+func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, r rect, layout battlepkg.BattleHUDLayout, tier ResolutionTier) {
 	metrics := layout.Metrics
 	drawPanelBox(screen, r, battleToRect(layout.FooterTitleRow), "ЛОГ БОЯ", hudFace, metrics)
 	if battle == nil {
@@ -438,23 +547,15 @@ func drawFooterPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *bat
 	}
 
 	if controlsRect.W > 0 && controlsRect.H > 0 {
-		controls := "ЛКМ/ПКМ · Esc: отступить · ПКМ по юниту — сведения"
-		if active := battle.ActiveUnit(); active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
-			if battle.PlayerTurn.SelectedAbilityID == battlepkg.AbilityBasicAttack {
-				controls = "Стрелки+Enter или клик по врагу · Esc: отступить · ПКМ по юниту — сведения"
-			} else if battle.PlayerTurn.Phase == battlepkg.PlayerChooseTarget {
-				controls = "Стрелки+Enter или клик по цели · Назад/Esc: отмена · ПКМ по юниту — сведения"
-			} else {
-				controls = "Стрелки+Enter или клик по способности · Назад/Esc: отмена · ПКМ по юниту — сведения"
-			}
-		}
-		drawSingleLineInRect(screen, hudFace, controlsRect, controls, metrics, Theme.TextMuted)
+		controls := battleV1FooterControlsHintRU(battle, tier)
+		drawSingleLineInRect(screen, hudFace, controlsRect, fitTextToWidth(hudFace, controls, controlsRect.W), metrics, Theme.TextMuted)
 	}
 }
 
 // drawBattleScreenV2 рисует battle screen в стиле Disciples: центр = сцена, слева/справа ростеры, внизу панель команд, сверху минимальный TopBar.
-func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, layout battlepkg.BattleHUDLayout, inspectOpenID battlepkg.UnitID, inspectOpen bool) {
+func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *battlepkg.BattleContext, layout battlepkg.BattleHUDLayout, inspectOpenID battlepkg.UnitID, inspectOpen bool, screenW, screenH int) {
 	metrics := layout.Metrics
+	tier := battleHUDTier(screenW, screenH)
 
 	// 1) Battlefield (center) — сцена: рамка в духе inspect/roster, внутренняя подложка, лёгкое затемнение по краям.
 	bf := layout.Battlefield
@@ -519,11 +620,17 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		active := battle.ActiveUnit()
 		if active != nil && active.Side == battlepkg.TeamPlayer {
 			l1 := fmt.Sprintf("Ваш ход: %s%s", active.Name(), battlepkg.PlayerTemplateIdentitySuffix(active))
+			if tier == TierSmall {
+				l1 = fmt.Sprintf("▶ %s%s", active.Name(), battlepkg.PlayerTemplateIdentitySuffix(active))
+			}
 			row1 := rect{X: activeR.X, Y: activeR.Y, W: activeR.W, H: metrics.LineH}
 			drawSingleLineInRect(screen, hudFace, row1, fitTextToWidth(hudFace, l1, activeR.W), metrics, Theme.TextPrimary)
-			row2 := rect{X: activeR.X, Y: activeR.Y + metrics.LineH, W: activeR.W, H: metrics.LineH}
-			drawSingleLineInRect(screen, hudFace, row2, fitTextToWidth(hudFace, battlepkg.ActorResourceLineRU(active), activeR.W), metrics, Theme.TextSecondary)
-			barY := activeR.Y + metrics.LineH*2 + 2
+			barY := activeR.Y + metrics.LineH + 2
+			if tier != TierSmall {
+				row2 := rect{X: activeR.X, Y: activeR.Y + metrics.LineH, W: activeR.W, H: metrics.LineH}
+				drawSingleLineInRect(screen, hudFace, row2, fitTextToWidth(hudFace, battlepkg.ActorResourceLineRU(active), activeR.W), metrics, Theme.TextSecondary)
+				barY = activeR.Y + metrics.LineH*2 + 2
+			}
 			bw := activeR.W - 8
 			if bw > 24 {
 				DrawResourceBarMicro(screen, activeR.X+4, barY, bw, 3, active.State.Mana, active.State.MaxMana, Theme.ResourceManaFill)
@@ -591,21 +698,21 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		}
 		vector.StrokeRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, strokeW, strokeCol, false)
 		lh := metrics.LineH
-		line1 := battlepkg.PlayerAbilityLabelRU(id)
-		if c := battlepkg.AbilityCostLinePlayerRU(battle, activeUnit, id); c != "" {
-			line1 = line1 + " · " + c
-		}
-		line1 = fitTextToWidth(hudFace, line1, rowRect.W-8)
+		label := PrimaryLine(hudFace, battlepkg.PlayerAbilityLabelRU(id), rowRect.W-8)
 		r1 := rect{X: rowRect.X + 4, Y: rowRect.Y + 2, W: rowRect.W - 8, H: lh}
-		drawSingleLineInRect(screen, hudFace, r1, line1, metrics, col)
-		if !gate.OK {
-			if msg := battlepkg.AbilityUnavailableHintRU(battle, activeUnit, id); msg != "" {
+		drawSingleLineInRect(screen, hudFace, r1, label, metrics, col)
+		if gate.OK {
+			if c := battlepkg.AbilityCostLinePlayerRU(battle, activeUnit, id); c != "" {
 				r2 := rect{X: rowRect.X + 4, Y: rowRect.Y + lh + 2, W: rowRect.W - 8, H: lh}
-				drawSingleLineInRect(screen, hudFace, r2, fitTextToWidth(hudFace, msg, rowRect.W-8), metrics, col2)
+				drawSingleLineInRect(screen, hudFace, r2, fitTextToWidth(hudFace, c, rowRect.W-8), metrics, Theme.TextSecondary)
 			}
+		} else if msg := battlepkg.AbilityUnavailableHintRU(battle, activeUnit, id); msg != "" {
+			msg = battleCompactUnavailableHintRU(tier, msg)
+			r2 := rect{X: rowRect.X + 4, Y: rowRect.Y + lh + 2, W: rowRect.W - 8, H: lh}
+			drawSingleLineInRect(screen, hudFace, r2, fitTextToWidth(hudFace, msg, rowRect.W-8), metrics, col2)
 		}
 	}
-	// Summary — коротко: default attack = "Attack · click enemy"; special = ability → target | preview
+	// Summary — default attack: краткая подсказка; special: способность (и «→ цель» если не дублирует колонку цели) + превью; стоимость — только в ряду способностей.
 	summaryR := battleToRect(layout.V2BottomSummary)
 	if summaryR.W > 0 && summaryR.H > 0 && battle != nil {
 		active := battle.ActiveUnit()
@@ -613,7 +720,11 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		if active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
 			pt := &battle.PlayerTurn
 			if pt.SelectedAbilityID == battlepkg.AbilityBasicAttack {
-				lines = append(lines, fitTextToWidth(hudFace, fmt.Sprintf("%s · клик по врагу", battlepkg.PlayerAbilityLabelRU(battlepkg.AbilityBasicAttack)), summaryR.W))
+				if tier == TierSmall {
+					lines = append(lines, PrimaryLine(hudFace, fmt.Sprintf("%s · клик", battlepkg.PlayerAbilityLabelRU(battlepkg.AbilityBasicAttack)), summaryR.W))
+				} else {
+					lines = append(lines, fitTextToWidth(hudFace, fmt.Sprintf("%s · клик по врагу", battlepkg.PlayerAbilityLabelRU(battlepkg.AbilityBasicAttack)), summaryR.W))
+				}
 				if pt.HoverTargetUnitID != 0 && battle.Units[pt.HoverTargetUnitID] != nil {
 					preview, v := battlepkg.PreviewAction(battle, battlepkg.ActionRequest{Actor: active.ID, Ability: battlepkg.AbilityBasicAttack, Target: battlepkg.UnitTarget(pt.HoverTargetUnitID)})
 					if v.OK && preview.HasDamage() {
@@ -629,9 +740,22 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 				} else if pt.SelectedTarget.Kind == battlepkg.TargetKindNone && pt.SelectedAbilityID == battlepkg.AbilityGroupHeal {
 					targetStr = "все союзники"
 				}
-				line1 := fmt.Sprintf("%s → %s", battlepkg.PlayerAbilityLabelRU(pt.SelectedAbilityID), targetStr)
-				if c := battlepkg.AbilityCostLinePlayerRU(battle, active, pt.SelectedAbilityID); c != "" {
-					line1 = line1 + " · " + c
+				showArrow := targetStr != "—"
+				if tier == TierSmall {
+					switch pt.SelectedTarget.Kind {
+					case battlepkg.TargetKindUnit, battlepkg.TargetKindSelf:
+						showArrow = false
+					case battlepkg.TargetKindNone:
+						if pt.SelectedAbilityID == battlepkg.AbilityGroupHeal {
+							showArrow = false
+						}
+					}
+				}
+				line1 := ""
+				if showArrow {
+					line1 = fmt.Sprintf("%s → %s", battlepkg.PlayerAbilityLabelRU(pt.SelectedAbilityID), targetStr)
+				} else {
+					line1 = battlepkg.PlayerAbilityLabelRU(pt.SelectedAbilityID)
 				}
 				lines = append(lines, fitTextToWidth(hudFace, line1, summaryR.W))
 				req := battlepkg.ActionRequest{Actor: active.ID, Ability: pt.SelectedAbilityID, Target: pt.SelectedTarget}
@@ -653,31 +777,10 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		}
 		_ = drawLinesInRect(screen, hudFace, summaryR, lines, metrics, Theme.TextPrimary, 2)
 	}
-	// Hint — default: "Click enemy to attack"; special: phase-specific
+	// Hint — tier-aware (полные подсказки на medium/large).
 	logR := battleToRect(layout.V2BottomLog)
 	if logR.W > 0 && logR.H > 0 && battle != nil {
-		hint := ""
-		active := battle.ActiveUnit()
-		pt := &battle.PlayerTurn
-		isDefaultAttack := active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction && pt.SelectedAbilityID == battlepkg.AbilityBasicAttack
-		if isDefaultAttack {
-			hint = "Enter: выбор цели · стрелки · Enter: атака · Esc: отступить · ПКМ по юниту — сведения"
-		} else if active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
-			switch pt.Phase {
-			case battlepkg.PlayerChooseTarget:
-				hint = "Стрелки: цель · Enter: выполнить · Назад/Esc: отмена · ПКМ по юниту — сведения"
-			default:
-				hint = "Стрелки: способность · Enter: выбрать · Назад/Esc: отмена · ПКМ по юниту — сведения"
-			}
-		} else {
-			if len(battle.BattleLog) > 0 {
-				hint = strings.TrimSpace(battle.BattleLog[len(battle.BattleLog)-1])
-			}
-			if hint == "" {
-				hint = "Esc: отступить"
-			}
-			hint = hint + " · ПКМ по юниту — сведения"
-		}
+		hint := battleV2BottomHintRU(battle, tier)
 		drawSingleLineInRect(screen, hudFace, logR, fitTextToWidth(hudFace, hint, logR.W), metrics, Theme.TextMuted)
 	}
 	// Buttons — Back only (Confirm removed from battle UX)
@@ -722,7 +825,7 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 }
 
 // battleActionTargetLabelRU — краткая подпись цели для панели «Ход» (v1 summary).
-func battleActionTargetLabelRU(pt *battlepkg.PlayerTurnState, bctx *battlepkg.BattleContext) string {
+func battleActionTargetLabelRU(pt *battlepkg.PlayerTurnState, bctx *battlepkg.BattleContext, tier ResolutionTier) string {
 	if pt == nil || bctx == nil {
 		return "—"
 	}
@@ -731,6 +834,9 @@ func battleActionTargetLabelRU(pt *battlepkg.PlayerTurnState, bctx *battlepkg.Ba
 		return "себя"
 	case battlepkg.TargetKindUnit:
 		if tu := bctx.Units[pt.SelectedTarget.UnitID]; tu != nil {
+			if tier == TierSmall {
+				return tu.Name()
+			}
 			return fmt.Sprintf("%s (#%d)", tu.Name(), tu.ID)
 		}
 		return fmt.Sprintf("юнит #%d", pt.SelectedTarget.UnitID)

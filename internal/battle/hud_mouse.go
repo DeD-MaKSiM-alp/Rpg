@@ -48,7 +48,7 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit, screenW, screen
 	myf := float32(my)
 	mb := pollBattleMouseButtons()
 
-	layout := b.ComputeBattleHUDLayout(screenW, screenH)
+	layout := b.ComputeBattleHUDLayoutAnchored(screenW, screenH)
 
 	action := BattleAction{}
 	var performed bool

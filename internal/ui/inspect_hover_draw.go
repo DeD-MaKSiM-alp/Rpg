@@ -16,7 +16,7 @@ func DrawBattleInspectHighlights(screen *ebiten.Image, b *battlepkg.BattleContex
 		return
 	}
 	plan := BuildInspectBattleHighlightPlan(hoverID, openInspectID, inspectOpen)
-	layout := b.ComputeBattleHUDLayout(screenW, screenH)
+	layout := b.ComputeBattleHUDLayoutAnchored(screenW, screenH)
 
 	if plan.CombinedUnitID != 0 {
 		u := b.Units[plan.CombinedUnitID]

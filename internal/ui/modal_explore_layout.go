@@ -31,7 +31,7 @@ func LayoutRecruitOffer(screenW, screenH int) RecruitOfferLayout {
 		return out
 	}
 	w := float32(screenW)
-	h := float32(screenH)
+	slay := ComputeScreenLayout(screenW, screenH, 0)
 	panelW := float32(440)
 	if panelW > w-40 {
 		panelW = w - 40
@@ -43,9 +43,10 @@ func LayoutRecruitOffer(screenW, screenH int) RecruitOfferLayout {
 	// Must match DrawRecruitOfferOverlay: py+18, then +lineH+14, +lineH+10, +lineH+12 before buttons
 	topToBtn := float32(18) + lineH + 14 + lineH + 10 + lineH + 12
 	panelH := topToBtn + btnH + 10 + lineH*1.1 + 22
-	px := (w - panelW) / 2
-	py := (h - panelH) / 2
-	out.Panel = FRect{X: px, Y: py, W: panelW, H: panelH}
+	out.Panel = CenterPanelInModal(slay, panelW, panelH)
+	px := out.Panel.X
+	py := out.Panel.Y
+	panelW = out.Panel.W
 
 	innerW := panelW - innerPad*2
 	btnW := (innerW - btnGap) / 2
@@ -107,7 +108,7 @@ func LayoutPOIChoice(screenW, screenH int, kind entity.PickupKind) POIChoiceLayo
 		return out
 	}
 	w := float32(screenW)
-	h := float32(screenH)
+	slay := ComputeScreenLayout(screenW, screenH, 0)
 	panelW := float32(480)
 	if panelW > w-40 {
 		panelW = w - 40
@@ -120,9 +121,10 @@ func LayoutPOIChoice(screenW, screenH int, kind entity.PickupKind) POIChoiceLayo
 	// Rows start at same y as after title + «y += lineH+12» in DrawPOIChoiceOverlay.
 	row0Top := float32(14) + lineH + 12
 	panelH := row0Top + rowBlock*2 + rowGap + btnH + 12 + footerH + 22
-	px := (w - panelW) / 2
-	py := (h - panelH) / 2
-	out.Panel = FRect{X: px, Y: py, W: panelW, H: panelH}
+	out.Panel = CenterPanelInModal(slay, panelW, panelH)
+	px := out.Panel.X
+	py := out.Panel.Y
+	panelW = out.Panel.W
 
 	innerX := px + 16
 	innerW := panelW - 32

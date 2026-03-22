@@ -8,7 +8,7 @@ func HitTestUnitUnderCursor(b *BattleContext, screenW, screenH int, mx, my int) 
 	if b == nil || len(b.Units) == 0 {
 		return 0
 	}
-	layout := b.ComputeBattleHUDLayout(screenW, screenH)
+	layout := b.ComputeBattleHUDLayoutAnchored(screenW, screenH)
 	mxf := float32(mx)
 	myf := float32(my)
 	var ids []UnitID

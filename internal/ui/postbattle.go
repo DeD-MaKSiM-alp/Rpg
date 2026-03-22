@@ -17,10 +17,14 @@ type PostBattleRect struct {
 // Единственный источник истины: ComputePostBattleLayout.
 type PostBattleLayout struct {
 	ScreenW, ScreenH               int
+	Tier                           ResolutionTier
 	PanelX, PanelY, PanelW, PanelH float32
 	InnerX, InnerY, InnerW         float32
 	LineH                          float32
 	Pad                            float32
+	RowH                           float32
+	RowGap                         float32
+	ButtonH                        float32
 	// RewardOptionRects — области клика и подсветки строк награды (совпадают с отрисовкой).
 	RewardOptionRects []PostBattleRect
 	// ResultContinueButton — шаг результата боя: явное продолжение (мышь + тот же layout, что и draw).
@@ -29,16 +33,7 @@ type PostBattleLayout struct {
 	RewardConfirmButton PostBattleRect
 }
 
-// postBattle metrics — одна точка правды для чисел layout (draw + hit-test).
-const (
-	postBattleLineH   = float32(22)
-	postBattlePad     = float32(24)
-	postBattlePanelW  = float32(400)
-	postBattleRowH    = float32(32)
-	postBattleRowGap  = float32(4)
-	postBattleButtonH = float32(36)
-	postBattleButtonW = float32(200)
-)
+const postBattleButtonW = float32(200)
 
 // ComputePostBattleLayout вычисляет layout post-battle экрана для заданного размера окна.
 // isRewardStep и optionCount задают высоту панели и число прямоугольников наград.
@@ -47,49 +42,82 @@ func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCoun
 	l := PostBattleLayout{
 		ScreenW: screenW,
 		ScreenH: screenH,
-		LineH:   postBattleLineH,
-		Pad:     postBattlePad,
 	}
 	if screenW < 100 || screenH < 100 {
 		return l
 	}
-	w := float32(screenW)
-	h := float32(screenH)
 
-	panelW := postBattlePanelW
-	if panelW > w-postBattlePad*2 {
-		panelW = w - postBattlePad*2
+	sl := BattleOverlayScreenLayout(screenW, screenH)
+	l.Tier = sl.Tier
+	lineH, pad, rowH, rowGap, buttonH := PostBattleMetrics(sl.Tier)
+	panelW := PostBattlePanelMaxWidth(screenW, sl.Tier)
+	if panelW > sl.Modal.W {
+		panelW = sl.Modal.W
 	}
-	lineH := postBattleLineH
 
-	var panelH float32
-	if isRewardStep {
-		n := optionCount
-		if n < 0 {
-			n = 0
+	computePanelH := func(lh, p, rh, rg, bh float32) float32 {
+		if isRewardStep {
+			n := optionCount
+			if n < 0 {
+				n = 0
+			}
+			innerH := lh*4.5 + float32(n)*(rh+rg) + 4 + lh + 8 + bh + 8
+			return p*2 + innerH
 		}
-		// Заголовок + две строки пояснения + строки награды + подсказка + кнопка «Подтвердить».
-		innerH := lineH*4.5 + float32(n)*(postBattleRowH+postBattleRowGap) + 4 + lineH + 8 + postBattleButtonH + 8
-		panelH = postBattlePad*2 + innerH
-	} else {
-		// Результат боя: заголовок + опционально сводка + подсказка + кнопка.
 		ns := resultSummaryLines
 		if ns < 0 {
 			ns = 0
 		}
 		summaryBlock := float32(0)
 		if ns > 0 {
-			summaryBlock = lineH*1.05*float32(ns) + 8
+			summaryBlock = lh*1.05*float32(ns) + 8
 		}
-		panelH = postBattlePad*2 + lineH*1.5 + summaryBlock + lineH + 12 + postBattleButtonH + 16
+		return p*2 + lh*1.5 + summaryBlock + lh + 12 + bh + 16
 	}
-	panelX := (w - panelW) / 2
-	panelY := (h - panelH) / 2
 
-	l.PanelX, l.PanelY, l.PanelW, l.PanelH = panelX, panelY, panelW, panelH
-	l.InnerX = panelX + postBattlePad
-	l.InnerY = panelY + postBattlePad
-	l.InnerW = panelW - postBattlePad*2
+	for iter := 0; iter < 40; iter++ {
+		panelH := computePanelH(lineH, pad, rowH, rowGap, buttonH)
+		rect := CenterPanelInModal(sl, panelW, panelH)
+		if panelH <= rect.H+0.5 || iter == 39 {
+			l.PanelX, l.PanelY, l.PanelW, l.PanelH = rect.X, rect.Y, rect.W, rect.H
+			l.LineH = lineH
+			l.Pad = pad
+			l.RowH = rowH
+			l.RowGap = rowGap
+			l.ButtonH = buttonH
+			l.InnerX = l.PanelX + pad
+			l.InnerY = l.PanelY + pad
+			l.InnerW = l.PanelW - pad*2
+			break
+		}
+		scale := rect.H / panelH
+		lineH *= scale
+		pad *= scale
+		if pad < 12 {
+			pad = 12
+		}
+		if lineH < 14 {
+			lineH = 14
+		}
+		rowH = lineH * 1.35
+		if rowH < 24 {
+			rowH = 24
+		}
+		rowGap = float32(3)
+		if sl.Tier == TierLarge {
+			rowGap = 5
+		}
+		buttonH = lineH * 1.55
+		if buttonH < 30 {
+			buttonH = 30
+		}
+	}
+
+	lineH = l.LineH
+	pad = l.Pad
+	rowH = l.RowH
+	rowGap = l.RowGap
+	buttonH = l.ButtonH
 
 	btnW := postBattleButtonW
 	if btnW > l.InnerW-16 {
@@ -113,7 +141,7 @@ func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCoun
 			X: btnX,
 			Y: l.InnerY + lineH*1.5 + summaryBlock + lineH + 12,
 			W: btnW,
-			H: postBattleButtonH,
+			H: buttonH,
 		}
 		return l
 	}
@@ -125,17 +153,17 @@ func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCoun
 	firstY := l.InnerY + lineH*4.0
 	l.RewardOptionRects = make([]PostBattleRect, n)
 	for i := 0; i < n; i++ {
-		y := firstY + float32(i)*(postBattleRowH+postBattleRowGap)
+		y := firstY + float32(i)*(rowH+rowGap)
 		l.RewardOptionRects[i] = PostBattleRect{
 			X: l.InnerX,
 			Y: y - 2,
 			W: l.InnerW,
-			H: postBattleRowH + 4,
+			H: rowH + 4,
 		}
 	}
 	var hintY float32
 	if n > 0 {
-		yAfter := firstY + float32(n)*(postBattleRowH+postBattleRowGap)
+		yAfter := firstY + float32(n)*(rowH+rowGap)
 		hintY = yAfter + 4
 	} else {
 		hintY = l.InnerY + lineH*4.0 + 4
@@ -145,7 +173,7 @@ func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCoun
 		X: btnX,
 		Y: confirmY,
 		W: btnW,
-		H: postBattleButtonH,
+		H: buttonH,
 	}
 	return l
 }
@@ -267,8 +295,9 @@ func DrawPostBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p Pos
 	DrawThinAccentLine(screen, innerX+4, innerY+lineH*4.05, innerW-8)
 
 	y := innerY + lineH*4.0
+	rowRH := layout.RowH
+	rowRG := layout.RowGap
 	for i := 0; i < len(p.OptionLabels); i++ {
-		rowH := postBattleRowH
 		label := p.OptionLabels[i]
 		if i < len(p.OptionDescs) && p.OptionDescs[i] != "" {
 			label = label + " — " + p.OptionDescs[i]
@@ -291,8 +320,8 @@ func DrawPostBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p Pos
 				vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 1, Theme.PanelBorder, false)
 			}
 		}
-		drawSingleLineInRect(screen, hudFace, rect{X: innerX + 10, Y: y, W: innerW - 20, H: rowH}, label, metrics, textCol)
-		y += rowH + postBattleRowGap
+		drawSingleLineInRect(screen, hudFace, rect{X: innerX + 10, Y: y, W: innerW - 20, H: rowRH}, label, metrics, textCol)
+		y += rowRH + rowRG
 	}
 	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y + 4, W: innerW, H: lineH}, "Стрелки — выбор · Пробел / Enter или кнопка ниже", metrics, Theme.TextMuted)
 	cl := p.ConfirmRewardLabel

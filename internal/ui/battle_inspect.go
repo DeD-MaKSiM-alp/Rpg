@@ -13,24 +13,12 @@ import (
 	"mygame/internal/unitdata"
 )
 
-// battleInspectPanelWidth — шире обычной карточки: место под крупный портрет battle inspect.
-func battleInspectPanelWidth(screenW int) float32 {
-	w := float32(620)
-	if float32(screenW)-40 < w {
-		w = float32(screenW) - 40
-	}
-	return w
-}
-
 // DrawBattleInspectOverlay — карточка по ПКМ в бою: союзник (hero + текущее ОЗ) или враг.
 // promotionHeadline — готовность повышения (в бою лагерь недоступен — строка обычно про «нужен лагерь»).
 func DrawBattleInspectOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *party.Party, u *battlepkg.CombatUnit, screenW, screenH int, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int, promotionHeadline string) {
 	if hudFace == nil || p == nil || u == nil {
 		return
 	}
-	sw := float32(screenW)
-	sh := float32(screenH)
-	panelW := battleInspectPanelWidth(screenW)
 
 	var m InspectCardModel
 	if u.Side == battlepkg.TeamPlayer && u.Origin.PartyActiveIndex >= 0 && u.Origin.PartyActiveIndex < len(p.Active) {
@@ -45,15 +33,12 @@ func DrawBattleInspectOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p 
 		m = buildBattleInspectEnemyModel(u)
 	}
 
-	panelH := EstimateInspectCardHeight(m)
-	px := (sw - panelW) / 2
-	py := (sh - panelH) * 0.45
-	if py < 16 {
-		py = 16
-	}
-
-	DrawInspectCardChrome(screen, px, py, panelW, panelH, m.IsEnemy)
-	DrawInspectCardContent(screen, hudFace, px, py, panelW, m)
+	sl := BattleOverlayScreenLayout(screenW, screenH)
+	panelW := InspectPanelWidth(screenW, sl.Tier, true)
+	rect, lineH := InspectOverlayPanelRect(screenW, screenH, panelW, m)
+	cardH := estimateInspectCardHeight(m, lineH)
+	DrawInspectCardChrome(screen, rect.X, rect.Y, rect.W, cardH, m.IsEnemy)
+	DrawInspectCardContent(screen, hudFace, rect.X, rect.Y, rect.W, m, lineH)
 }
 
 func battleInspectCardFooter() string {

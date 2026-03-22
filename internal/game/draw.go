@@ -35,14 +35,25 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	atCamp := g.world.PlayerStandsOnActiveRecruitCamp(g.player.GridX, g.player.GridY)
 	promoHUD := PromotionExploreHUDLine(&g.party, atCamp, g.TrainingMarks)
-	ui.DrawHUD(screen, g.pickupCount, g.TrainingMarks, g.hudFace, g.party.Leader(), ScreenWidth, promoHUD)
+	lay := ui.ComputeScreenLayout(ScreenWidth, ScreenHeight, 0)
+	var exploreBundle ui.ExploreLayoutBundle
+	if g.mode == ModeExplore {
+		exploreBundle = ui.BuildExploreLayoutBundle(ScreenWidth, ScreenHeight,
+			g.world.ZoneHUDLine(g.player.GridX, g.player.GridY),
+			g.exploreRestMsg,
+			g.exploreRecruitMsg,
+			g.explorePOIMsg,
+			g.world.ExploreHUDHintLine(g.player.GridX, g.player.GridY))
+		lay = exploreBundle.Layout
+	}
+	ui.DrawHUD(screen, g.pickupCount, g.TrainingMarks, g.hudFace, g.party.Leader(), lay, promoHUD)
 
 	if g.mode == ModeExplore || g.mode == ModeRecruitOffer || g.mode == ModePOIChoice {
 		promoStrip := PromotionExploreStripLine(&g.party, atCamp, g.TrainingMarks)
-		ui.DrawExplorePartyStrip(screen, g.hudFace, &g.party, ScreenWidth, promoStrip)
+		ui.DrawExplorePartyStrip(screen, g.hudFace, &g.party, lay, promoStrip)
 	}
 	if g.mode == ModeExplore {
-		ui.DrawExploreFormationHint(screen, g.hudFace, ScreenWidth, ScreenHeight, g.world.ZoneHUDLine(g.player.GridX, g.player.GridY), g.exploreRestMsg, g.exploreRecruitMsg, g.explorePOIMsg, g.world.ExploreHUDHintLine(g.player.GridX, g.player.GridY))
+		ui.DrawExploreFormationHint(screen, g.hudFace, exploreBundle)
 	}
 
 	if g.mode == ModeRecruitOffer {

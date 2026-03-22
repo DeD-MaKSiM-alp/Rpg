@@ -24,23 +24,17 @@ func DrawCharacterInspectOverlay(screen *ebiten.Image, hudFace *text.GoTextFace,
 		return
 	}
 
-	sw := float32(screenW)
-	sh := float32(screenH)
 	na := len(p.Active)
 	inReserve := globalIdx >= na
 
 	m := buildFormationInspectCardModel(h, globalIdx, na, inReserve, atCamp, trainingMarks, promoteTargets, promoteCosts, branchIdx, feedbackBanner, promotionHeadline)
 
-	panelW := DefaultInspectCardPanelWidth(screenW)
-	panelH := EstimateInspectCardHeight(m)
-	px := (sw - panelW) / 2
-	py := (sh - panelH) * 0.45
-	if py < 16 {
-		py = 16
-	}
-
-	DrawInspectCardChrome(screen, px, py, panelW, panelH, false)
-	DrawInspectCardContent(screen, hudFace, px, py, panelW, m)
+	sl := BattleOverlayScreenLayout(screenW, screenH)
+	panelW := InspectPanelWidth(screenW, sl.Tier, false)
+	rect, lineH := InspectOverlayPanelRect(screenW, screenH, panelW, m)
+	cardH := estimateInspectCardHeight(m, lineH)
+	DrawInspectCardChrome(screen, rect.X, rect.Y, rect.W, cardH, false)
+	DrawInspectCardContent(screen, hudFace, rect.X, rect.Y, rect.W, m, lineH)
 }
 
 func buildFormationInspectCardModel(h *hero.Hero, globalIdx, na int, inReserve bool, atCamp bool, trainingMarks int, promoteTargets []string, promoteCosts []int, branchIdx int, feedbackBanner string, promotionHeadline string) InspectCardModel {

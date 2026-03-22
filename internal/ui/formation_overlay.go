@@ -25,38 +25,24 @@ func DrawFormationOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p *par
 	sw := float32(screenW)
 	vector.FillRect(screen, 0, 0, sw, float32(screenH), Theme.OverlayDim, false)
 
-	pad := float32(20)
-	lineH := uiLineH
+	geom := ComputeFormationOverlayGeom(screenW, screenH, p, uiLineH)
+	lineH := geom.LineH
+	if lineH < 1 {
+		lineH = uiLineH
+	}
 	metrics := battlepkg.HUDMetrics{LineH: lineH}
-
-	panelW := float32(560)
-	if sw-pad*2 < panelW {
-		panelW = sw - pad*2
-	}
-	panelX := (sw - panelW) * 0.5
-	panelY := pad * 1.2
-
+	panelX := geom.Panel.X
+	panelY := geom.Panel.Y
+	panelW := geom.Panel.W
+	panelH := geom.Panel.H
 	na, nr := len(p.Active), len(p.Reserve)
-	rowH := lineH*2.4 + 10
-	headerH := lineH * 4.2
-	footerH := lineH * 2.4
-	reserveTitleH := lineH * 1.15
-	panelH := headerH
-	if na > 0 {
-		panelH += float32(na)*rowH + float32(max(0, na-1))*6 // max: stdlib Go 1.21+
-	}
-	if nr > 0 {
-		panelH += reserveTitleH + 6 + float32(nr)*rowH + float32(max(0, nr-1))*6
-	}
-	if na == 0 && nr == 0 {
-		panelH += lineH * 2
-	}
-	panelH += footerH
+	rowH := geom.RowH
+	reserveTitleH := geom.ReserveTitleH
 
 	drawUnifiedModalPanelChrome(screen, panelX, panelY, panelW, panelH)
 	DrawThinAccentLine(screen, panelX+10, panelY+8, panelW-20)
 
-	innerX := panelX + 16
+	innerX := geom.InnerX
 	y := panelY + 14
 	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH * 1.1}, "Состав отряда · в бою и резерв", metrics, Theme.TextPrimary)
 	y += lineH * 1.35

@@ -16,14 +16,10 @@ func TestFormationHitTestGlobalIndex_outside(t *testing.T) {
 func TestFormationHitTestGlobalIndex_firstActiveRow(t *testing.T) {
 	p := party.DefaultParty()
 	sw, sh := 800, 600
-	pad := float32(20)
-	lineH := uiLineH
-	panelW := float32(560)
-	panelX := (float32(sw) - panelW) * 0.5
-	panelY := pad * 1.2
-	innerX := panelX + 16
-	y := panelY + 14 + lineH*1.35 + lineH*2.0
-	rowH := lineH*2.4 + 10
+	geom := ComputeFormationOverlayGeom(sw, sh, &p, uiLineH)
+	innerX := geom.InnerX
+	y := geom.RowY0
+	rowH := geom.RowH
 	mx := int(innerX + 50)
 	my := int(y + rowH/2)
 	if g := FormationHitTestGlobalIndex(sw, sh, mx, my, &p); g != 0 {

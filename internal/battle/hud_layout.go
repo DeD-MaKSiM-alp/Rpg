@@ -120,7 +120,8 @@ func hudInset(r HUDRect, pad float32) HUDRect {
 // It uses the smaller screen dimension to compute a scale factor and then
 // clamps each metric into a sensible range so that the HUD remains legible
 // on both small and large resolutions.
-func computeHUDMetrics(screenW, screenH int) HUDMetrics {
+// tierOverride: -1 = legacy (same as pre-foundation); 0 = small, 1 = medium, 2 = large (density policy for anchored layout).
+func computeHUDMetrics(screenW, screenH int, tierOverride int) HUDMetrics {
 	sw := float32(screenW)
 	sh := float32(screenH)
 	minDim := sw
@@ -152,6 +153,24 @@ func computeHUDMetrics(screenW, screenH int) HUDMetrics {
 	// TitleH kept for compatibility; v1 overlay uses LineH for title row only.
 	m.TitleH = hudClamp(20*base, 16, 28)
 
+	if tierOverride >= 0 {
+		var dens float32 = 1.0
+		switch tierOverride {
+		case 0: // small — плотнее, меньше второстепенных отступов
+			dens = 0.90
+		case 2: // large
+			dens = 1.02
+		default: // medium
+			dens = 0.96
+		}
+		m.LineH = hudClamp(m.LineH*dens, 13, 24)
+		m.Pad = hudClamp(m.Pad*dens, 7, 18)
+		m.Gap = hudClamp(m.Gap*dens, 5, 14)
+		m.SmallGap = hudClamp(m.SmallGap*dens, 3, 10)
+		m.ButtonH = hudClamp(m.ButtonH*dens, 19, 36)
+		m.TitleH = hudClamp(m.TitleH*dens, 15, 28)
+	}
+
 	return m
 }
 
@@ -166,11 +185,13 @@ type BattlefieldRowLabel struct {
 // screenW/screenH must be the logical game resolution (same as ebiten.Game.Layout and
 // the values passed to DrawBattleOverlay); do not use device/window pixel size here.
 // Uses b.LayoutStyle: 0 = v1 table, 1 = v2 Disciples-like.
+// Полноэкранная раскладка (legacy совместимость); для привязки к safe-зоне см. ComputeBattleHUDLayoutAnchored.
 func (b *BattleContext) ComputeBattleHUDLayout(screenW, screenH int) BattleHUDLayout {
+	metrics := computeHUDMetrics(screenW, screenH, -1)
 	if b != nil && b.LayoutStyle == LayoutStyleV2Disciples {
-		return b.computeLayoutV2(screenW, screenH)
+		return b.computeLayoutV2(screenW, screenH, metrics)
 	}
-	return b.computeLayoutV1(screenW, screenH)
+	return b.computeLayoutV1(screenW, screenH, metrics)
 }
 
 // battlefieldV2Geometry — результат раскладки поля боя (v2).
@@ -276,10 +297,9 @@ func computeBattlefieldPlacements(b *BattleContext, bf HUDRect, metrics HUDMetri
 
 // computeLayoutV2 builds Disciples-like layout: TopBar, LeftRoster, RightRoster, Battlefield, BottomPanel.
 // Proportions tuned so battlefield is the visual center; rosters and bottom panel frame it.
-func (b *BattleContext) computeLayoutV2(screenW, screenH int) BattleHUDLayout {
+func (b *BattleContext) computeLayoutV2(screenW, screenH int, metrics HUDMetrics) BattleHUDLayout {
 	sw := float32(screenW)
 	sh := float32(screenH)
-	metrics := computeHUDMetrics(screenW, screenH)
 
 	var layout BattleHUDLayout
 	layout.Metrics = metrics
@@ -430,11 +450,9 @@ func (b *BattleContext) computeLayoutV2(screenW, screenH int) BattleHUDLayout {
 }
 
 // computeLayoutV1 builds the original table-style layout (Overlay, Formation, Middle, Footer).
-func (b *BattleContext) computeLayoutV1(screenW, screenH int) BattleHUDLayout {
+func (b *BattleContext) computeLayoutV1(screenW, screenH int, metrics HUDMetrics) BattleHUDLayout {
 	sw := float32(screenW)
 	sh := float32(screenH)
-
-	metrics := computeHUDMetrics(screenW, screenH)
 
 	var layout BattleHUDLayout
 	layout.Metrics = metrics
