@@ -61,13 +61,30 @@ const (
 	cueEnemy cueStyle = iota
 	cueResource
 	cueRecruitCamp
+	cuePOIMystic
+	cuePOIWater
+	cuePOIGold
+	cuePOIRuins
+	cuePOIWarm
 )
 
 func cueFromPickupKind(k entity.PickupKind) cueStyle {
-	if k == entity.PickupKindRecruitCamp {
+	switch k {
+	case entity.PickupKindRecruitCamp:
 		return cueRecruitCamp
+	case entity.PickupKindPOIAltar:
+		return cuePOIMystic
+	case entity.PickupKindPOISpring:
+		return cuePOIWater
+	case entity.PickupKindPOICache:
+		return cuePOIGold
+	case entity.PickupKindPOIRuins:
+		return cuePOIRuins
+	case entity.PickupKindPOICampfire:
+		return cuePOIWarm
+	default:
+		return cueResource
 	}
-	return cueResource
 }
 
 func drawNeighborCueRing(screen *ebiten.Image, cx, cy, ts float32, st cueStyle) {
@@ -98,6 +115,16 @@ func cueColors(st cueStyle) (outer, inner color.RGBA, stroke float32) {
 		return visualcolor.Foundation.SelectedKill, visualcolor.Foundation.EnemyAccent, 2.75
 	case cueRecruitCamp:
 		return visualcolor.Foundation.HoverTarget, visualcolor.Foundation.AccentStrip, 2.5
+	case cuePOIMystic:
+		return color.RGBA{R: 200, G: 160, B: 255, A: 255}, color.RGBA{R: 120, G: 90, B: 180, A: 255}, 2.45
+	case cuePOIWater:
+		return color.RGBA{R: 100, G: 200, B: 255, A: 255}, color.RGBA{R: 40, G: 120, B: 200, A: 255}, 2.4
+	case cuePOIGold:
+		return color.RGBA{R: 255, G: 210, B: 100, A: 255}, color.RGBA{R: 180, G: 120, B: 40, A: 255}, 2.35
+	case cuePOIRuins:
+		return color.RGBA{R: 160, G: 150, B: 140, A: 255}, color.RGBA{R: 90, G: 85, B: 78, A: 255}, 2.3
+	case cuePOIWarm:
+		return color.RGBA{R: 255, G: 140, B: 80, A: 255}, color.RGBA{R: 200, G: 90, B: 40, A: 255}, 2.4
 	default:
 		return visualcolor.Foundation.AccentStrip, visualcolor.Foundation.PostBattleBorder, 2.35
 	}

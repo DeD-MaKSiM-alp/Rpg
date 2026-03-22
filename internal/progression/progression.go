@@ -71,7 +71,7 @@ func GenerateRewardOffer(h *hero.Hero, count int) []RewardKind {
 }
 
 // ApplyReward применяет выбранную награду к лидеру (канонический герой выбора после победы).
-// Не дублирует party-wide боевой опыт (CombatExperience) — это отдельный слой.
+// Это отдельный слой от боевого опыта/уровня: постоянные улучшения по выбору после победы.
 func ApplyReward(h *hero.Hero, r RewardKind) {
 	switch r {
 	case RewardMaxHP:
@@ -125,7 +125,7 @@ func RewardLabel(r RewardKind) string {
 	case RewardHealUpgrade:
 		return "Лечение +2"
 	case RewardBasicAttackUpgrade:
-		return "Базовая атака +1"
+		return "Награда: базовая атака +1"
 	default:
 		return "?"
 	}
@@ -149,7 +149,7 @@ func RewardDescription(r RewardKind) string {
 	case RewardHealUpgrade:
 		return "Лечение восстанавливает больше ОЗ"
 	case RewardBasicAttackUpgrade:
-		return "Базовая атака: +1 урон"
+		return "Постоянный бонус (не от уровня): +1 к базовой атаке"
 	default:
 		return ""
 	}

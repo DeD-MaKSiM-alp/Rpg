@@ -124,9 +124,12 @@ func drawPickups(screen *ebiten.Image, source DrawSource, cameraX, cameraY, endX
 			cx := float32((pickup.X-cameraX)*tileSize) + ts*0.5
 			cy := float32((pickup.Y-cameraY)*tileSize) + ts*0.5
 
-			if pickup.Kind == entity.PickupKindRecruitCamp {
+			switch {
+			case pickup.Kind == entity.PickupKindRecruitCamp:
 				drawRecruitCampMarker(screen, cx, cy, ts)
-			} else {
+			case entity.IsPOIKind(pickup.Kind):
+				drawPOIMarker(screen, cx, cy, ts, pickup.Kind)
+			default:
 				drawResourcePickupMarker(screen, cx, cy, ts)
 			}
 		}
@@ -156,6 +159,37 @@ func drawRecruitCampMarker(screen *ebiten.Image, cx, cy, ts float32) {
 	vector.StrokeLine(screen, cx-s, cy+s*0.35, cx, cy-s*0.95, 2, visualcolor.Foundation.AccentStrip, false)
 	vector.StrokeLine(screen, cx+s, cy+s*0.35, cx, cy-s*0.95, 2, visualcolor.Foundation.AccentStrip, false)
 	vector.StrokeLine(screen, cx-s*1.1, cy+s*0.4, cx+s*1.1, cy+s*0.4, 1.5, visualcolor.Foundation.TextPrimary, false)
+}
+
+// drawPOIMarker — маркер точки интереса; отличается от ресурса и лагеря.
+func drawPOIMarker(screen *ebiten.Image, cx, cy, ts float32, k entity.PickupKind) {
+	r := ts * 0.28
+	if r < 7 {
+		r = 7
+	}
+	switch k {
+	case entity.PickupKindPOIAltar:
+		vector.FillCircle(screen, cx, cy, r, color.RGBA{R: 90, G: 70, B: 120, A: 255}, false)
+		vector.StrokeCircle(screen, cx, cy, r, 2, color.RGBA{R: 200, G: 160, B: 255, A: 255}, false)
+		vector.StrokeLine(screen, cx, cy-r*0.9, cx, cy+r*0.5, 2, color.RGBA{R: 240, G: 220, B: 255, A: 255}, false)
+	case entity.PickupKindPOISpring:
+		vector.FillCircle(screen, cx, cy-r*0.15, r*0.85, color.RGBA{R: 70, G: 150, B: 220, A: 255}, false)
+		vector.FillCircle(screen, cx+r*0.35, cy+r*0.25, r*0.45, color.RGBA{R: 120, G: 200, B: 255, A: 255}, false)
+		vector.StrokeCircle(screen, cx, cy-r*0.15, r*0.85, 1.5, color.RGBA{R: 200, G: 240, B: 255, A: 255}, false)
+	case entity.PickupKindPOICache:
+		sq := r * 1.1
+		vector.FillRect(screen, cx-sq*0.5, cy-sq*0.45, sq, sq*0.9, color.RGBA{R: 140, G: 100, B: 40, A: 255}, false)
+		vector.StrokeRect(screen, cx-sq*0.5, cy-sq*0.45, sq, sq*0.9, 1.5, color.RGBA{R: 255, G: 210, B: 100, A: 255}, false)
+	case entity.PickupKindPOIRuins:
+		vector.StrokeRect(screen, cx-r, cy-r*0.7, r*2, r*1.4, 2, color.RGBA{R: 140, G: 130, B: 120, A: 255}, false)
+		vector.StrokeLine(screen, cx-r*0.6, cy+r*0.5, cx+r*0.5, cy-r*0.4, 1.5, color.RGBA{R: 100, G: 95, B: 88, A: 220}, false)
+	case entity.PickupKindPOICampfire:
+		vector.FillCircle(screen, cx, cy+r*0.35, r*0.35, color.RGBA{R: 60, G: 45, B: 30, A: 255}, false)
+		vector.StrokeLine(screen, cx-r*0.5, cy+r*0.2, cx, cy-r*0.85, 2.5, color.RGBA{R: 255, G: 140, B: 60, A: 255}, false)
+		vector.StrokeLine(screen, cx+r*0.45, cy+r*0.15, cx-r*0.2, cy-r*0.6, 2, color.RGBA{R: 255, G: 200, B: 80, A: 255}, false)
+	default:
+		drawResourcePickupMarker(screen, cx, cy, ts)
+	}
 }
 
 func drawEnemies(screen *ebiten.Image, source DrawSource, cameraX, cameraY, endX, endY, tileSize int) {

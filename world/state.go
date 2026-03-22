@@ -89,6 +89,7 @@ func (w *World) newChunk(chunkX, chunkY, seed int) *mapdata.Chunk {
 	}
 	chunk.Pickups = w.generatePickupsForChunk(chunkX, chunkY, seed, chunk.Tiles)
 	chunk.Pickups = append(chunk.Pickups, w.generateRecruitCampPickups(chunkX, chunkY, seed, chunk.Tiles, chunk.Pickups)...)
+	chunk.Pickups = append(chunk.Pickups, w.generatePOIsForChunk(chunkX, chunkY, seed, chunk.Tiles, chunk.Pickups)...)
 	w.generateEnemiesForChunk(chunkX, chunkY, seed, chunk.Tiles)
 	return chunk
 }
@@ -202,6 +203,14 @@ func (w *World) InteractPickupAfterMove(worldX, worldY int) PickupInteractionRes
 		if p.Kind == entity.PickupKindRecruitCamp {
 			return PickupInteractRecruitOffer
 		}
+		if p.Kind == entity.PickupKindPOIAltar || p.Kind == entity.PickupKindPOIRuins {
+			return PickupInteractPOIRequiresChoice
+		}
+		if entity.IsPOIKind(p.Kind) {
+			p.Collected = true
+			w.collectedPickups[key] = true
+			return poiResultFromKind(p.Kind)
+		}
 		p.Collected = true
 		w.collectedPickups[key] = true
 		return PickupInteractResource
@@ -232,11 +241,36 @@ func (w *World) MarkRecruitPickupCollected(worldX, worldY int) bool {
 	return false
 }
 
+// MarkPOIPickupCollected помечает одноразовый POI на клетке собранным после применения эффекта в game (в т.ч. после выбора).
+func (w *World) MarkPOIPickupCollected(worldX, worldY int) bool {
+	coord, _, _ := mapdata.WorldToChunkLocal(worldX, worldY)
+	chunk := w.getOrCreateChunk(coord)
+	key := mapdata.PickupKey{X: worldX, Y: worldY}
+	for i := range chunk.Pickups {
+		p := &chunk.Pickups[i]
+		if p.Collected {
+			continue
+		}
+		if p.X != worldX || p.Y != worldY {
+			continue
+		}
+		if !entity.IsPOIKind(p.Kind) {
+			return false
+		}
+		p.Collected = true
+		w.collectedPickups[key] = true
+		return true
+	}
+	return false
+}
+
 func (w *World) generatePickupsForChunk(chunkX, chunkY, seed int, tiles [][]mapdata.TileType) []entity.Pickup {
 	if chunkX == 0 && chunkY == 0 {
 		return nil
 	}
-	if generation.Hash2D(chunkX, chunkY, seed+5000)%100 >= 28 {
+	zone := ZoneKindForChunk(chunkX, chunkY, seed)
+	prof := spawnRulesForZone(zone)
+	if generation.Hash2D(chunkX, chunkY, seed+5000)%100 >= prof.ResThreshold {
 		return nil
 	}
 	for attempt := 0; attempt < 8; attempt++ {
@@ -402,7 +436,9 @@ func (w *World) generateEnemiesForChunk(chunkX, chunkY, seed int, tiles [][]mapd
 	if chunkX == 0 && chunkY == 0 {
 		return
 	}
-	if generation.Hash2D(chunkX, chunkY, seed+9000)%100 >= 22 {
+	zone := ZoneKindForChunk(chunkX, chunkY, seed)
+	prof := spawnRulesForZone(zone)
+	if generation.Hash2D(chunkX, chunkY, seed+9000)%100 >= prof.EnemyThreshold {
 		return
 	}
 	for attempt := 0; attempt < 8; attempt++ {
@@ -424,7 +460,8 @@ func (w *World) generateEnemiesForChunk(chunkX, chunkY, seed int, tiles [][]mapd
 		if entity.GetEnemyAt(w.entities, worldX, worldY) != nil {
 			return
 		}
-		w.addEntity(entity.EntityEnemy, entity.EnemyKindSlime, worldX, worldY)
+		kind := pickEnemyKindForZone(zone, chunkX, chunkY, seed, attempt)
+		w.addEntity(entity.EntityEnemy, kind, worldX, worldY)
 		return
 	}
 }

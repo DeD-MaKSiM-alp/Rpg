@@ -65,6 +65,10 @@ func (g *Game) Update() error {
 		g.updateRecruitOfferMode()
 		return nil
 	}
+	if g.mode == ModePOIChoice {
+		g.updatePOIChoiceMode()
+		return nil
+	}
 	return g.updateExploreMode()
 }
 
@@ -105,6 +109,12 @@ func (g *Game) updateExploreMode() error {
 		g.exploreRecruitMsgTicks--
 		if g.exploreRecruitMsgTicks <= 0 {
 			g.exploreRecruitMsg = ""
+		}
+	}
+	if g.explorePOIMsgTicks > 0 {
+		g.explorePOIMsgTicks--
+		if g.explorePOIMsgTicks <= 0 {
+			g.explorePOIMsg = ""
 		}
 	}
 
@@ -168,6 +178,23 @@ func (g *Game) updateExploreMode() error {
 			g.mode = ModeRecruitOffer
 			g.recruitOfferX = g.player.GridX
 			g.recruitOfferY = g.player.GridY
+			return nil
+		}
+		if pu == world.PickupInteractPOIRequiresChoice {
+			k, ok := g.world.PickupPreviewAt(g.player.GridX, g.player.GridY)
+			if !ok {
+				g.advanceWorldTurn()
+				return nil
+			}
+			g.mode = ModePOIChoice
+			g.poiChoiceX = g.player.GridX
+			g.poiChoiceY = g.player.GridY
+			g.poiChoiceKind = k
+			g.poiChoiceSel = 0
+			return nil
+		}
+		if g.applyPOIWorldEffect(pu) {
+			g.advanceWorldTurn()
 			return nil
 		}
 		g.advanceWorldTurn()
@@ -381,8 +408,8 @@ func (g *Game) updateBattleMode() {
 	switch outcome {
 	case battlepkg.BattleOutcomeVictory:
 		g.syncPartyFromBattle()
-		progression.ApplyVictoryCombatXPForActiveSurvivors(g.battle, &g.party)
-		summary := progression.BuildVictoryProgressionSummary(g.battle, &g.party, TrainingMarksPerVictory)
+		levelUps := progression.ApplyVictoryCombatXPForActiveSurvivors(g.battle, &g.party)
+		summary := progression.BuildVictoryProgressionSummary(g.battle, &g.party, TrainingMarksPerVictory, levelUps)
 		g.resolveBattleResult(outcome)
 		g.BattlesWon++
 		g.applyVictoryTrainingMarks()

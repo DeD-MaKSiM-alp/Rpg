@@ -32,7 +32,8 @@ func HeroShortLabel(h *hero.Hero, slotIndex int) string {
 // BuildVictoryProgressionSummary собирает строки после победы.
 // Вызывать после syncPartyFromBattle и ApplyVictoryCombatXPForActiveSurvivors, пока BattleContext ещё доступен.
 // trainingMarksDelta — сколько знаков начислено за эту победу (совпадает с game.TrainingMarksPerVictory).
-func BuildVictoryProgressionSummary(b *battlepkg.BattleContext, roster *party.Party, trainingMarksDelta int) VictoryProgressionSummary {
+// levelUps — кто поднял боевой уровень после начисления опыта за эту победу.
+func BuildVictoryProgressionSummary(b *battlepkg.BattleContext, roster *party.Party, trainingMarksDelta int, levelUps []CombatLevelUp) VictoryProgressionSummary {
 	if b == nil || roster == nil {
 		return VictoryProgressionSummary{}
 	}
@@ -65,7 +66,14 @@ func BuildVictoryProgressionSummary(b *battlepkg.BattleContext, roster *party.Pa
 	} else {
 		lines = append(lines, "Боевой опыт: некому начислить (нет выживших в строю).")
 	}
-	lines = append(lines, fmt.Sprintf("Опыт усиливает обычную атаку: каждые %d шага — +1 к урону базового удара.", hero.CombatXPStepsPerBasicAttackBonus))
+	for _, up := range levelUps {
+		if roster == nil || up.PartyActiveIndex < 0 || up.PartyActiveIndex >= len(roster.Active) {
+			continue
+		}
+		name := HeroShortLabel(&roster.Active[up.PartyActiveIndex], up.PartyActiveIndex)
+		lines = append(lines, fmt.Sprintf("%s: боевой уровень %d → %d (бонус базовой атаки от уровня +1).", name, up.OldLevel, up.NewLevel))
+	}
+	lines = append(lines, fmt.Sprintf("Опыт копится в боевом уровне; +1 к базовой атаке только при новом уровне (каждые %d опыта).", hero.CombatXPPerLevel))
 	if len(dead) > 0 {
 		lines = append(lines, fmt.Sprintf("Поверженные: %s — боевой опыт не получили.", strings.Join(dead, ", ")))
 	}

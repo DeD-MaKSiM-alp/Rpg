@@ -1,4 +1,4 @@
-// progression_format.go — короткие строки для HUD / карточек; доменная логика в hero/progression не меняется.
+// progression_format.go — короткие строки для HUD / карточек; доменная логика в hero/progression.
 package ui
 
 import (
@@ -7,26 +7,19 @@ import (
 	"mygame/internal/hero"
 )
 
-// CombatXPToNextBonusStep — сколько единиц боевого опыта до следующего +1 к бонусу базовой атаки только от CombatExperience.
-func CombatXPToNextBonusStep(xp int) int {
-	steps := hero.CombatXPStepsPerBasicAttackBonus
-	next := ((xp / steps) + 1) * steps
-	return next - xp
-}
-
-// FormatCombatXPInspectLines — 1–2 строки для карточек (состав F5·I, ПКМ в бою); формулировки совпадают с HUD/explore.
+// FormatCombatXPInspectLines — 1–2 строки для карточек (состав F5·I, ПКМ в бою); боевой уровень и опыт до следующего.
 func FormatCombatXPInspectLines(h *hero.Hero) []string {
 	if h == nil {
 		return nil
 	}
-	xp := h.CombatExperience
+	lvl := h.CombatLevel()
+	need := h.CombatXPToNextLevel()
+	fromLevel := h.CombatAttackBonusFromLevel()
+	reward := h.BasicAttackBonus
 	total := h.EffectiveBasicAttackBonusForCombat()
-	base := h.BasicAttackBonus
-	fromXP := xp / hero.CombatXPStepsPerBasicAttackBonus
-	need := CombatXPToNextBonusStep(xp)
 	return []string{
-		fmt.Sprintf("Боевой опыт: %d · к базовой атаке +%d (награды лидера +%d · от опыта +%d)", xp, total, base, fromXP),
-		fmt.Sprintf("До следующего +1 от опыта: ещё %d (шаг каждые %d).", need, hero.CombatXPStepsPerBasicAttackBonus),
+		fmt.Sprintf("Боевой уровень %d · опыт %d · до следующего уровня ещё %d · бонус базовой атаки +%d (от уровня +%d · награды после боя +%d)", lvl, h.CombatExperience, need, total, fromLevel, reward),
+		fmt.Sprintf("Каждые %d опыта — новый уровень и +1 к базовой атаке от уровня.", hero.CombatXPPerLevel),
 	}
 }
 
@@ -35,10 +28,7 @@ func FormatLeaderExploreStripLine(h *hero.Hero) string {
 	if h == nil {
 		return ""
 	}
-	xp := h.CombatExperience
-	bonus := h.EffectiveBasicAttackBonusForCombat()
-	need := CombatXPToNextBonusStep(xp)
-	return fmt.Sprintf("Лидер: опыт %d · бонус к базовой атаке +%d · ещё %d до +1 от опыта", xp, bonus, need)
+	return fmt.Sprintf("Лидер: ур. %d · опыт %d · ещё %d опыта до след. уровня · базовая атака +%d", h.CombatLevel(), h.CombatExperience, h.CombatXPToNextLevel(), h.EffectiveBasicAttackBonusForCombat())
 }
 
 // FormatLeaderHUDProgressionLine — компактная строка верхнего HUD (обрезается по ширине экрана).
@@ -46,8 +36,5 @@ func FormatLeaderHUDProgressionLine(h *hero.Hero) string {
 	if h == nil {
 		return ""
 	}
-	xp := h.CombatExperience
-	bonus := h.EffectiveBasicAttackBonusForCombat()
-	need := CombatXPToNextBonusStep(xp)
-	return fmt.Sprintf("Лидер: опыт %d · бонус к базовой атаке +%d · +1 от опыта через %d", xp, bonus, need)
+	return fmt.Sprintf("Лидер: ур.%d · опыт %d · +%d до след. ур. · баз. атака +%d", h.CombatLevel(), h.CombatExperience, h.CombatXPToNextLevel(), h.EffectiveBasicAttackBonusForCombat())
 }

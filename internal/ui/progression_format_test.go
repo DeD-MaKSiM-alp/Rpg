@@ -1,20 +1,20 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	"mygame/internal/hero"
 )
 
-func TestCombatXPToNextBonusStep(t *testing.T) {
-	steps := hero.CombatXPStepsPerBasicAttackBonus
-	if CombatXPToNextBonusStep(0) != steps {
-		t.Fatalf("from 0 want %d, got %d", steps, CombatXPToNextBonusStep(0))
+func TestFormatLeaderHUDProgressionLine_includesLevel(t *testing.T) {
+	h := hero.DefaultHero()
+	h.CombatExperience = 2
+	s := FormatLeaderHUDProgressionLine(&h)
+	if s == "" {
+		t.Fatal("empty")
 	}
-	if CombatXPToNextBonusStep(3) != 1 {
-		t.Fatalf("from 3 want 1, got %d", CombatXPToNextBonusStep(3))
-	}
-	if CombatXPToNextBonusStep(4) != steps {
-		t.Fatalf("from 4 want %d, got %d", steps, CombatXPToNextBonusStep(4))
+	if !strings.Contains(s, "ур.1") || !strings.Contains(s, "опыт 2") {
+		t.Fatalf("unexpected: %q", s)
 	}
 }

@@ -24,7 +24,7 @@ func TestBuildVictoryProgressionSummary_twoSurvivors(t *testing.T) {
 	if ctx == nil {
 		t.Fatal("ctx")
 	}
-	sum := BuildVictoryProgressionSummary(ctx, &roster, 1)
+	sum := BuildVictoryProgressionSummary(ctx, &roster, 1, nil)
 	if len(sum.Lines) < 2 {
 		t.Fatalf("lines: %#v", sum.Lines)
 	}
@@ -52,7 +52,7 @@ func TestBuildVictoryProgressionSummary_deadNoXP(t *testing.T) {
 	if deadID == 0 {
 		t.Fatal("no second ally")
 	}
-	sum := BuildVictoryProgressionSummary(ctx, &roster, 1)
+	sum := BuildVictoryProgressionSummary(ctx, &roster, 1, nil)
 	found := false
 	for _, ln := range sum.Lines {
 		if strings.Contains(ln, "Поверженные") && strings.Contains(ln, "не получили") {
@@ -75,7 +75,7 @@ func TestBuildVictoryProgressionSummary_reserveLine(t *testing.T) {
 	}
 	seeds := roster.PlayerCombatSeeds()
 	ctx := battlepkg.BuildBattleContextFromEncounter(enc, seeds, 0)
-	sum := BuildVictoryProgressionSummary(ctx, &roster, 1)
+	sum := BuildVictoryProgressionSummary(ctx, &roster, 1, nil)
 	found := false
 	for _, ln := range sum.Lines {
 		if strings.Contains(ln, "Резерв") && strings.Contains(ln, "не начисляется") {
@@ -85,6 +85,29 @@ func TestBuildVictoryProgressionSummary_reserveLine(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected reserve line: %#v", sum.Lines)
+	}
+}
+
+func TestBuildVictoryProgressionSummary_levelUpLine(t *testing.T) {
+	enc := battlepkg.Encounter{
+		Enemies: []battlepkg.EncounterEnemy{{EnemyID: 1, Kind: entity.EnemyKindSlime}},
+	}
+	h := hero.DefaultHero()
+	h.CombatExperience = 4 // уже после повышения; для подписи имени
+	roster := party.Party{Active: []hero.Hero{h}}
+	seeds := roster.PlayerCombatSeeds()
+	ctx := battlepkg.BuildBattleContextFromEncounter(enc, seeds, 0)
+	ups := []CombatLevelUp{{PartyActiveIndex: 0, OldLevel: 1, NewLevel: 2}}
+	sum := BuildVictoryProgressionSummary(ctx, &roster, 0, ups)
+	found := false
+	for _, ln := range sum.Lines {
+		if strings.Contains(ln, "боевой уровень 1 → 2") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected level-up line: %#v", sum.Lines)
 	}
 }
 

@@ -12,7 +12,7 @@ import (
 // Hero — состояние одного бойца между боями (статы, способности). Сборка отряда — в party.Party.
 type Hero struct {
 	// UnitID — стабильный id шаблона юнита (internal/unitdata); не display name. Пустой = legacy до data layer.
-	UnitID string
+	UnitID           string
 	MaxHP            int
 	CurrentHP        int // каноническое HP между боями; 0 = недоступен для следующего боя (пока нет лечения/лагеря)
 	Attack           int
@@ -20,16 +20,20 @@ type Hero struct {
 	Initiative       int
 	HealPower        int // bonus HP healed (added to base 2); see battle.CombatUnit.HealPower
 	BasicAttackBonus int // extra damage for basic attack only (награды лидера и т.п.)
-	// CombatExperience — party-wide progression: накапливается за победы, в которых герой был в активном строю и выжил.
-	// В бой идёт как бонус к базовой атаке: +1 за каждые CombatXPStepsPerBasicAttackBonus (см. CombatUnitSeed).
+	// CombatExperience — накопленный боевой опыт (все источники: победы, руины и т.д.).
+	// Боевой уровень = 1 + CombatExperience/CombatXPPerLevel; бонус к базовой атаке от уровня = CombatExperience/CombatXPPerLevel
+	// (усиление только при переходе на новый уровень, не «дробями за каждый шаг»).
 	CombatExperience int
 	Abilities        []battlepkg.AbilityID
 	// RecruitLabel — если не пусто, подпись в UI (например «Новобранец 2»); иначе используются роли party.
 	RecruitLabel string
 }
 
-// CombatXPStepsPerBasicAttackBonus — каждые N единиц боевого опыта дают +1 к эффективному бонусу базовой атаки в бою.
-const CombatXPStepsPerBasicAttackBonus = 4
+// CombatXPPerLevel — сколько единиц боевого опыта нужно на один боевой уровень (бонус базовой атаки +1 за уровень от опыта).
+const CombatXPPerLevel = 4
+
+// CombatXPStepsPerBasicAttackBonus — устаревшее имя константы; равно CombatXPPerLevel.
+const CombatXPStepsPerBasicAttackBonus = CombatXPPerLevel
 
 // DefaultHero возвращает стартового героя из unit template (лидер милитии).
 func DefaultHero() Hero {
@@ -58,15 +62,15 @@ func NewHeroFromUnitTemplate(unitID string) (Hero, error) {
 	abils := make([]battlepkg.AbilityID, len(t.Abilities))
 	copy(abils, t.Abilities)
 	h := Hero{
-		UnitID:       t.UnitID,
-		MaxHP:        t.MaxHP,
-		Attack:       t.Attack,
-		Defense:      t.Defense,
-		Initiative:   t.Initiative,
-		HealPower:    t.HealPower,
+		UnitID:           t.UnitID,
+		MaxHP:            t.MaxHP,
+		Attack:           t.Attack,
+		Defense:          t.Defense,
+		Initiative:       t.Initiative,
+		HealPower:        t.HealPower,
 		BasicAttackBonus: 0,
 		CombatExperience: 0,
-		Abilities:    abils,
+		Abilities:        abils,
 	}
 	h.CurrentHP = h.MaxHP
 	return h, nil
@@ -77,12 +81,44 @@ func (h *Hero) CanEnterBattle() bool {
 	return h != nil && h.CurrentHP > 0
 }
 
-// EffectiveBasicAttackBonusForCombat — сумма наград (BasicAttackBonus) и роста от боевого опыта.
+// CombatLevelFromTotalXP — боевой уровень по суммарному опыту (минимум 1).
+func CombatLevelFromTotalXP(xp int) int {
+	if xp < 0 {
+		return 1
+	}
+	return 1 + xp/CombatXPPerLevel
+}
+
+// CombatLevel — текущий боевой уровень от накопленного CombatExperience.
+func (h *Hero) CombatLevel() int {
+	if h == nil {
+		return 1
+	}
+	return CombatLevelFromTotalXP(h.CombatExperience)
+}
+
+// CombatXPToNextLevel — сколько опыта не хватает до порога следующего уровня.
+func (h *Hero) CombatXPToNextLevel() int {
+	if h == nil {
+		return CombatXPPerLevel
+	}
+	return h.CombatLevel()*CombatXPPerLevel - h.CombatExperience
+}
+
+// CombatAttackBonusFromLevel — часть бонуса базовой атаки, которая идёт только от боевого уровня (без наград лидера).
+func (h *Hero) CombatAttackBonusFromLevel() int {
+	if h == nil {
+		return 0
+	}
+	return h.CombatExperience / CombatXPPerLevel
+}
+
+// EffectiveBasicAttackBonusForCombat — награды лидера (BasicAttackBonus) + бонус от боевого уровня.
 func (h *Hero) EffectiveBasicAttackBonusForCombat() int {
 	if h == nil {
 		return 0
 	}
-	return h.BasicAttackBonus + h.CombatExperience/CombatXPStepsPerBasicAttackBonus
+	return h.BasicAttackBonus + h.CombatAttackBonusFromLevel()
 }
 
 // battleRoleFromAbilities — LEGACY: роль из способностей, если нет канонического шаблона (hero.UnitID).

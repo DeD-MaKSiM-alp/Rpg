@@ -17,6 +17,7 @@ import (
 	"mygame/internal/postbattle"
 	"mygame/internal/ui"
 	"mygame/world"
+	"mygame/world/entity"
 )
 
 // DefaultWindowTitle — заголовок окна по умолчанию.
@@ -104,6 +105,8 @@ const (
 	ModeFormation
 	// ModeRecruitOffer — подтверждение найма с лагеря на карте (world PickupKindRecruitCamp).
 	ModeRecruitOffer
+	// ModePOIChoice — выбор risk/reward у POI (руины / алтарь) до сбора пикапа.
+	ModePOIChoice
 )
 
 // Game — основная структура, описывающая состояние всей игры.
@@ -151,17 +154,26 @@ type Game struct {
 	exploreRecruitMsg      string
 	exploreRecruitMsgTicks int
 
+	// explorePOIMsg — краткий баннер после взаимодействия с POI в мире.
+	explorePOIMsg      string
+	explorePOIMsgTicks int
+
 	// recruitOfferX/Y — клетка лагеря наёмников при ModeRecruitOffer (после подтверждения — MarkRecruitPickupCollected).
 	recruitOfferX int
 	recruitOfferY int
+
+	// poiChoice* — клетка и вид POI при ModePOIChoice; poiChoiceSel 0/1 — выбранный вариант.
+	poiChoiceX, poiChoiceY int
+	poiChoiceKind          entity.PickupKind
+	poiChoiceSel           int
 
 	// formationMsg — баннер после promotion (P) на экране состава с открытой карточкой.
 	formationMsg      string
 	formationMsgTicks int
 
 	// battleInspectOpen — карточка по ПКМ в бою (не пост-бой).
-	battleInspectOpen     bool
-	battleInspectUnitID   battlepkg.UnitID
+	battleInspectOpen   bool
+	battleInspectUnitID battlepkg.UnitID
 
 	// inspectHoverBattleUnitID — юнит под курсором для подсказки ПКМ-inspect (0 = нет).
 	inspectHoverBattleUnitID battlepkg.UnitID

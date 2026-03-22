@@ -49,24 +49,36 @@ func (w *World) ExploreHUDHintLine(px, py int) string {
 			continue
 		}
 		if k, ok := w.PickupPreviewAt(tx, ty); ok {
-			if k == entity.PickupKindRecruitCamp {
-				parts = append(parts, d.name+" лагерь")
-			} else {
-				parts = append(parts, d.name+" добыча")
-			}
+			parts = append(parts, d.name+" "+pickupKindHintWordRU(k))
 		}
 	}
 	if k, ok := w.PickupPreviewAt(px, py); ok {
-		if k == entity.PickupKindRecruitCamp {
-			parts = append(parts, "здесь лагерь")
-		} else {
-			parts = append(parts, "здесь добыча")
-		}
+		parts = append(parts, "здесь "+pickupKindHintWordRU(k))
 	}
 	if len(parts) == 0 {
 		return ""
 	}
 	return "Шаг: " + strings.Join(parts, " · ")
+}
+
+// pickupKindHintWordRU — короткое существительное для подсказки (направление / «здесь …»).
+func pickupKindHintWordRU(k entity.PickupKind) string {
+	switch k {
+	case entity.PickupKindRecruitCamp:
+		return "лагерь"
+	case entity.PickupKindPOIAltar:
+		return "алтарь · выбор"
+	case entity.PickupKindPOISpring:
+		return "источник"
+	case entity.PickupKindPOICache:
+		return "тайник"
+	case entity.PickupKindPOIRuins:
+		return "руины · выбор"
+	case entity.PickupKindPOICampfire:
+		return "привал"
+	default:
+		return "добыча"
+	}
 }
 
 // DrawExploreCues — кольца интерактива (см. render.DrawExploreInteractionCues).
