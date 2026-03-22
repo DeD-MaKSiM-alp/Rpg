@@ -16,7 +16,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.Black)
 
 	g.world.Draw(screen, g.cameraX, g.cameraY, WorldViewport.WidthTiles, WorldViewport.HeightTiles, tileSize)
-	g.drawGrid(screen)
+	if DevHUDOverlay {
+		g.drawGrid(screen)
+	}
 	if g.mode == ModeExplore {
 		g.world.DrawExploreCues(screen, g.player.GridX, g.player.GridY, g.cameraX, g.cameraY, WorldViewport.WidthTiles, WorldViewport.HeightTiles, tileSize)
 	}
@@ -35,25 +37,24 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	atCamp := g.world.PlayerStandsOnActiveRecruitCamp(g.player.GridX, g.player.GridY)
 	promoHUD := PromotionExploreHUDLine(&g.party, atCamp, g.TrainingMarks)
-	lay := ui.ComputeScreenLayout(ScreenWidth, ScreenHeight, 0)
-	var exploreBundle ui.ExploreLayoutBundle
+
+	exploreHUD := ui.NewExploreHUDLayoutFromScreenLayout(ui.ComputeScreenLayout(ScreenWidth, ScreenHeight, 0))
 	if g.mode == ModeExplore {
-		exploreBundle = ui.BuildExploreLayoutBundle(ScreenWidth, ScreenHeight,
+		exploreHUD = ui.BuildExploreHUDLayout(ScreenWidth, ScreenHeight,
 			g.world.ZoneHUDLine(g.player.GridX, g.player.GridY),
 			g.exploreRestMsg,
 			g.exploreRecruitMsg,
 			g.explorePOIMsg,
 			g.world.ExploreHUDHintLine(g.player.GridX, g.player.GridY))
-		lay = exploreBundle.Layout
 	}
-	ui.DrawHUD(screen, g.pickupCount, g.TrainingMarks, g.hudFace, g.party.Leader(), lay, promoHUD)
+	ui.DrawHUD(screen, g.pickupCount, g.TrainingMarks, g.hudFace, exploreHUD, promoHUD)
 
 	if g.mode == ModeExplore || g.mode == ModeRecruitOffer || g.mode == ModePOIChoice {
 		promoStrip := PromotionExploreStripLine(&g.party, atCamp, g.TrainingMarks)
-		ui.DrawExplorePartyStrip(screen, g.hudFace, &g.party, lay, promoStrip)
+		ui.DrawExplorePartyStrip(screen, g.hudFace, &g.party, exploreHUD, promoStrip)
 	}
 	if g.mode == ModeExplore {
-		ui.DrawExploreFormationHint(screen, g.hudFace, exploreBundle)
+		ui.DrawExploreFormationHint(screen, g.hudFace, exploreHUD)
 	}
 
 	if g.mode == ModeRecruitOffer {
@@ -83,12 +84,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			}
 			ui.DrawCharacterInspectOverlay(screen, g.hudFace, &g.party, g.formationSel, ScreenWidth, ScreenHeight, g.formationMsg, atCamp, g.TrainingMarks, promoTargets, promoCosts, g.formationPromoteBranchIdx, promoHead)
 		}
-	}
-
-	if g.mode == ModeExplore && debugShowInputDirection {
-		rawX, rawY := g.input.DebugRaw()
-		emitX, emitY := g.input.DebugEmit()
-		ui.DrawDebugInputDirection(screen, rawX, rawY, emitX, emitY)
 	}
 
 	if g.mode == ModeBattle {
@@ -123,5 +118,18 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
+	g.drawDevHUD(screen)
+}
+
+// drawDevHUD — служебные оверлеи (не часть player-facing explore pipeline). Включается DevHUDOverlay + F10.
+func (g *Game) drawDevHUD(screen *ebiten.Image) {
+	if !DevHUDOverlay {
+		return
+	}
+	if g.mode == ModeExplore {
+		rawX, rawY := g.input.DebugRaw()
+		emitX, emitY := g.input.DebugEmit()
+		ui.DrawDebugInputDirection(screen, rawX, rawY, emitX, emitY)
+	}
 	ui.DrawResolutionIndicator(screen, g.hudFace, ScreenWidth, ScreenHeight)
 }

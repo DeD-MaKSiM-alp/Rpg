@@ -81,12 +81,8 @@ func drawBattleRosterUnitCard(screen *ebiten.Image, hudFace *text.GoTextFace, ba
 
 	vector.FillRect(screen, r.X, r.Y, 4, r.H, rosterIdentityStripColor(u), false)
 
-	// Тонкая внутренняя обводка текстового блока (связь с рамкой inspect-карточки).
 	textLeft := px + portraitW + 5
 	textW := r.X + r.W - textLeft - innerPad
-	if textW > 8 && r.H > innerPad*2+4 {
-		vector.StrokeRect(screen, textLeft-2, r.Y+innerPad, textW+2, r.H-innerPad*2, 1, Theme.RosterCardInnerStroke, false)
-	}
 
 	vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, strokeW, border, false)
 
@@ -111,9 +107,11 @@ func drawBattleRosterUnitCard(screen *ebiten.Image, hudFace *text.GoTextFace, ba
 	row1 := rect{X: textLeft, Y: r.Y + innerPad + 1, W: textW, H: lineH}
 	drawSingleLineInRect(screen, hudFace, row1, fitTextToWidth(hudFace, name, textW), metrics, textCol)
 
-	hpStr := "Погиб"
+	hpStr := "—"
 	if u.IsAlive() {
-		hpStr = fmt.Sprintf("ОЗ %d/%d", u.State.HP, u.MaxHP())
+		hpStr = fmt.Sprintf("%d/%d", u.State.HP, u.MaxHP())
+	} else {
+		hpStr = "погиб"
 	}
 	row2 := rect{X: textLeft, Y: r.Y + innerPad + 1 + lineH*0.92, W: textW, H: lineH}
 	drawSingleLineInRect(screen, hudFace, row2, hpStr, metrics, textCol)

@@ -28,7 +28,7 @@ func TestBuildVictoryProgressionSummary_twoSurvivors(t *testing.T) {
 	if len(sum.Lines) < 2 {
 		t.Fatalf("lines: %#v", sum.Lines)
 	}
-	if !strings.Contains(sum.Lines[0], "Боевой опыт") || !strings.Contains(sum.Lines[0], "+1") {
+	if !strings.Contains(sum.Lines[0], "Опыт") || !strings.Contains(sum.Lines[0], "+1") {
 		t.Fatalf("first line: %q", sum.Lines[0])
 	}
 }
@@ -55,7 +55,7 @@ func TestBuildVictoryProgressionSummary_deadNoXP(t *testing.T) {
 	sum := BuildVictoryProgressionSummary(ctx, &roster, 1, nil)
 	found := false
 	for _, ln := range sum.Lines {
-		if strings.Contains(ln, "Поверженные") && strings.Contains(ln, "не получили") {
+		if strings.Contains(ln, "Без опыта") {
 			found = true
 			break
 		}
@@ -78,7 +78,7 @@ func TestBuildVictoryProgressionSummary_reserveLine(t *testing.T) {
 	sum := BuildVictoryProgressionSummary(ctx, &roster, 1, nil)
 	found := false
 	for _, ln := range sum.Lines {
-		if strings.Contains(ln, "Резерв") && strings.Contains(ln, "не начисляется") {
+		if strings.Contains(ln, "Резерв") && strings.Contains(ln, "без опыта") {
 			found = true
 			break
 		}
@@ -101,7 +101,7 @@ func TestBuildVictoryProgressionSummary_levelUpLine(t *testing.T) {
 	sum := BuildVictoryProgressionSummary(ctx, &roster, 0, ups)
 	found := false
 	for _, ln := range sum.Lines {
-		if strings.Contains(ln, "боевой уровень 1 → 2") {
+		if strings.Contains(ln, "Уровень↑") && strings.Contains(ln, "1→2") {
 			found = true
 			break
 		}

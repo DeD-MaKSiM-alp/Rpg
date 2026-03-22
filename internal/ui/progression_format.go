@@ -28,13 +28,15 @@ func FormatLeaderExploreStripLine(h *hero.Hero) string {
 	if h == nil {
 		return ""
 	}
-	return fmt.Sprintf("Лидер: ур. %d · опыт %d · ещё %d опыта до след. уровня · базовая атака +%d", h.CombatLevel(), h.CombatExperience, h.CombatXPToNextLevel(), h.EffectiveBasicAttackBonusForCombat())
+	return fmt.Sprintf("Лидер · ур.%d · опыт %d · ещё %d до ур. · атака +%d",
+		h.CombatLevel(), h.CombatExperience, h.CombatXPToNextLevel(), h.EffectiveBasicAttackBonusForCombat())
 }
 
-// FormatLeaderHUDProgressionLine — компактная строка верхнего HUD (обрезается по ширине экрана).
+// FormatLeaderHUDProgressionLine — компактная строка прогресса лидера (сейчас в основном для тестов; в explore — полоска отряда).
 func FormatLeaderHUDProgressionLine(h *hero.Hero) string {
 	if h == nil {
 		return ""
 	}
-	return fmt.Sprintf("Лидер: ур.%d · опыт %d · +%d до след. ур. · баз. атака +%d", h.CombatLevel(), h.CombatExperience, h.CombatXPToNextLevel(), h.EffectiveBasicAttackBonusForCombat())
+	return fmt.Sprintf("Лидер · ур.%d · опыт %d · ещё %d до ур. · атака +%d",
+		h.CombatLevel(), h.CombatExperience, h.CombatXPToNextLevel(), h.EffectiveBasicAttackBonusForCombat())
 }

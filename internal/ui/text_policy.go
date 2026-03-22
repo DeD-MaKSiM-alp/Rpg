@@ -53,10 +53,11 @@ func CompactLine(face *text.GoTextFace, full, compact string, maxW float32) stri
 }
 
 // ApplyExploreHintOverflow урезает опциональные строки, если их больше, чем MaxBottomLines у tier.
+// Порядок вытеснения должен совпадать с ExploreBottomEvictionPriority() (explore_hud_policy.go):
+// POI → recruit → rest → interaction → zone. Базовая строка хоткеев не вытесняется (см. ExploreBottomBaselineSlotCount).
 func ApplyExploreHintOverflow(tier ResolutionTier, zoneLine, restFeedback, recruitFeedback, poiFeedback, interactionHint string) (z, rest, rec, poi, inter string) {
 	maxL := presetForTier(tier).BottomMaxLines
-	// Базовые две строки (R, F5) всегда считаются занятыми.
-	maxOptional := maxL - 2
+	maxOptional := maxL - ExploreBottomBaselineSlotCount()
 	if maxOptional < 0 {
 		maxOptional = 0
 	}

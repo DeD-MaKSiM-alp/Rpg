@@ -30,7 +30,7 @@ const DefaultWindowTitle = "My Game"
 // Layout() возвращает именно их. Никаких ручных присваиваний ScreenWidth/ScreenHeight вне applyResolutionPreset().
 //
 // Viewport мира отделён от размера окна: WorldViewport (WidthTiles, HeightTiles) задаёт видимую область мира в тайлах.
-// Камера, drawGrid и world.Draw опираются на WorldViewport; размер окна нужен только для Layout и UI (HUD).
+// Камера, world.Draw и опциональная сетка (DevHUDOverlay+F10) опираются на WorldViewport; размер окна — для Layout и UI.
 // Так проще тестировать HUD на разных разрешениях и в будущем добавить resize/scale.
 
 // ResolutionPreset задаёт один пресет разрешения окна.
@@ -88,11 +88,10 @@ func applyResolutionPreset() {
 }
 
 const (
-	tileSize                = 48
-	debugShowChunkOverlay   = false
-	debugShowInputDirection = true // TODO: временный debug для проверки диагонали; удалить после проверки
-	chunkPreloadRadius      = 1
-	chunkUnloadRadius       = 2
+	tileSize              = 48
+	debugShowChunkOverlay = false
+	chunkPreloadRadius    = 1
+	chunkUnloadRadius     = 2
 )
 
 // GameMode представляет состояние игры.

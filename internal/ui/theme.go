@@ -102,6 +102,21 @@ var Theme = struct {
 
 	// Акцентная полоса (header strip)
 	AccentStrip color.RGBA
+
+	// --- Player-facing redesign: модули explore / бой / события (единый язык без «одной рамки везде») ---
+	ExploreStatusBG         color.RGBA // верх explore: статус
+	ExplorePartyBG          color.RGBA // левый блок отряда
+	ExploreContextBG        color.RGBA // низ: контекст и действия
+	ExplorePartyLeftStrip   color.RGBA // акцент слева у отряда (отличается от статуса)
+	ExploreContextLeftStrip color.RGBA // акцент снизу (действия)
+	ExploreModuleEdge       color.RGBA // мягкий разделитель вместо жёсткой рамки
+	BattleBottomWellBG      color.RGBA // нижняя action-area боя
+	BattleTopBarFill        color.RGBA // верхняя полоса фазы
+	BattleRosterHeaderTint  color.RGBA // подложка заголовка ростера
+	PostBattleEventCardBG   color.RGBA // карточка post-battle (без двойного контура)
+	PostBattleTitleGlow     color.RGBA // подсветка зоны заголовка победы
+	OverlayDimHeavy         color.RGBA // сильнее затемнение под модалкой-событием
+	TextHeadline            color.RGBA // крупные заголовки (модалки, фаза)
 }{
 	PanelBG:                    color.RGBA{R: 26, G: 28, B: 34, A: 255},
 	PanelBGDeep:                visualcolor.Foundation.PanelBGDeep,
@@ -179,6 +194,20 @@ var Theme = struct {
 	RosterCardPortraitBG:  color.RGBA{R: 14, G: 16, B: 22, A: 255},
 
 	AccentStrip: visualcolor.Foundation.AccentStrip,
+
+	ExploreStatusBG:         color.RGBA{R: 16, G: 20, B: 30, A: 248},
+	ExplorePartyBG:          color.RGBA{R: 18, G: 24, B: 32, A: 252},
+	ExploreContextBG:        color.RGBA{R: 8, G: 10, B: 16, A: 238},
+	ExplorePartyLeftStrip:   color.RGBA{R: 45, G: 130, B: 118, A: 255},
+	ExploreContextLeftStrip: color.RGBA{R: 175, G: 130, B: 55, A: 255},
+	ExploreModuleEdge:       color.RGBA{R: 52, G: 58, B: 72, A: 100},
+	BattleBottomWellBG:      color.RGBA{R: 10, G: 12, B: 18, A: 253},
+	BattleTopBarFill:        color.RGBA{R: 12, G: 14, B: 22, A: 255},
+	BattleRosterHeaderTint:  color.RGBA{R: 28, G: 34, B: 44, A: 240},
+	PostBattleEventCardBG:   color.RGBA{R: 22, G: 24, B: 32, A: 254},
+	PostBattleTitleGlow:     color.RGBA{R: 60, G: 95, B: 140, A: 45},
+	OverlayDimHeavy:         color.RGBA{R: 0, G: 0, B: 0, A: 228},
+	TextHeadline:            color.RGBA{R: 238, G: 240, B: 248, A: 255},
 }
 
 // DrawHPBarMicro рисует компактный HP-бар (трек + заливка). cur/max в юнитах; side: "ally" | "enemy".

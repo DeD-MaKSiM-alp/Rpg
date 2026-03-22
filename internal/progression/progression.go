@@ -135,21 +135,21 @@ func RewardLabel(r RewardKind) string {
 func RewardDescription(r RewardKind) string {
 	switch r {
 	case RewardMaxHP:
-		return "Больше максимального здоровья"
+		return "Больше запаса ОЗ"
 	case RewardAttack:
-		return "Больше урона атак"
+		return "Сильнее удары"
 	case RewardDefense:
 		return "Меньше входящего урона"
 	case RewardInitiative:
-		return "Раньше в порядке ходов"
+		return "Раньше в очереди ходов"
 	case RewardAbilityHeal:
-		return "Способность «Лечение» (союзник)"
+		return "Новая способность: лечение союзника"
 	case RewardAbilityRanged:
-		return "Способность «Выстрел» (дальний бой)"
+		return "Новая способность: выстрел"
 	case RewardHealUpgrade:
-		return "Лечение восстанавливает больше ОЗ"
+		return "Лечение восстанавливает больше"
 	case RewardBasicAttackUpgrade:
-		return "Постоянный бонус (не от уровня): +1 к базовой атаке"
+		return "Постоянно +1 к базовой атаке"
 	default:
 		return ""
 	}

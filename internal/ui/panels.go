@@ -11,7 +11,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	battlepkg "mygame/internal/battle"
-	"mygame/internal/hero"
 )
 
 const (
@@ -66,36 +65,31 @@ func splitV(r rect, topH, gap float32) (rect, rect) {
 	return top, bot
 }
 
-// drawHUDText рисует текстовые блоки HUD (счётчик предметов, знаки обучения, прогресс лидера, повышение).
-// lay задаёт зону TopHUD и ширину строк (ScreenLayout из ComputeScreenLayout / BuildExploreLayoutBundle).
-func drawHUDText(screen *ebiten.Image, pickupCount, trainingMarks int, hudFace *text.GoTextFace, leader *hero.Hero, lay ScreenLayout, promotionLine string) {
+// drawHUDText рисует верхний статус-блок: ресурсы одной строкой, при необходимости — готовность к повышению.
+// Прогресс лидера показывается в левой панели отряда. hud должен пройти FinalizeExploreHUDTopComposition (DrawHUD).
+func drawHUDText(screen *ebiten.Image, pickupCount, trainingMarks int, hudFace *text.GoTextFace, hud ExploreHUDLayout, promotionLine string) {
 	if hudFace == nil {
 		return
 	}
-	maxW := lay.TopHUD.W - 16
+	maxW := hud.TopText.W
 	if maxW < 120 {
 		maxW = 120
 	}
-	lineStep := float64(lay.Preset.LineH + 2)
-	x0 := float64(lay.TopHUD.X + 8)
-	y0 := float64(lay.TopHUD.Y + 8)
+	lineStep := hud.TopMetaLineStep
+	if lineStep < 1 {
+		lineStep = float64(hud.Layout.Preset.LineH + 2)
+	}
+
+	DrawExploreTopBackground(screen, hudFace, hud)
+
+	x0 := float64(hud.TopText.X)
+	y0 := float64(hud.TopText.Y)
+	resLine := trimTextToWidth(hudFace, formatExploreTopResourceLine(pickupCount, trainingMarks), maxW)
 	op := &text.DrawOptions{}
 	op.GeoM.Translate(x0, y0)
 	op.ColorScale.ScaleWithColor(Theme.TextPrimary)
-	text.Draw(screen, fmt.Sprintf("Pickups: %d", pickupCount), hudFace, op)
-	op2 := &text.DrawOptions{}
-	op2.GeoM.Translate(x0, y0+lineStep)
-	op2.ColorScale.ScaleWithColor(Theme.TextSecondary)
-	text.Draw(screen, fmt.Sprintf("Знаки обучения: %d — повышение в лагере (F5→I, знаки тратятся там)", trainingMarks), hudFace, op2)
-	nextY := y0 + lineStep*2
-	if leader != nil {
-		line := trimTextToWidth(hudFace, FormatLeaderHUDProgressionLine(leader), maxW)
-		op3 := &text.DrawOptions{}
-		op3.GeoM.Translate(x0, nextY)
-		op3.ColorScale.ScaleWithColor(Theme.TextMuted)
-		text.Draw(screen, line, hudFace, op3)
-		nextY += lineStep
-	}
+	text.Draw(screen, resLine, hudFace, op)
+	nextY := y0 + lineStep
 	if strings.TrimSpace(promotionLine) != "" {
 		pl := trimTextToWidth(hudFace, promotionLine, maxW)
 		op4 := &text.DrawOptions{}
@@ -103,6 +97,10 @@ func drawHUDText(screen *ebiten.Image, pickupCount, trainingMarks int, hudFace *
 		op4.ColorScale.ScaleWithColor(Theme.RecoveryBanner)
 		text.Draw(screen, pl, hudFace, op4)
 	}
+}
+
+func formatExploreTopResourceLine(pickupCount, trainingMarks int) string {
+	return fmt.Sprintf("Предметы %d · знаки %d · лагерь — F5", pickupCount, trainingMarks)
 }
 
 type rect struct {

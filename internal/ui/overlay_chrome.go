@@ -21,13 +21,23 @@ func drawUnifiedModalPanelChrome(screen *ebiten.Image, x, y, w, h float32) {
 	}
 }
 
-// drawUnifiedBottomBarChrome — нижняя полоса подсказок explore: та же тональность, что и модальные панели.
+// drawUnifiedBottomBarChrome — нижний модуль explore: контекст и действия (отличается от верха/слева цветом и акцентом).
 func drawUnifiedBottomBarChrome(screen *ebiten.Image, x, y, w, h float32) {
 	if w <= 0 || h <= 0 {
 		return
 	}
-	vector.FillRect(screen, x, y, w, h, Theme.PanelBGDeep, false)
-	vector.FillRect(screen, x, y, 4, h, Theme.AccentStrip, false)
+	vector.FillRect(screen, x, y, w, h, Theme.ExploreContextBG, false)
+	vector.FillRect(screen, x, y, 5, h, Theme.ExploreContextLeftStrip, false)
+	vector.FillRect(screen, x+5, y, w-5, 2, Theme.PanelTitleSep, false)
+	vector.FillRect(screen, x, y+h-1, w, 1, Theme.ExploreModuleEdge, false)
+}
+
+// drawPostBattleEventChrome — модалка результата/награды: одна читаемая карточка без двойного контура inspect.
+func drawPostBattleEventChrome(screen *ebiten.Image, x, y, w, h float32) {
+	if w <= 0 || h <= 0 {
+		return
+	}
+	vector.FillRect(screen, x, y, w, h, Theme.PostBattleEventCardBG, false)
+	vector.FillRect(screen, x, y, 5, h, Theme.AccentStrip, false)
 	vector.StrokeRect(screen, x, y, w, h, 1, Theme.PostBattleBorder, false)
-	DrawThinAccentLine(screen, x+6, y+4, w-12)
 }

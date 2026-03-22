@@ -49,12 +49,12 @@ func presetForTier(t ResolutionTier) ScreenLayoutPreset {
 	case TierSmall:
 		return ScreenLayoutPreset{
 			Pad:             8,
-			TopHUDHeight:    92,
-			LeftPanelMaxW:   260,
-			Gap:             6,
-			BottomLineStep:  20,
-			BottomMaxLines:  6,
-			BottomChromePad: 8,
+			TopHUDHeight:    84,
+			LeftPanelMaxW:   280,
+			Gap:             8,
+			BottomLineStep:  19,
+			BottomMaxLines:  5,
+			BottomChromePad: 10,
 			LineH:           16,
 			FormationPanelW: 480,
 			ModalMaxFracW:   0.94,
@@ -63,12 +63,12 @@ func presetForTier(t ResolutionTier) ScreenLayoutPreset {
 	case TierLarge:
 		return ScreenLayoutPreset{
 			Pad:             16,
-			TopHUDHeight:    108,
-			LeftPanelMaxW:   360,
-			Gap:             10,
-			BottomLineStep:  22,
-			BottomMaxLines:  10,
-			BottomChromePad: 8,
+			TopHUDHeight:    96,
+			LeftPanelMaxW:   372,
+			Gap:             12,
+			BottomLineStep:  21,
+			BottomMaxLines:  9,
+			BottomChromePad: 10,
 			LineH:           18,
 			FormationPanelW: 600,
 			ModalMaxFracW:   0.88,
@@ -77,12 +77,12 @@ func presetForTier(t ResolutionTier) ScreenLayoutPreset {
 	default: // TierMedium
 		return ScreenLayoutPreset{
 			Pad:             12,
-			TopHUDHeight:    100,
-			LeftPanelMaxW:   320,
-			Gap:             8,
-			BottomLineStep:  22,
-			BottomMaxLines:  8,
-			BottomChromePad: 8,
+			TopHUDHeight:    88,
+			LeftPanelMaxW:   336,
+			Gap:             10,
+			BottomLineStep:  20,
+			BottomMaxLines:  7,
+			BottomChromePad: 10,
 			LineH:           18,
 			FormationPanelW: 560,
 			ModalMaxFracW:   0.90,
@@ -223,7 +223,7 @@ func ExploreBottomBarHeight(screenW, screenH int, lineStep float32, chromePad fl
 }
 
 func exploreHintLineCount(zoneLine, restFeedback, recruitFeedback, poiFeedback, interactionHint string) int {
-	n := 2 // R + F5
+	n := 1 // строка хоткеев (R · F5 · F9)
 	if strings.TrimSpace(zoneLine) != "" {
 		n++
 	}
@@ -242,31 +242,7 @@ func exploreHintLineCount(zoneLine, restFeedback, recruitFeedback, poiFeedback, 
 	return n
 }
 
-// ExploreLayoutBundle — отфильтрованные подсказки + готовые зоны для explore.
-type ExploreLayoutBundle struct {
-	Layout          ScreenLayout
-	ZoneLine        string
-	RestFeedback    string
-	RecruitFeedback string
-	POIFeedback     string
-	InteractionHint string
-}
-
-// BuildExploreLayoutBundle применяет overflow по tier и считает нижнюю полосу + зоны.
-func BuildExploreLayoutBundle(screenW, screenH int, zoneLine, restFeedback, recruitFeedback, poiFeedback, interactionHint string) ExploreLayoutBundle {
-	tier := TierFromScreen(screenW, screenH)
-	p := presetForTier(tier)
-	z, rest, rec, poi, inter := ApplyExploreHintOverflow(tier, zoneLine, restFeedback, recruitFeedback, poiFeedback, interactionHint)
-	h := ExploreBottomBarHeight(screenW, screenH, p.BottomLineStep, p.BottomChromePad, z, rest, rec, poi, inter)
-	return ExploreLayoutBundle{
-		Layout:          ComputeScreenLayout(screenW, screenH, h),
-		ZoneLine:        z,
-		RestFeedback:    rest,
-		RecruitFeedback: rec,
-		POIFeedback:     poi,
-		InteractionHint: inter,
-	}
-}
+// ExploreHUDLayout / BuildExploreHUDLayout / BuildExploreLayoutBundle — см. explore_hud_layout.go (единый расчёт explore HUD).
 
 // CenterPanelInModal размещает прямоугольник panelW×panelH: ширина — в safe/modal, высота — до доли экрана
 // (не ужимается до lay.Modal.H, чтобы длинные списки могли масштабироваться вызывающим кодом).

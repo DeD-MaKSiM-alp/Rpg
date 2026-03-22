@@ -92,14 +92,14 @@ func battleV2BottomHintRU(battle *battlepkg.BattleContext, tier ResolutionTier) 
 	pt := &battle.PlayerTurn
 	isDefaultAttack := active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction && pt.SelectedAbilityID == battlepkg.AbilityBasicAttack
 	if isDefaultAttack {
-		return "Enter: выбор цели · стрелки · Enter: атака · Esc: отступить · ПКМ по юниту — сведения"
+		return "Клик по врагу · Enter · Esc · ПКМ — карточка"
 	}
 	if active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
 		switch pt.Phase {
 		case battlepkg.PlayerChooseTarget:
-			return "Стрелки: цель · Enter: выполнить · Назад/Esc: отмена · ПКМ по юниту — сведения"
+			return "Цель · Enter · Esc / Назад · ПКМ — карточка"
 		default:
-			return "Стрелки: способность · Enter: выбрать · Назад/Esc: отмена · ПКМ по юниту — сведения"
+			return "Способность · Enter · Esc / Назад · ПКМ — карточка"
 		}
 	}
 	hint := ""
@@ -107,9 +107,9 @@ func battleV2BottomHintRU(battle *battlepkg.BattleContext, tier ResolutionTier) 
 		hint = strings.TrimSpace(battle.BattleLog[len(battle.BattleLog)-1])
 	}
 	if hint == "" {
-		hint = "Esc: отступить"
+		hint = "Esc"
 	}
-	return hint + " · ПКМ по юниту — сведения"
+	return hint + " · ПКМ — карточка"
 }
 
 // abilityUnavailableStrokeColor — цвет рамки строки способности при блокировке (КД / мана / энергия).
@@ -557,7 +557,7 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 	metrics := layout.Metrics
 	tier := battleHUDTier(screenW, screenH)
 
-	// 1) Battlefield (center) — сцена: рамка в духе inspect/roster, внутренняя подложка, лёгкое затемнение по краям.
+	// 1) Battlefield — центр экрана: одна мягкая рамка, без «тройного контура».
 	bf := layout.Battlefield
 	if bf.W > 0 && bf.H > 0 {
 		vector.FillRect(screen, bf.X, bf.Y, bf.W, bf.H, Theme.SceneTint, false)
@@ -566,11 +566,9 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 			cx, cy := bf.X+insetPx, bf.Y+insetPx
 			cw, ch := bf.W-insetPx*2, bf.H-insetPx*2
 			vector.FillRect(screen, cx, cy, cw, ch, Theme.PanelBGDeep, false)
-			vector.StrokeRect(screen, cx, cy, cw, ch, 1, Theme.RosterCardInnerStroke, false)
 			DrawThinAccentLine(screen, cx+4, cy+4, cw-8)
 		}
-		vector.StrokeRect(screen, bf.X, bf.Y, bf.W, bf.H, 2, Theme.PostBattleBorder, false)
-		vector.StrokeRect(screen, bf.X+3, bf.Y+3, bf.W-6, bf.H-6, 1, Theme.PanelBorder, false)
+		vector.StrokeRect(screen, bf.X, bf.Y, bf.W, bf.H, 1.5, Theme.ExploreModuleEdge, false)
 		v := float32(7)
 		if bf.W > v*2+4 && bf.H > v*2+4 {
 			vector.FillRect(screen, bf.X, bf.Y, bf.W, v, Theme.BattlefieldSceneVignette, false)
@@ -582,22 +580,24 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 
 	DrawBattlefieldV2Scene(screen, hudFace, battle, layout, inspectOpenID, inspectOpen)
 
-	// 2) Left / Right rosters — боковые панели, визуально отделены от сцены
+	// 2) Ростеры — отдельные «стойки», не копия модалки: подложка + полоса заголовка.
 	lr := layout.LeftRoster
 	if lr.W > 0 && lr.H > 0 {
-		vector.FillRect(screen, lr.X, lr.Y, lr.W, lr.H, Theme.PanelBG, false)
-		vector.StrokeRect(screen, lr.X, lr.Y, lr.W, lr.H, 1, Theme.PanelBorder, false)
-		DrawThinAccentLine(screen, lr.X+4, lr.Y+4, lr.W-8)
-		lab := rect{X: lr.X + 6, Y: lr.Y + 8, W: lr.W - 12, H: metrics.LineH * 0.95}
-		drawSingleLineInRect(screen, hudFace, lab, fitTextToWidth(hudFace, "СОЮЗНИКИ · перед→зад", lab.W), metrics, Theme.TextSecondary)
+		vector.FillRect(screen, lr.X, lr.Y, lr.W, lr.H, Theme.BattleRosterHeaderTint, false)
+		vector.FillRect(screen, lr.X, lr.Y, 3, lr.H, Theme.ExplorePartyLeftStrip, false)
+		vector.FillRect(screen, lr.X+4, lr.Y+6, lr.W-8, metrics.LineH*1.15, Theme.PanelBGDeep, false)
+		lab := rect{X: lr.X + 8, Y: lr.Y + 8, W: lr.W - 16, H: metrics.LineH * 1.05}
+		drawSingleLineInRect(screen, hudFace, lab, fitTextToWidth(hudFace, "СОЮЗНИКИ", lab.W), metrics, Theme.TextHeadline)
+		vector.FillRect(screen, lr.X, lr.Y+lr.H-1, lr.W, 1, Theme.ExploreModuleEdge, false)
 	}
 	rr := layout.RightRoster
 	if rr.W > 0 && rr.H > 0 {
-		vector.FillRect(screen, rr.X, rr.Y, rr.W, rr.H, Theme.PanelBG, false)
-		vector.StrokeRect(screen, rr.X, rr.Y, rr.W, rr.H, 1, Theme.PanelBorder, false)
-		DrawThinAccentLine(screen, rr.X+4, rr.Y+4, rr.W-8)
-		lab := rect{X: rr.X + 6, Y: rr.Y + 8, W: rr.W - 12, H: metrics.LineH * 0.95}
-		drawSingleLineInRect(screen, hudFace, lab, fitTextToWidth(hudFace, "ВРАГИ · перед→зад", lab.W), metrics, Theme.TextSecondary)
+		vector.FillRect(screen, rr.X, rr.Y, rr.W, rr.H, Theme.BattleRosterHeaderTint, false)
+		vector.FillRect(screen, rr.X, rr.Y, 3, rr.H, Theme.EnemyAccent, false)
+		vector.FillRect(screen, rr.X+4, rr.Y+6, rr.W-8, metrics.LineH*1.15, Theme.PanelBGDeep, false)
+		lab := rect{X: rr.X + 8, Y: rr.Y + 8, W: rr.W - 16, H: metrics.LineH * 1.05}
+		drawSingleLineInRect(screen, hudFace, lab, fitTextToWidth(hudFace, "ВРАГИ", lab.W), metrics, Theme.TextHeadline)
+		vector.FillRect(screen, rr.X, rr.Y+rr.H-1, rr.W, 1, Theme.ExploreModuleEdge, false)
 	}
 
 	// 3) Unit cards in rosters
@@ -609,11 +609,12 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		drawBattleRosterUnitCard(screen, hudFace, battle, u, hr, metrics, inspectOpenID, inspectOpen)
 	}
 
-	// 4) Bottom panel — control panel: Active | Target → Abilities → Summary → Hint → Buttons
+	// 4) Нижняя action-area — отделена от сцены верхней полосой-акцентом, без тяжёлой рамки.
 	bp := layout.BottomPanel
 	if bp.W > 0 && bp.H > 0 {
-		vector.FillRect(screen, bp.X, bp.Y, bp.W, bp.H, Theme.PanelBG, false)
-		vector.StrokeRect(screen, bp.X, bp.Y, bp.W, bp.H, 1, Theme.PanelBorder, false)
+		vector.FillRect(screen, bp.X, bp.Y, bp.W, bp.H, Theme.BattleBottomWellBG, false)
+		vector.FillRect(screen, bp.X, bp.Y, bp.W, 4, Theme.AccentStrip, false)
+		vector.FillRect(screen, bp.X, bp.Y+bp.H-1, bp.W, 1, Theme.ExploreModuleEdge, false)
 	}
 	activeR := battleToRect(layout.V2BottomActive)
 	if activeR.W > 0 && activeR.H > 0 && battle != nil {
@@ -624,7 +625,7 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 				l1 = fmt.Sprintf("▶ %s%s", active.Name(), battlepkg.PlayerTemplateIdentitySuffix(active))
 			}
 			row1 := rect{X: activeR.X, Y: activeR.Y, W: activeR.W, H: metrics.LineH}
-			drawSingleLineInRect(screen, hudFace, row1, fitTextToWidth(hudFace, l1, activeR.W), metrics, Theme.TextPrimary)
+			drawSingleLineInRect(screen, hudFace, row1, fitTextToWidth(hudFace, l1, activeR.W), metrics, Theme.TextHeadline)
 			barY := activeR.Y + metrics.LineH + 2
 			if tier != TierSmall {
 				row2 := rect{X: activeR.X, Y: activeR.Y + metrics.LineH, W: activeR.W, H: metrics.LineH}
@@ -806,21 +807,26 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		drawButton(backR, "Назад", true, pt.HoverBackButton)
 	}
 
-	// 5) TopBar — лёгкая status line, не перебивает сцену
+	// 5) Верхняя полоса фазы — читается как «состояние боя», не подпись к отладке.
 	tb := layout.TopBar
 	if tb.W > 0 && tb.H > 0 {
-		vector.FillRect(screen, tb.X, tb.Y, tb.W, tb.H, Theme.PanelBGDeep, false)
-		vector.StrokeRect(screen, tb.X, tb.Y, tb.W, tb.H, 1, Theme.PanelBorder, false)
+		vector.FillRect(screen, tb.X, tb.Y, tb.W, tb.H, Theme.BattleTopBarFill, false)
+		vector.FillRect(screen, tb.X, tb.Y+tb.H-1, tb.W, 1, Theme.PanelTitleSep, false)
 	}
 	topLine := battleToRect(layout.V2TopBarLine)
 	if topLine.W > 0 && topLine.H > 0 && battle != nil {
 		var s string
+		col := Theme.TextSecondary
 		if battle.Result != battlepkg.ResultNone {
-			s = battle.ResultString() + " · Пробел/Enter"
+			s = battle.ResultString() + " · Enter"
+			col = Theme.TextHeadline
 		} else {
 			s = fmt.Sprintf("Раунд %d · %s", battle.Round, battle.DisplayPhaseLabel())
+			if au := battle.ActiveUnit(); au != nil && au.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
+				col = Theme.ActiveTurn
+			}
 		}
-		drawSingleLineInRect(screen, hudFace, topLine, fitTextToWidth(hudFace, s, topLine.W), metrics, Theme.TextSecondary)
+		drawSingleLineInRect(screen, hudFace, topLine, fitTextToWidth(hudFace, s, topLine.W), metrics, col)
 	}
 }
 

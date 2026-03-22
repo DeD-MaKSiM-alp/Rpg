@@ -45,6 +45,11 @@ func (g *Game) Update() error {
 		}
 	}
 
+	// F10 — служебный оверлей (сетка мира, разрешение окна, отладка ввода в explore); по умолчанию выкл.
+	if inpututil.IsKeyJustPressed(ebiten.KeyF10) {
+		DevHUDOverlay = !DevHUDOverlay
+	}
+
 	if g.mode == ModeBattle {
 		if inpututil.IsKeyJustPressed(ebiten.KeyF8) {
 			if g.BattleHUDStyle == 0 {

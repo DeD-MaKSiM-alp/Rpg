@@ -8,18 +8,18 @@ import (
 	text "github.com/hajimehoshi/ebiten/v2/text/v2"
 
 	battlepkg "mygame/internal/battle"
-	"mygame/internal/hero"
 )
 
-// DrawDebugInputDirection рисует raw и выданное (emit) направление ввода (временный debug для проверки диагонали).
+// DrawDebugInputDirection рисует raw и выданное (emit) направление ввода (только при DevHUDOverlay в game).
 func DrawDebugInputDirection(screen *ebiten.Image, rawDX, rawDY, emitDX, emitDY int) {
-	ebitenutil.DebugPrint(screen, fmt.Sprintf("Input raw: dx=%d dy=%d | emit: dx=%d dy=%d\n", rawDX, rawDY, emitDX, emitDY))
+	ebitenutil.DebugPrint(screen, fmt.Sprintf("Ввод: raw %d,%d → %d,%d\n", rawDX, rawDY, emitDX, emitDY))
 }
 
-// DrawHUD рисует поверх кадра элементы HUD: предметы, знаки обучения, прогресс лидера, строка готовности повышения (если не пустая).
-// leader может быть nil; lay — зоны из ComputeScreenLayout / BuildExploreLayoutBundle; promotionLine — из game.PromotionExploreHUDLine.
-func DrawHUD(screen *ebiten.Image, pickupCount, trainingMarks int, hudFace *text.GoTextFace, leader *hero.Hero, lay ScreenLayout, promotionLine string) {
-	drawHUDText(screen, pickupCount, trainingMarks, hudFace, leader, lay, promotionLine)
+// DrawHUD рисует поверх кадра верхний статус-блок: ресурсы и при необходимости готовность к повышению.
+// hud — ExploreHUDLayout (BuildExploreHUDLayout или NewExploreHUDLayoutFromScreenLayout); promotionLine — из game.PromotionExploreHUDLine.
+func DrawHUD(screen *ebiten.Image, pickupCount, trainingMarks int, hudFace *text.GoTextFace, hud ExploreHUDLayout, promotionLine string) {
+	hud = FinalizeExploreHUDTopComposition(hud, promotionLine)
+	drawHUDText(screen, pickupCount, trainingMarks, hudFace, hud, promotionLine)
 }
 
 // DrawBattleOverlay рисует поверх кадра HUD для боевого режима.
@@ -38,7 +38,7 @@ func DrawBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, battle *b
 	drawBattleOverlayText(screen, hudFace, battle, layout, screenWidth, screenHeight)
 }
 
-// DrawResolutionIndicator рисует в правом верхнем углу строку "Resolution: WxH" (runtime switch по F6/F7).
+// DrawResolutionIndicator рисует в правом верхнем углу строку "Окно WxH" (вкл. только при DevHUDOverlay; F6/F7 меняют пресет).
 func DrawResolutionIndicator(screen *ebiten.Image, hudFace *text.GoTextFace, screenWidth, screenHeight int) {
 	if hudFace == nil || screenWidth < 100 || screenHeight < 24 {
 		return
@@ -52,5 +52,5 @@ func DrawResolutionIndicator(screen *ebiten.Image, hudFace *text.GoTextFace, scr
 		H: lineH,
 	}
 	metrics := battlepkg.HUDMetrics{LineH: lineH}
-	drawSingleLineInRect(screen, hudFace, r, fmt.Sprintf("Resolution: %dx%d", screenWidth, screenHeight), metrics, Theme.TextMuted)
+	drawSingleLineInRect(screen, hudFace, r, fmt.Sprintf("Окно %d×%d", screenWidth, screenHeight), metrics, Theme.TextMuted)
 }

@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strings"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	text "github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -25,6 +27,8 @@ type PostBattleLayout struct {
 	RowH                           float32
 	RowGap                         float32
 	ButtonH                        float32
+	// RewardRowH — высота строки варианта награды (две строки текста: заголовок + описание).
+	RewardRowH float32
 	// RewardOptionRects — области клика и подсветки строк награды (совпадают с отрисовкой).
 	RewardOptionRects []PostBattleRect
 	// ResultContinueButton — шаг результата боя: явное продолжение (мышь + тот же layout, что и draw).
@@ -61,7 +65,8 @@ func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCoun
 			if n < 0 {
 				n = 0
 			}
-			innerH := lh*4.5 + float32(n)*(rh+rg) + 4 + lh + 8 + bh + 8
+			// Компактнее «шапка», строки награды выше (две линии внутри rh).
+			innerH := lh*3.35 + float32(n)*(rh+rg) + lh + 6 + bh + 10
 			return p*2 + innerH
 		}
 		ns := resultSummaryLines
@@ -70,13 +75,21 @@ func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCoun
 		}
 		summaryBlock := float32(0)
 		if ns > 0 {
-			summaryBlock = lh*1.05*float32(ns) + 8
+			summaryBlock = lh * 1.06 * float32(ns)
 		}
-		return p*2 + lh*1.5 + summaryBlock + lh + 12 + bh + 16
+		// Заголовок + блок «ИТОГИ» + сводка + подсказка + кнопка (см. DrawPostBattleOverlay).
+		return p*2 + lh*2.9 + summaryBlock + lh*1.15 + bh + 22
 	}
 
 	for iter := 0; iter < 40; iter++ {
-		panelH := computePanelH(lineH, pad, rowH, rowGap, buttonH)
+		rhPanel := rowH
+		if isRewardStep {
+			rhPanel = lineH * 2.5
+			if rhPanel < 48 {
+				rhPanel = 48
+			}
+		}
+		panelH := computePanelH(lineH, pad, rhPanel, rowGap, buttonH)
 		rect := CenterPanelInModal(sl, panelW, panelH)
 		if panelH <= rect.H+0.5 || iter == 39 {
 			l.PanelX, l.PanelY, l.PanelW, l.PanelH = rect.X, rect.Y, rect.W, rect.H
@@ -119,6 +132,13 @@ func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCoun
 	rowGap = l.RowGap
 	buttonH = l.ButtonH
 
+	if isRewardStep {
+		l.RewardRowH = lineH * 2.5
+		if l.RewardRowH < 48 {
+			l.RewardRowH = 48
+		}
+	}
+
 	btnW := postBattleButtonW
 	if btnW > l.InnerW-16 {
 		btnW = l.InnerW - 16
@@ -135,11 +155,13 @@ func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCoun
 		}
 		summaryBlock := float32(0)
 		if ns > 0 {
-			summaryBlock = lineH*1.05*float32(ns) + 8
+			summaryBlock = lineH * 1.06 * float32(ns)
 		}
+		hintY := l.InnerY + lineH*2.85 + summaryBlock + 6
+		btnY := hintY + lineH*0.95 + 12
 		l.ResultContinueButton = PostBattleRect{
 			X: btnX,
-			Y: l.InnerY + lineH*1.5 + summaryBlock + lineH + 12,
+			Y: btnY,
 			W: btnW,
 			H: buttonH,
 		}
@@ -150,23 +172,27 @@ func ComputePostBattleLayout(screenW, screenH int, isRewardStep bool, optionCoun
 	if n < 0 {
 		n = 0
 	}
-	firstY := l.InnerY + lineH*4.0
+	rh := l.RewardRowH
+	if rh <= 0 {
+		rh = rowH
+	}
+	firstY := l.InnerY + lineH*3.25
 	l.RewardOptionRects = make([]PostBattleRect, n)
 	for i := 0; i < n; i++ {
-		y := firstY + float32(i)*(rowH+rowGap)
+		y := firstY + float32(i)*(rh+rowGap)
 		l.RewardOptionRects[i] = PostBattleRect{
 			X: l.InnerX,
 			Y: y - 2,
 			W: l.InnerW,
-			H: rowH + 4,
+			H: rh + 4,
 		}
 	}
 	var hintY float32
 	if n > 0 {
-		yAfter := firstY + float32(n)*(rowH+rowGap)
+		yAfter := firstY + float32(n)*(rh+rowGap)
 		hintY = yAfter + 4
 	} else {
-		hintY = l.InnerY + lineH*4.0 + 4
+		hintY = l.InnerY + lineH*3.25 + 4
 	}
 	confirmY := hintY + lineH + 8
 	l.RewardConfirmButton = PostBattleRect{
@@ -245,9 +271,9 @@ func DrawPostBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p Pos
 	layout := ComputePostBattleLayout(p.ScreenWidth, p.ScreenHeight, p.IsRewardStep, len(p.OptionLabels), summaryN)
 	w := float32(p.ScreenWidth)
 	h := float32(p.ScreenHeight)
-	vector.FillRect(screen, 0, 0, w, h, Theme.OverlayDim, false)
+	vector.FillRect(screen, 0, 0, w, h, Theme.OverlayDimHeavy, false)
 
-	drawUnifiedModalPanelChrome(screen, layout.PanelX, layout.PanelY, layout.PanelW, layout.PanelH)
+	drawPostBattleEventChrome(screen, layout.PanelX, layout.PanelY, layout.PanelW, layout.PanelH)
 
 	innerX := layout.InnerX
 	innerY := layout.InnerY
@@ -255,97 +281,131 @@ func DrawPostBattleOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, p Pos
 	lineH := layout.LineH
 	metrics := battlepkg.HUDMetrics{LineH: lineH}
 
-	// Result line
-	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY, W: innerW, H: lineH * 1.5}, p.ResultText, metrics, Theme.TextPrimary)
-	DrawThinAccentLine(screen, innerX+4, innerY+lineH*1.48, innerW-8)
+	if !p.IsRewardStep {
+		vector.FillRect(screen, innerX, innerY, innerW, lineH*2.1, Theme.PostBattleTitleGlow, false)
+	}
+
+	rt := strings.TrimSpace(p.ResultText)
+	if strings.HasPrefix(rt, "Победа") {
+		drawPostBattleHeadlineScaled(screen, hudFace, innerX+6, innerY+6, innerW-12, rt)
+	} else {
+		drawSingleLineInRect(screen, hudFace, rect{X: innerX + 4, Y: innerY + 6, W: innerW - 8, H: lineH * 1.6}, rt, metrics, Theme.TextHeadline)
+	}
+	vector.FillRect(screen, innerX+4, innerY+lineH*1.95, innerW-8, 2, Theme.PanelTitleSep, false)
 
 	if !p.IsRewardStep {
-		y := innerY + lineH*1.55
+		sec := rect{X: innerX + 4, Y: innerY + lineH*2.15, W: innerW - 8, H: lineH * 0.85}
+		drawSingleLineInRect(screen, hudFace, sec, "ИТОГИ", metrics, Theme.TextMuted)
+		y := innerY + lineH*2.85
 		for _, s := range p.VictorySummaryLines {
 			if s == "" {
 				continue
 			}
-			drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: innerW, H: lineH * 1.05}, s, metrics, Theme.TextSecondary)
-			y += lineH * 1.08
+			drawSingleLineInRect(screen, hudFace, rect{X: innerX + 4, Y: y, W: innerW - 8, H: lineH * 1.08}, s, metrics, Theme.TextSecondary)
+			y += lineH * 1.06
 		}
 		hint := p.ResultHintLine
 		if hint == "" {
-			hint = "Пробел / Enter — продолжить или кнопка ниже"
+			hint = "Enter / Пробел — далее"
 		}
-		hintY := innerY + lineH*1.5
-		if len(p.VictorySummaryLines) > 0 {
-			hintY += lineH*1.05*float32(len(p.VictorySummaryLines)) + 8
-		}
-		drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: hintY, W: innerW, H: lineH}, hint, metrics, Theme.TextMuted)
+		hintY := y + 6
+		drawSingleLineInRect(screen, hudFace, rect{X: innerX + 4, Y: hintY, W: innerW - 8, H: lineH * 0.95}, hint, metrics, Theme.TextMuted)
 		lbl := p.ContinueButtonLabel
 		if lbl == "" {
-			lbl = "Продолжить"
+			lbl = "Далее"
 		}
 		rc := layout.ResultContinueButton
 		drawPostBattlePrimaryButton(screen, hudFace, rc, lbl, p.HoverContinue, metrics)
 		return
 	}
 
+	head := rect{X: innerX + 4, Y: innerY + 6, W: innerW - 8, H: lineH * 1.2}
+	drawSingleLineInRect(screen, hudFace, head, rt, metrics, Theme.TextHeadline)
 	sub := p.RewardPreambleLine
 	if sub == "" {
-		sub = "Награда лидеру — отдельно от боевого опыта отряда."
+		sub = "Отдельно от опыта отряда — усиление лидера."
 	}
-	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY + lineH*2, W: innerW, H: lineH}, sub, metrics, Theme.TextMuted)
-	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: innerY + lineH*3.1, W: innerW, H: lineH}, "Выберите вариант:", metrics, Theme.TextSecondary)
-	DrawThinAccentLine(screen, innerX+4, innerY+lineH*4.05, innerW-8)
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX + 4, Y: innerY + lineH*1.45, W: innerW - 8, H: lineH}, sub, metrics, Theme.TextMuted)
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX + 4, Y: innerY + lineH*2.35, W: innerW - 8, H: lineH * 0.9}, "ВЫБЕРИТЕ НАГРАДУ", metrics, Theme.TextSecondary)
+	vector.FillRect(screen, innerX+4, innerY+lineH*3.05, innerW-8, 2, Theme.PanelTitleSep, false)
 
-	y := innerY + lineH*4.0
-	rowRH := layout.RowH
+	y := innerY + lineH*3.25
+	rowRH := layout.RewardRowH
+	if rowRH <= 0 {
+		rowRH = layout.RowH
+	}
 	rowRG := layout.RowGap
+	line1H := rowRH * 0.48
+	line2H := rowRH * 0.42
 	for i := 0; i < len(p.OptionLabels); i++ {
 		label := p.OptionLabels[i]
-		if i < len(p.OptionDescs) && p.OptionDescs[i] != "" {
-			label = label + " — " + p.OptionDescs[i]
+		desc := ""
+		if i < len(p.OptionDescs) {
+			desc = strings.TrimSpace(p.OptionDescs[i])
 		}
-		textCol := Theme.TextSecondary
+		textPri := Theme.TextPrimary
+		textSec := Theme.TextSecondary
 		if i < len(layout.RewardOptionRects) {
 			r := layout.RewardOptionRects[i]
 			switch {
 			case i == p.SelectedIndex:
-				textCol = Theme.TextPrimary
+				textPri = Theme.TextHeadline
+				textSec = Theme.TextSecondary
 				vector.FillRect(screen, r.X, r.Y, r.W, r.H, Theme.PostBattleRowSelect, false)
-				vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 1.25, Theme.PostBattleRowBrd, false)
-				vector.FillRect(screen, r.X, r.Y, 4, r.H, Theme.AccentStrip, false)
+				vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 2, Theme.PostBattleRowBrd, false)
+				vector.FillRect(screen, r.X, r.Y, 5, r.H, Theme.AccentStrip, false)
 			case p.HoverRewardIndex >= 0 && i == p.HoverRewardIndex:
-				textCol = Theme.TextPrimary
+				textPri = Theme.TextPrimary
 				vector.FillRect(screen, r.X, r.Y, r.W, r.H, Theme.AbilityHoverBG, false)
 				vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 1, Theme.HoverTarget, false)
 			default:
 				vector.FillRect(screen, r.X, r.Y, r.W, r.H, Theme.RosterCardContentWell, false)
-				vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 1, Theme.PanelBorder, false)
+				vector.FillRect(screen, r.X, r.Y, 3, r.H, Theme.ExploreModuleEdge, false)
 			}
 		}
-		drawSingleLineInRect(screen, hudFace, rect{X: innerX + 10, Y: y, W: innerW - 20, H: rowRH}, label, metrics, textCol)
+		lbl := PrimaryLine(hudFace, label, innerW-28)
+		drawSingleLineInRect(screen, hudFace, rect{X: innerX + 14, Y: y + 4, W: innerW - 28, H: line1H}, lbl, metrics, textPri)
+		if desc != "" {
+			drawSingleLineInRect(screen, hudFace, rect{X: innerX + 14, Y: y + 6 + line1H, W: innerW - 28, H: line2H}, PrimaryLine(hudFace, desc, innerW-28), metrics, textSec)
+		}
 		y += rowRH + rowRG
 	}
-	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y + 4, W: innerW, H: lineH}, "Стрелки — выбор · Пробел / Enter или кнопка ниже", metrics, Theme.TextMuted)
+	drawSingleLineInRect(screen, hudFace, rect{X: innerX + 4, Y: y + 4, W: innerW - 8, H: lineH * 0.9}, "↑↓ выбор · Enter — подтвердить", metrics, Theme.TextMuted)
 	cl := p.ConfirmRewardLabel
 	if cl == "" {
-		cl = "Подтвердить"
+		cl = "Взять награду"
 	}
 	drawPostBattlePrimaryButton(screen, hudFace, layout.RewardConfirmButton, cl, p.HoverRewardConfirm, metrics)
+}
+
+func drawPostBattleHeadlineScaled(screen *ebiten.Image, hudFace *text.GoTextFace, x, y, maxW float32, s string) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return
+	}
+	const scale = 1.26
+	avail := maxW / scale
+	s = fitTextToWidth(hudFace, s, avail)
+	op := &text.DrawOptions{}
+	op.GeoM.Scale(scale, scale)
+	op.GeoM.Translate(float64(x), float64(y))
+	op.ColorScale.ScaleWithColor(Theme.TextHeadline)
+	text.Draw(screen, s, hudFace, op)
 }
 
 func drawPostBattlePrimaryButton(screen *ebiten.Image, hudFace *text.GoTextFace, r PostBattleRect, label string, hover bool, metrics battlepkg.HUDMetrics) {
 	if r.W <= 0 || r.H <= 0 {
 		return
 	}
-	fill := Theme.AbilityBG
-	border := Theme.AbilityBorder
+	fill := Theme.ButtonBG
+	border := Theme.ButtonBorder
 	if hover {
 		fill = Theme.ButtonHoverBG
 		border = Theme.AccentStrip
 	}
 	vector.FillRect(screen, r.X, r.Y, r.W, r.H, fill, false)
-	vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 1.25, border, false)
-	if hover {
-		vector.FillRect(screen, r.X, r.Y, 3, r.H, Theme.AccentStrip, false)
-	}
+	vector.StrokeRect(screen, r.X, r.Y, r.W, r.H, 2, border, false)
+	vector.FillRect(screen, r.X, r.Y, 5, r.H, Theme.AccentStrip, false)
 	rr := rect{X: r.X, Y: r.Y, W: r.W, H: r.H}
 	drawSingleLineInRect(screen, hudFace, rr, label, metrics, Theme.TextPrimary)
 }
