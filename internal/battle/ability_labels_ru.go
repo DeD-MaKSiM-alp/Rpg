@@ -14,6 +14,8 @@ func PlayerAbilityLabelRU(id AbilityID) string {
 		return "Масс-лечение"
 	case AbilityBuff:
 		return "Усиление"
+	case AbilityPowerStrike:
+		return "Мощный удар"
 	default:
 		return "Способность"
 	}

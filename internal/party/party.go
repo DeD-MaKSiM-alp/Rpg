@@ -195,10 +195,7 @@ func ReserveRowCaption(reserveIndex int) string {
 	return fmt.Sprintf("Резерв · %d", reserveIndex+1)
 }
 
-// --- Отдых в мире (минимальный recovery loop между боями) ---
-
-// RestRecoveryDivisor — восстановление за отдых: max(1, MaxHP/RestRecoveryDivisor) к CurrentHP.
-const RestRecoveryDivisor = 4
+// --- Отдых в мире (R): ход мира без бесплатного лечения ОЗ ---
 
 // HasFightableMember true, если хотя бы один участник может получить сид боя (CurrentHP > 0).
 func (p *Party) HasFightableMember() bool {
@@ -213,33 +210,12 @@ func (p *Party) HasFightableMember() bool {
 	return false
 }
 
-// ApplyWorldRest восстанавливает канонический CurrentHP после «отдыха» в explore (вызывать вместе с advanceWorldTurn).
-// Правила:
-//   - для каждого участника Active и Reserve с CurrentHP > 0: +max(1, MaxHP/RestRecoveryDivisor), clamp к MaxHP;
-//   - участников с 0 HP отдых не воскрешает (нужны будущие revive/camp);
-//   - если после этого никто в Active не может сражаться (все 0), лидер получает 1 HP — аварийный выход из soft-lock.
+// ApplyWorldRest — контракт «отдых на R» в explore: не меняет ОЗ (лечение только через явные источники:
+// бои/заклинания, POI, будущие еда/зелья и т.д.). Вызывать вместе с advanceWorldTurn.
+// Если никто в Active не может сражаться (все 0 ОЗ), лидер получает 1 ОЗ — выход из soft-lock.
 func (p *Party) ApplyWorldRest() {
 	if p == nil || len(p.Active) == 0 {
 		return
-	}
-	restOne := func(h *hero.Hero) {
-		if h.CurrentHP <= 0 {
-			return
-		}
-		gain := h.MaxHP / RestRecoveryDivisor
-		if gain < 1 {
-			gain = 1
-		}
-		h.CurrentHP += gain
-		if h.CurrentHP > h.MaxHP {
-			h.CurrentHP = h.MaxHP
-		}
-	}
-	for i := range p.Active {
-		restOne(&p.Active[i])
-	}
-	for i := range p.Reserve {
-		restOne(&p.Reserve[i])
 	}
 	if !p.HasFightableMember() {
 		p.Active[0].CurrentHP = 1
@@ -247,4 +223,4 @@ func (p *Party) ApplyWorldRest() {
 }
 
 // RestExploreBanner короткий текст обратной связи после отдыха в explore.
-const RestExploreBanner = "Отдых: +HP (доля MaxHP), ход мира"
+const RestExploreBanner = "Отдых: ход мира (ОЗ не восстанавливаются)"

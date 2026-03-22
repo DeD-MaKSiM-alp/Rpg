@@ -319,15 +319,15 @@ func (b *BattleContext) computeLayoutV2(screenW, screenH int) BattleHUDLayout {
 	inner := hudInset(layout.BottomPanel, pad)
 	y := inner.Y
 
-	// Row 1: Active (left) | Target (right), one line each
-	infoH := lineH
+	// Row 1: Active (имя + строка ресурсов + микробары маны/энергии) | Target (right)
+	infoH := lineH*2 + 14
 	colW := (inner.W - gap) / 2
 	layout.V2BottomActive = HUDRect{X: inner.X, Y: y, W: colW, H: infoH}
 	layout.V2BottomTarget = HUDRect{X: inner.X + colW + gap, Y: y, W: inner.W - colW - gap, H: infoH}
 	y += infoH + metrics.SmallGap
 
-	// Ability row
-	abilityRowH := lineH * 1.4
+	// Ability row (высота подписи: название + строка стоимости)
+	abilityRowH := lineH * 2.5
 	layout.AbilityItemRects = nil
 	if b != nil {
 		active := b.ActiveUnit()
@@ -660,8 +660,9 @@ func (b *BattleContext) computeLayoutV1(screenW, screenH int) BattleHUDLayout {
 				}
 			}
 
+			rowH := metrics.LineH * 2.35
 			y := list.Y + metrics.LineH*0.1
-			maxY := list.Y + list.H - metrics.LineH*1.3
+			maxY := list.Y + list.H - rowH*0.5
 			rects := make([]HUDRect, 0, len(abs))
 			for range abs {
 				if y > maxY {
@@ -671,10 +672,10 @@ func (b *BattleContext) computeLayoutV1(screenW, screenH int) BattleHUDLayout {
 					X: list.X,
 					Y: y - metrics.LineH*0.2,
 					W: list.W,
-					H: metrics.LineH * 1.4,
+					H: rowH,
 				}
 				rects = append(rects, row)
-				y += metrics.LineH * 1.25
+				y += rowH + metrics.SmallGap*0.5
 			}
 			layout.AbilityItemRects = rects
 		}

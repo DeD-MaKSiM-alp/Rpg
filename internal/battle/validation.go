@@ -45,6 +45,9 @@ const (
 	ErrTargetDead
 	ErrTargetSideMismatch
 	ErrMeleeScreening
+	ErrInsufficientMana
+	ErrInsufficientEnergy
+	ErrAbilityOnCooldown
 )
 
 // ValidationResult is a readable outcome of validation.
@@ -90,6 +93,9 @@ func ListValidTargets(ctx *BattleContext, actorID UnitID, abilityID AbilityID) (
 	}
 	if !hasAbility {
 		return nil, errResult(ErrAbilityUnavailable, "ability not available for actor")
+	}
+	if res := AbilityResourceGate(ctx, actor, abilityID); !res.OK {
+		return nil, res
 	}
 
 	switch ability.TargetRule {

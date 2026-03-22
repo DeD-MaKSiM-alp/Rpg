@@ -371,7 +371,12 @@ func (g *Game) updateBattleMode() {
 	}
 
 	mx, my := ebiten.CursorPosition()
-	g.inspectHoverBattleUnitID = battlepkg.HitTestUnitUnderCursor(g.battle, ScreenWidth, ScreenHeight, mx, my)
+	// Modal inspect card: do not track "hover under cursor" for other units — avoids highlights through the overlay.
+	if g.battleInspectOpen {
+		g.inspectHoverBattleUnitID = 0
+	} else {
+		g.inspectHoverBattleUnitID = battlepkg.HitTestUnitUnderCursor(g.battle, ScreenWidth, ScreenHeight, mx, my)
+	}
 
 	g.battle.LayoutStyle = g.BattleHUDStyle
 	g.battle.SuppressEscThisFrame = false

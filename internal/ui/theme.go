@@ -74,6 +74,14 @@ var Theme = struct {
 	HPAllyFill  color.RGBA
 	HPEnemyFill color.RGBA
 	HPHealTint  color.RGBA // подсказка «heal» в превью (не обязательно на баре)
+	// Ресурсы боя (мана / энергия) — микрополоски в HUD активного юнита
+	ResourceBarTrack   color.RGBA
+	ResourceManaFill   color.RGBA
+	ResourceEnergyFill color.RGBA
+	// Рамка способности при блокировке по типу причины (тонкая семантика без шума)
+	AbilityBlockCooldownBrd color.RGBA
+	AbilityBlockManaBrd     color.RGBA
+	AbilityBlockEnergyBrd   color.RGBA
 
 	// Explore / recovery
 	ExploreBarBG     color.RGBA // подложка полоски подсказок
@@ -148,6 +156,14 @@ var Theme = struct {
 	HPEnemyFill: visualcolor.Foundation.HPEnemyFill,
 	HPHealTint:  color.RGBA{R: 120, G: 200, B: 160, A: 255},
 
+	ResourceBarTrack:   visualcolor.Foundation.PanelBGDeep,
+	ResourceManaFill:   color.RGBA{R: 110, G: 165, B: 230, A: 255},
+	ResourceEnergyFill: color.RGBA{R: 230, G: 195, B: 95, A: 255},
+
+	AbilityBlockCooldownBrd: color.RGBA{R: 210, G: 175, B: 95, A: 255},
+	AbilityBlockManaBrd:     color.RGBA{R: 120, G: 165, B: 235, A: 255},
+	AbilityBlockEnergyBrd:   color.RGBA{R: 235, G: 200, B: 105, A: 255},
+
 	ExploreBarBG:     color.RGBA{R: 12, G: 14, B: 20, A: 210},
 	ExploreBarBorder: color.RGBA{R: 55, G: 62, B: 78, A: 255},
 	RecoveryBanner:   color.RGBA{R: 110, G: 215, B: 155, A: 255},
@@ -184,6 +200,26 @@ func DrawHPBarMicro(screen *ebiten.Image, x, y, w, h float32, cur, max int, aliv
 	fill := Theme.HPAllyFill
 	if enemy {
 		fill = Theme.HPEnemyFill
+	}
+	fw := w * ratio
+	if fw < 1 && ratio > 0 {
+		fw = 1
+	}
+	vector.FillRect(screen, x, y, fw, h, fill, false)
+}
+
+// DrawResourceBarMicro — тонкая полоса текущего ресурса (мана/энергия), тот же контракт масштаба, что и HP micro-bar.
+func DrawResourceBarMicro(screen *ebiten.Image, x, y, w, h float32, cur, max int, fill color.Color) {
+	if w <= 0 || h <= 0 || max <= 0 {
+		return
+	}
+	vector.FillRect(screen, x, y, w, h, Theme.ResourceBarTrack, false)
+	ratio := float32(cur) / float32(max)
+	if ratio < 0 {
+		ratio = 0
+	}
+	if ratio > 1 {
+		ratio = 1
 	}
 	fw := w * ratio
 	if fw < 1 && ratio > 0 {

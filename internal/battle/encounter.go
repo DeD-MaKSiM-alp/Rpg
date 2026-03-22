@@ -68,7 +68,7 @@ func BuildEnemyCombatUnitSeed(e EncounterEnemy, escalationLevel int) CombatUnitS
 
 // DefaultPlayerCombatUnitSeed — seed игрока по умолчанию (до прогрессии).
 func DefaultPlayerCombatUnitSeed() CombatUnitSeed {
-	return BuildPlayerCombatSeed(10, 2, 0, 2, []AbilityID{AbilityBasicAttack}, 0, 0)
+	return BuildPlayerCombatSeed(10, 2, 0, 2, []AbilityID{AbilityPowerStrike, AbilityBasicAttack}, 0, 0)
 }
 
 // BuildPlayerCombatSeed строит CombatUnitSeed игрока по статам и способностям (для persistent progression).

@@ -146,7 +146,7 @@ type Game struct {
 	// formationPromoteBranchIdx — выбор ветки при двух UpgradeOptions: -1 = не выбрано, 0/1 = ветка.
 	formationPromoteBranchIdx int
 
-	// exploreRestMsg / exploreRestMsgTicks — краткая обратная связь после отдыха (R) в explore).
+	// exploreRestMsg / exploreRestMsgTicks — баннер после отдыха (R): ход мира без лечения ОЗ.
 	exploreRestMsg      string
 	exploreRestMsgTicks int
 
@@ -166,6 +166,11 @@ type Game struct {
 	poiChoiceX, poiChoiceY int
 	poiChoiceKind          entity.PickupKind
 	poiChoiceSel           int
+	// Modal explore overlays — mouse hover (keyboard unchanged).
+	recruitOfferHoverBtn    int  // -1 none, 0 accept, 1 decline
+	poiChoiceHoverOpt       int  // -1 none, 0/1 option row
+	poiChoiceHoverConfirm   bool // primary button
+	poiChoiceHoverCancel    bool // «уйти без награды»
 
 	// formationMsg — баннер после promotion (P) на экране состава с открытой карточкой.
 	formationMsg      string
@@ -193,6 +198,8 @@ func NewGame(worldSeed, playerGridX, playerGridY int) *Game {
 		party:                          party.DefaultParty(),
 		BattleHUDStyle:                 1, // 1 = v2 Disciples-like (default), 0 = v1 table (debug fallback)
 		inspectHoverFormationGlobalIdx: -1,
+		recruitOfferHoverBtn:           -1,
+		poiChoiceHoverOpt:              -1,
 	}
 }
 

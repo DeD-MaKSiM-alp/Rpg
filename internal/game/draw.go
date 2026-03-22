@@ -17,7 +17,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	g.world.Draw(screen, g.cameraX, g.cameraY, WorldViewport.WidthTiles, WorldViewport.HeightTiles, tileSize)
 	g.drawGrid(screen)
-	if g.mode == ModeExplore || g.mode == ModePOIChoice {
+	if g.mode == ModeExplore {
 		g.world.DrawExploreCues(screen, g.player.GridX, g.player.GridY, g.cameraX, g.cameraY, WorldViewport.WidthTiles, WorldViewport.HeightTiles, tileSize)
 	}
 
@@ -41,15 +41,15 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		promoStrip := PromotionExploreStripLine(&g.party, atCamp, g.TrainingMarks)
 		ui.DrawExplorePartyStrip(screen, g.hudFace, &g.party, ScreenWidth, promoStrip)
 	}
-	if g.mode == ModeExplore || g.mode == ModePOIChoice {
+	if g.mode == ModeExplore {
 		ui.DrawExploreFormationHint(screen, g.hudFace, ScreenWidth, ScreenHeight, g.world.ZoneHUDLine(g.player.GridX, g.player.GridY), g.exploreRestMsg, g.exploreRecruitMsg, g.explorePOIMsg, g.world.ExploreHUDHintLine(g.player.GridX, g.player.GridY))
 	}
 
 	if g.mode == ModeRecruitOffer {
-		ui.DrawRecruitOfferOverlay(screen, g.hudFace, ScreenWidth, ScreenHeight)
+		ui.DrawRecruitOfferOverlay(screen, g.hudFace, ScreenWidth, ScreenHeight, g.recruitOfferHoverBtn)
 	}
 	if g.mode == ModePOIChoice {
-		ui.DrawPOIChoiceOverlay(screen, g.hudFace, ScreenWidth, ScreenHeight, g.poiChoiceKind, g.poiChoiceSel, altarBoldHPLossPreview(&g.party))
+		ui.DrawPOIChoiceOverlay(screen, g.hudFace, ScreenWidth, ScreenHeight, g.poiChoiceKind, g.poiChoiceSel, altarBoldHPLossPreview(&g.party), g.poiChoiceHoverOpt, g.poiChoiceHoverConfirm, g.poiChoiceHoverCancel)
 	}
 
 	if g.mode == ModeFormation {

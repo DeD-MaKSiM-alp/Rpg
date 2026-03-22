@@ -134,6 +134,9 @@ func buildBattleInspectAllyModel(h *hero.Hero, u *battlepkg.CombatUnit, idx, na 
 	}
 	m.Badges = compactTierRangeBadgesFromHero(h)
 	m.ProfileLines = templateProfileShortLines(h)
+	if ln := heroResourceProfileInspectLine(h); ln != "" {
+		m.ProfileLines = append([]string{ln}, m.ProfileLines...)
+	}
 	healTotal := 2 + h.HealPower
 	m.StatsLine = fmt.Sprintf("Атака %d · Защита %d · Инициатива %d · Лечение +%d", h.Attack, h.Defense, h.Initiative, healTotal)
 	m.ExtraStatLine = ""
@@ -164,7 +167,11 @@ func buildBattleInspectEnemyModel(u *battlepkg.CombatUnit) InspectCardModel {
 		Footer:               battleInspectCardFooter(),
 	}
 	m.Badges = compactTierRangeBadgesFromEnemy(u)
-	m.ProfileLines = enemyProfileLines(u)
+	profLines := enemyProfileLines(u)
+	if ln := battlepkg.ResourceProfileInspectLineRU(u.Def.Role); ln != "" {
+		profLines = append([]string{ln}, profLines...)
+	}
+	m.ProfileLines = profLines
 	m.StatsLine = fmt.Sprintf("Атака %d · Защита %d · Инициатива %d", u.Attack(), u.Defense(), u.Initiative())
 	m.ExtraStatLine = ""
 	m.AbilityLines = abilityLinesBullet(u.Abilities())

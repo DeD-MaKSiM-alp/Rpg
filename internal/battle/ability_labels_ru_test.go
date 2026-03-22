@@ -9,6 +9,7 @@ func TestPlayerAbilityLabelRU_knownIDs(t *testing.T) {
 		AbilityHeal:         "Лечение",
 		AbilityGroupHeal:    "Масс-лечение",
 		AbilityBuff:         "Усиление",
+		AbilityPowerStrike:  "Мощный удар",
 	}
 	for id, want := range cases {
 		if got := PlayerAbilityLabelRU(id); got != want {

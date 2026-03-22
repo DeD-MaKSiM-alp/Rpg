@@ -81,15 +81,17 @@ func BuildBattleContextFromEncounter(enc Encounter, playerSeeds []CombatUnitSeed
 		if startHP <= 0 {
 			startHP = 1
 		}
+		st := CombatUnitState{
+			HP:    startHP,
+			Alive: true,
+		}
+		initCombatResources(&st, &seed.Def)
 		u := &BattleUnit{
 			ID:     id,
 			Side:   side,
 			Def:    seed.Def,
 			Origin: seed.Origin,
-			State: CombatUnitState{
-				HP:    startHP,
-				Alive: true,
-			},
+			State:  st,
 		}
 		return u
 	}
@@ -266,8 +268,9 @@ func (c *BattleContext) AdvanceTurn() {
 		c.TurnIndex++
 	}
 
-	// Конец раунда
+	// Конец раунда: тик КД и регенерации, затем новый номер раунда.
 	c.Phase = PhaseRoundEnd
+	c.tickRoundResources()
 	c.Round++
 	c.TurnOrder = BuildTurnOrder(c)
 	c.TurnIndex = 0

@@ -28,14 +28,21 @@ const (
 	AbilityHeal
 	AbilityBuff
 	AbilityGroupHeal
+	// AbilityPowerStrike — ударник: сильный ближний удар за энергию и КД (не глобальный ресурс).
+	AbilityPowerStrike
 )
 
-// Ability описывает способность (ID, имя, дальность, правило целей).
+// Ability описывает способность (ID, имя, дальность, правило целей, стоимость/КД).
 type Ability struct {
 	ID         AbilityID
 	Name       string
 	Range      AbilityRange
 	TargetRule TargetRule
+	// CostMana / CostEnergy — расход при использовании (0 = нет).
+	// CooldownRounds — сколько полных раундов перезарядки после применения (0 = без КД).
+	CostMana         int
+	CostEnergy       int
+	CooldownRounds   int
 }
 
 // abilityRegistry — реестр способностей.
@@ -47,28 +54,44 @@ var abilityRegistry = map[AbilityID]Ability{
 		TargetRule: TargetEnemySingle,
 	},
 	AbilityRangedAttack: {
-		ID:         AbilityRangedAttack,
-		Name:       "Shoot",
-		Range:      RangeRanged,
-		TargetRule: TargetEnemySingle,
+		ID:               AbilityRangedAttack,
+		Name:             "Shoot",
+		Range:            RangeRanged,
+		TargetRule:       TargetEnemySingle,
+		CostEnergy:       2,
+		CooldownRounds:   0,
 	},
 	AbilityHeal: {
-		ID:         AbilityHeal,
-		Name:       "Heal",
-		Range:      RangeMelee,
-		TargetRule: TargetAllySingle,
+		ID:               AbilityHeal,
+		Name:             "Heal",
+		Range:            RangeMelee,
+		TargetRule:       TargetAllySingle,
+		CostMana:         6,
+		CooldownRounds:   4,
 	},
 	AbilityGroupHeal: {
-		ID:         AbilityGroupHeal,
-		Name:       "Массовое лечение",
-		Range:      RangeMelee,
-		TargetRule: TargetAllyTeam,
+		ID:               AbilityGroupHeal,
+		Name:             "Массовое лечение",
+		Range:            RangeMelee,
+		TargetRule:       TargetAllyTeam,
+		CostMana:         9,
+		CooldownRounds:   5,
 	},
 	AbilityBuff: {
-		ID:         AbilityBuff,
-		Name:       "Buff",
-		Range:      RangeMelee,
-		TargetRule: TargetAllySingle,
+		ID:               AbilityBuff,
+		Name:             "Buff",
+		Range:            RangeMelee,
+		TargetRule:       TargetAllySingle,
+		CostMana:         4,
+		CooldownRounds:   3,
+	},
+	AbilityPowerStrike: {
+		ID:               AbilityPowerStrike,
+		Name:             "PowerStrike",
+		Range:            RangeMelee,
+		TargetRule:       TargetEnemySingle,
+		CostEnergy:       4,
+		CooldownRounds:   3,
 	},
 }
 
@@ -91,9 +114,11 @@ const (
 func GetRoleAbilities(role Role) []AbilityID {
 	switch role {
 	case RoleFighter:
-		return []AbilityID{AbilityBasicAttack}
+		// Ударник: мощный удар на КД + базовый удар как основной ритм.
+		return []AbilityID{AbilityPowerStrike, AbilityBasicAttack}
 	case RoleArcher:
-		return []AbilityID{AbilityRangedAttack}
+		// Базовый удар остаётся бесплатным запасным вариантом при нулевой энергии.
+		return []AbilityID{AbilityRangedAttack, AbilityBasicAttack}
 	case RoleHealer:
 		return []AbilityID{AbilityHeal, AbilityBasicAttack}
 	case RoleMage:

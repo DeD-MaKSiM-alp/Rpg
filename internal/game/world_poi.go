@@ -37,7 +37,7 @@ func healExploreFraction(p *party.Party, divisor int) {
 	}
 }
 
-// applySpringHealExplore — источник: заметное, но слабее отдыха R.
+// applySpringHealExplore — POI «источник»: явное восстановление ОЗ (доля MaxHP).
 func applySpringHealExplore(p *party.Party) {
 	healExploreFraction(p, 8)
 }

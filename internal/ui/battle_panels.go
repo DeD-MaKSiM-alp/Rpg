@@ -4,6 +4,7 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -17,6 +18,20 @@ const battlePanelBorder = float32(2)
 
 func battleToRect(hr battlepkg.HUDRect) rect {
 	return rect{X: hr.X, Y: hr.Y, W: hr.W, H: hr.H}
+}
+
+// abilityUnavailableStrokeColor — цвет рамки строки способности при блокировке (КД / мана / энергия).
+func abilityUnavailableStrokeColor(code battlepkg.ValidationCode) color.RGBA {
+	switch code {
+	case battlepkg.ErrAbilityOnCooldown:
+		return Theme.AbilityBlockCooldownBrd
+	case battlepkg.ErrInsufficientMana:
+		return Theme.AbilityBlockManaBrd
+	case battlepkg.ErrInsufficientEnergy:
+		return Theme.AbilityBlockEnergyBrd
+	default:
+		return Theme.AbilityBorder
+	}
 }
 
 // drawBattleOverlayPanel рисует затемнённый фон и центральную панель боевого overlay.
@@ -72,6 +87,7 @@ func drawBattleOverlayText(screen *ebiten.Image, hudFace *text.GoTextFace, battl
 		activeStr := battle.DisplayPhaseLabel()
 		if active := battle.ActiveUnit(); active != nil && active.Side == battlepkg.TeamPlayer && battle.Phase == battlepkg.PhaseAwaitAction {
 			activeStr = fmt.Sprintf("%s | %s", activeStr, battle.PlayerTurn.PhaseLabelRU())
+			activeStr = fmt.Sprintf("%s | %s", activeStr, battlepkg.ActorResourceLineRU(active))
 		}
 		drawSingleLineInRect(screen, hudFace, info2, fitTextToWidth(hudFace, activeStr, info2.W), metrics, Theme.TextMuted)
 	}
@@ -264,26 +280,53 @@ func drawAbilityPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 		}
 		rowRect := battleToRect(layout.AbilityItemRects[i])
 		prefix := " "
+		gate := battlepkg.AbilityResourceGate(battle, active, id)
 		col := Theme.TextPrimary
+		colMuted := Theme.TextMuted
 		bg := Theme.AbilityBG
 		border := Theme.AbilityBorder
+		if !gate.OK {
+			bg = Theme.PanelBGDeep
+			col = Theme.TextSecondary
+			colMuted = Theme.TextMuted
+		}
 		if id == sel && battle.PlayerTurn.Phase == battlepkg.PlayerChooseAbility {
 			prefix = "▶"
 			bg = Theme.AbilitySelectedBG
 			col = Theme.TextPrimary
+			colMuted = Theme.TextSecondary
 			border = Theme.AbilitySelectedBrd
 		} else if hoverIdx == i && battle.PlayerTurn.Phase == battlepkg.PlayerChooseAbility {
 			bg = Theme.AbilityHoverBG
-			col = Theme.TextSecondary
+			if gate.OK {
+				col = Theme.TextSecondary
+			}
 			border = Theme.HoverTarget
 		}
 		vector.FillRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, bg, false)
-		vector.StrokeRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, 1, border, false)
+		strokeW := float32(1)
+		strokeCol := border
+		if !gate.OK {
+			strokeW = 2
+			strokeCol = abilityUnavailableStrokeColor(gate.Code)
+		}
+		vector.StrokeRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, strokeW, strokeCol, false)
 
-		line := fmt.Sprintf("%s %s", prefix, battlepkg.PlayerAbilityLabelRU(id))
-		line = fitTextToWidth(hudFace, line, rowRect.W-12)
-		textRow := rect{X: rowRect.X + 6, Y: rowRect.Y, W: rowRect.W - 12, H: rowRect.H}
-		drawSingleLineInRect(screen, hudFace, textRow, line, metrics, col)
+		line1 := fmt.Sprintf("%s %s", prefix, battlepkg.PlayerAbilityLabelRU(id))
+		if cost := battlepkg.AbilityCostLinePlayerRU(battle, active, id); cost != "" {
+			line1 = line1 + "  ·  " + cost
+		}
+		line1 = fitTextToWidth(hudFace, line1, rowRect.W-12)
+		lineH := metrics.LineH
+		topRow := rect{X: rowRect.X + 6, Y: rowRect.Y + 2, W: rowRect.W - 12, H: lineH}
+		drawSingleLineInRect(screen, hudFace, topRow, line1, metrics, col)
+		if !gate.OK {
+			if msg := battlepkg.AbilityUnavailableHintRU(battle, active, id); msg != "" {
+				msg = fitTextToWidth(hudFace, msg, rowRect.W-12)
+				botRow := rect{X: rowRect.X + 6, Y: rowRect.Y + lineH + 2, W: rowRect.W - 12, H: lineH}
+				drawSingleLineInRect(screen, hudFace, botRow, msg, metrics, colMuted)
+			}
+		}
 	}
 }
 
@@ -307,15 +350,20 @@ func drawConfirmPanel(screen *ebiten.Image, hudFace *text.GoTextFace, battle *ba
 
 	targetStr := battleActionTargetLabelRU(&pt, battle)
 
+	abl := battlepkg.PlayerAbilityLabelRU(pt.SelectedAbilityID)
+	if c := battlepkg.AbilityCostLinePlayerRU(battle, active, pt.SelectedAbilityID); c != "" {
+		abl = abl + " · " + c
+	}
 	summaryRect := battleToRect(layout.ActionSummary)
 	summaryLines := []string{
 		fmt.Sprintf("Шаг: %s", pt.PhaseLabelRU()),
-		fmt.Sprintf("Способность: %s", battlepkg.PlayerAbilityLabelRU(pt.SelectedAbilityID)),
+		fmt.Sprintf("Способность: %s", abl),
+		battlepkg.ActorResourceLineRU(active),
 		fmt.Sprintf("Цель: %s", targetStr),
 	}
 
-	// Preview as 4th line only when ActionSummary fits at least 4 lines; otherwise omit to keep v1 layout stable.
-	if maxLinesForRect(metrics, summaryRect, 0, 0, metrics.LineH) >= 4 {
+	// Превью урона/лечения — пятая строка, если панель высока (базовые строки: шаг, способность+стоимость, ресурсы, цель).
+	if maxLinesForRect(metrics, summaryRect, 0, 0, metrics.LineH) >= 5 {
 		req := battlepkg.ActionRequest{Actor: active.ID, Ability: pt.SelectedAbilityID, Target: pt.SelectedTarget}
 		preview, v := battlepkg.PreviewAction(battle, req)
 		if v.OK && (preview.HasDamage() || preview.HasHeal()) {
@@ -469,16 +517,24 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 	activeR := battleToRect(layout.V2BottomActive)
 	if activeR.W > 0 && activeR.H > 0 && battle != nil {
 		active := battle.ActiveUnit()
-		s := "—"
-		if active != nil {
-			if active.Side == battlepkg.TeamPlayer {
-				s = fmt.Sprintf("Ваш ход: %s", active.Name())
-				s += battlepkg.PlayerTemplateIdentitySuffix(active)
-			} else {
-				s = fmt.Sprintf("Ход врага: %s", active.Name())
+		if active != nil && active.Side == battlepkg.TeamPlayer {
+			l1 := fmt.Sprintf("Ваш ход: %s%s", active.Name(), battlepkg.PlayerTemplateIdentitySuffix(active))
+			row1 := rect{X: activeR.X, Y: activeR.Y, W: activeR.W, H: metrics.LineH}
+			drawSingleLineInRect(screen, hudFace, row1, fitTextToWidth(hudFace, l1, activeR.W), metrics, Theme.TextPrimary)
+			row2 := rect{X: activeR.X, Y: activeR.Y + metrics.LineH, W: activeR.W, H: metrics.LineH}
+			drawSingleLineInRect(screen, hudFace, row2, fitTextToWidth(hudFace, battlepkg.ActorResourceLineRU(active), activeR.W), metrics, Theme.TextSecondary)
+			barY := activeR.Y + metrics.LineH*2 + 2
+			bw := activeR.W - 8
+			if bw > 24 {
+				DrawResourceBarMicro(screen, activeR.X+4, barY, bw, 3, active.State.Mana, active.State.MaxMana, Theme.ResourceManaFill)
+				DrawResourceBarMicro(screen, activeR.X+4, barY+5, bw, 3, active.State.Energy, active.State.MaxEnergy, Theme.ResourceEnergyFill)
 			}
+		} else if active != nil {
+			s := fmt.Sprintf("Ход врага: %s", active.Name())
+			drawSingleLineInRect(screen, hudFace, activeR, fitTextToWidth(hudFace, s, activeR.W), metrics, Theme.TextPrimary)
+		} else {
+			drawSingleLineInRect(screen, hudFace, activeR, "—", metrics, Theme.TextPrimary)
 		}
-		drawSingleLineInRect(screen, hudFace, activeR, fitTextToWidth(hudFace, s, activeR.W), metrics, Theme.TextPrimary)
 	}
 	targetR := battleToRect(layout.V2BottomTarget)
 	if targetR.W > 0 && targetR.H > 0 && battle != nil {
@@ -496,21 +552,30 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 		}
 		drawSingleLineInRect(screen, hudFace, targetR, fitTextToWidth(hudFace, s, targetR.W), metrics, Theme.TextSecondary)
 	}
-	// Ability row (special abilities only; basic attack = default, click enemy)
+	// Ability row (special abilities; стоимость и блокировка)
+	activeUnit := battle.ActiveUnit()
 	for i, hr := range layout.AbilityItemRects {
 		rowRect := battleToRect(hr)
 		abs := []battlepkg.AbilityID{}
-		if active := battle.ActiveUnit(); active != nil {
-			abs = battlepkg.SpecialAbilities(active)
+		if activeUnit != nil {
+			abs = battlepkg.SpecialAbilities(activeUnit)
 		}
 		if i >= len(abs) {
 			break
 		}
+		id := abs[i]
+		gate := battlepkg.AbilityResourceGate(battle, activeUnit, id)
 		col := Theme.TextPrimary
+		col2 := Theme.TextMuted
 		bg := Theme.AbilityBG
 		brd := Theme.AbilityBorder
-		if battle.PlayerTurn.SelectedAbilityID == abs[i] {
+		if !gate.OK {
+			bg = Theme.PanelBGDeep
+			col = Theme.TextSecondary
+		}
+		if battle.PlayerTurn.SelectedAbilityID == id {
 			col = Theme.TextPrimary
+			col2 = Theme.TextSecondary
 			bg = Theme.AbilitySelectedBG
 			brd = Theme.AbilitySelectedBrd
 		}
@@ -518,8 +583,27 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 			brd = Theme.HoverTarget
 		}
 		vector.FillRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, bg, false)
-		vector.StrokeRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, 1, brd, false)
-		drawSingleLineInRect(screen, hudFace, rowRect, fitTextToWidth(hudFace, battlepkg.PlayerAbilityLabelRU(abs[i]), rowRect.W-8), metrics, col)
+		strokeW := float32(1)
+		strokeCol := brd
+		if !gate.OK {
+			strokeW = 2
+			strokeCol = abilityUnavailableStrokeColor(gate.Code)
+		}
+		vector.StrokeRect(screen, rowRect.X, rowRect.Y, rowRect.W, rowRect.H, strokeW, strokeCol, false)
+		lh := metrics.LineH
+		line1 := battlepkg.PlayerAbilityLabelRU(id)
+		if c := battlepkg.AbilityCostLinePlayerRU(battle, activeUnit, id); c != "" {
+			line1 = line1 + " · " + c
+		}
+		line1 = fitTextToWidth(hudFace, line1, rowRect.W-8)
+		r1 := rect{X: rowRect.X + 4, Y: rowRect.Y + 2, W: rowRect.W - 8, H: lh}
+		drawSingleLineInRect(screen, hudFace, r1, line1, metrics, col)
+		if !gate.OK {
+			if msg := battlepkg.AbilityUnavailableHintRU(battle, activeUnit, id); msg != "" {
+				r2 := rect{X: rowRect.X + 4, Y: rowRect.Y + lh + 2, W: rowRect.W - 8, H: lh}
+				drawSingleLineInRect(screen, hudFace, r2, fitTextToWidth(hudFace, msg, rowRect.W-8), metrics, col2)
+			}
+		}
 	}
 	// Summary — коротко: default attack = "Attack · click enemy"; special = ability → target | preview
 	summaryR := battleToRect(layout.V2BottomSummary)
@@ -546,6 +630,9 @@ func drawBattleScreenV2(screen *ebiten.Image, hudFace *text.GoTextFace, battle *
 					targetStr = "все союзники"
 				}
 				line1 := fmt.Sprintf("%s → %s", battlepkg.PlayerAbilityLabelRU(pt.SelectedAbilityID), targetStr)
+				if c := battlepkg.AbilityCostLinePlayerRU(battle, active, pt.SelectedAbilityID); c != "" {
+					line1 = line1 + " · " + c
+				}
 				lines = append(lines, fitTextToWidth(hudFace, line1, summaryR.W))
 				req := battlepkg.ActionRequest{Actor: active.ID, Ability: pt.SelectedAbilityID, Target: pt.SelectedTarget}
 				preview, v := battlepkg.PreviewAction(battle, req)

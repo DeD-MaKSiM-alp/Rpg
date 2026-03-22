@@ -73,6 +73,9 @@ type CombatUnitDefinition struct {
 	// Profile: базовые свойства архетипа, влияющие на таргетинг/правила.
 	IsRanged bool
 
+	// ResourceProfile — мана/энергия/реген: ResourceProfileUnset = вывести из Role и способностей.
+	ResourceProfile ResourceProfile
+
 	Loadout AbilityLoadout
 }
 
@@ -96,6 +99,13 @@ type CombatUnitState struct {
 	HP       int
 	Alive    bool
 	Disabled bool // groundwork: stun/sleep/etc.
+
+	// Боевые ресурсы (runtime): мана/энергия и КД по способностям (значение = осталось раундов до готовности).
+	Mana              int
+	MaxMana           int
+	Energy            int
+	MaxEnergy         int
+	AbilityCooldowns  map[AbilityID]int
 
 	Modifiers CombatModifiers
 	Statuses  []StatusInstance

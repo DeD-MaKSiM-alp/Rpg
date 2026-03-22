@@ -27,16 +27,14 @@ func (b *BattleContext) ensurePlayerTurnInitialized(actor *BattleUnit) {
 	b.PlayerTurn.Actor = actor.ID
 	// Default = basic attack (click enemy to attack); special abilities only in the list.
 	if HasBasicAttack(actor) {
-		b.PlayerTurn.SelectedAbilityID = AbilityBasicAttack
-		b.PlayerTurn.SelectedAbilityIndex = 0
+		playerTurnResetToBasicAttack(actor, &b.PlayerTurn)
 	} else if abs := actor.Abilities(); len(abs) > 0 {
-		b.PlayerTurn.SelectedAbilityID = abs[0]
-		b.PlayerTurn.SelectedAbilityIndex = 0
+		playerTurnSelectAbility(actor, &b.PlayerTurn, abs[0])
+		b.PlayerTurn.ValidTargets = nil
+		b.PlayerTurn.SelectedTargetIdx = 0
+		b.PlayerTurn.SelectedTarget = NoTarget()
+		b.PlayerTurn.Pending = ActionRequest{}
 	}
-	b.PlayerTurn.ValidTargets = nil
-	b.PlayerTurn.SelectedTargetIdx = 0
-	b.PlayerTurn.SelectedTarget = NoTarget()
-	b.PlayerTurn.Pending = ActionRequest{}
 }
 
 func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit, kbd BattleKeyboardIntents) (BattleAction, bool) {
@@ -49,6 +47,7 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit, kbd Batt
 	b.ensurePlayerTurnInitialized(actor)
 
 	p := &b.PlayerTurn
+	// Полный loadout (включая спец. на КД / без ресурса): выбор стрелками + подписи в UI; подтверждение валидируется отдельно.
 	abilities := actor.Abilities()
 	if len(abilities) == 0 {
 		b.AddBattleLog("У юнита нет способностей.")
@@ -66,12 +65,7 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit, kbd Batt
 		if kbd.Back {
 			// Return to default attack mode (cancel special ability selection).
 			if HasBasicAttack(actor) && p.SelectedAbilityID != AbilityBasicAttack {
-				p.SelectedAbilityID = AbilityBasicAttack
-				p.SelectedAbilityIndex = 0
-				p.ValidTargets = nil
-				p.SelectedTargetIdx = 0
-				p.SelectedTarget = NoTarget()
-				p.Pending = ActionRequest{}
+				playerTurnResetToBasicAttack(actor, p)
 			}
 		}
 		if kbd.Prev {
@@ -96,10 +90,12 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit, kbd Batt
 				targets, v := ListValidTargets(b, actor.ID, p.SelectedAbilityID)
 				if !v.OK {
 					b.AddBattleLog(v.Message)
+					playerTurnResetToBasicAttack(actor, p)
 					return BattleAction{}, false
 				}
 				if len(targets) == 0 {
 					b.AddBattleLog("Нет валидных целей.")
+					playerTurnResetToBasicAttack(actor, p)
 					return BattleAction{}, false
 				}
 				p.ValidTargets = targets
@@ -113,11 +109,13 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit, kbd Batt
 				req := ActionRequest{Actor: actor.ID, Ability: p.SelectedAbilityID, Target: p.SelectedTarget}
 				if v := ValidateAction(b, req); !v.OK {
 					b.AddBattleLog(v.Message)
+					playerTurnResetToBasicAttack(actor, p)
 					return BattleAction{}, false
 				}
 				act, v2 := ToBattleAction(b, req)
 				if !v2.OK {
 					b.AddBattleLog(v2.Message)
+					playerTurnResetToBasicAttack(actor, p)
 					return BattleAction{}, false
 				}
 				p.Phase = PlayerResolveAction
@@ -132,11 +130,13 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit, kbd Batt
 				req := ActionRequest{Actor: actor.ID, Ability: p.SelectedAbilityID, Target: p.SelectedTarget}
 				if v := ValidateAction(b, req); !v.OK {
 					b.AddBattleLog(v.Message)
+					playerTurnResetToBasicAttack(actor, p)
 					return BattleAction{}, false
 				}
 				act, v2 := ToBattleAction(b, req)
 				if !v2.OK {
 					b.AddBattleLog(v2.Message)
+					playerTurnResetToBasicAttack(actor, p)
 					return BattleAction{}, false
 				}
 				p.Phase = PlayerResolveAction
@@ -148,13 +148,13 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit, kbd Batt
 		if kbd.Back {
 			p.Phase = PlayerChooseAbility
 			if HasBasicAttack(actor) {
-				p.SelectedAbilityID = AbilityBasicAttack
-				p.SelectedAbilityIndex = 0
+				playerTurnResetToBasicAttack(actor, p)
+			} else {
+				p.ValidTargets = nil
+				p.SelectedTargetIdx = 0
+				p.SelectedTarget = NoTarget()
+				p.Pending = ActionRequest{}
 			}
-			p.ValidTargets = nil
-			p.SelectedTargetIdx = 0
-			p.SelectedTarget = NoTarget()
-			p.Pending = ActionRequest{}
 			return BattleAction{}, false
 		}
 		if len(p.ValidTargets) == 0 {
@@ -169,6 +169,7 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit, kbd Batt
 		if len(p.ValidTargets) == 0 {
 			b.AddBattleLog("Нет валидных целей.")
 			p.Phase = PlayerChooseAbility
+			playerTurnResetToBasicAttack(actor, p)
 			return BattleAction{}, false
 		}
 
@@ -185,11 +186,29 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit, kbd Batt
 			req := ActionRequest{Actor: actor.ID, Ability: p.SelectedAbilityID, Target: p.SelectedTarget}
 			if v := ValidateAction(b, req); !v.OK {
 				b.AddBattleLog(v.Message)
+				if HasBasicAttack(actor) {
+					playerTurnResetToBasicAttack(actor, p)
+				} else {
+					p.ValidTargets = nil
+					p.SelectedTargetIdx = 0
+					p.SelectedTarget = NoTarget()
+					p.Pending = ActionRequest{}
+				}
+				p.Phase = PlayerChooseAbility
 				return BattleAction{}, false
 			}
 			act, v2 := ToBattleAction(b, req)
 			if !v2.OK {
 				b.AddBattleLog(v2.Message)
+				if HasBasicAttack(actor) {
+					playerTurnResetToBasicAttack(actor, p)
+				} else {
+					p.ValidTargets = nil
+					p.SelectedTargetIdx = 0
+					p.SelectedTarget = NoTarget()
+					p.Pending = ActionRequest{}
+				}
+				p.Phase = PlayerChooseAbility
 				return BattleAction{}, false
 			}
 			p.Phase = PlayerResolveAction
@@ -207,6 +226,34 @@ func (b *BattleContext) updatePlayerTurnStateMachine(actor *BattleUnit, kbd Batt
 	return BattleAction{}, false
 }
 
+// cancelPlayerSpecialOrTargetToBasic returns true if Esc should consume the key (player was in special/target mode).
+func (b *BattleContext) cancelPlayerSpecialOrTargetToBasic() bool {
+	if b.Phase != PhaseAwaitAction {
+		return false
+	}
+	active := b.ActiveUnit()
+	if active == nil || !active.IsAlive() || active.Side != TeamPlayer {
+		return false
+	}
+	b.ensurePlayerTurnInitialized(active)
+	pt := &b.PlayerTurn
+	inSpecialOrTarget := pt.Phase == PlayerChooseTarget ||
+		(pt.Phase == PlayerChooseAbility && HasBasicAttack(active) && pt.SelectedAbilityID != AbilityBasicAttack)
+	if !inSpecialOrTarget {
+		return false
+	}
+	pt.Phase = PlayerChooseAbility
+	if HasBasicAttack(active) {
+		playerTurnResetToBasicAttack(active, pt)
+	} else {
+		pt.ValidTargets = nil
+		pt.SelectedTargetIdx = 0
+		pt.SelectedTarget = NoTarget()
+		pt.Pending = ActionRequest{}
+	}
+	return true
+}
+
 // Update обрабатывает один кадр боевого режима и возвращает итог.
 // screenW/screenH — логический размер кадра (тот же, что Layout() и DrawBattleOverlay);
 // нужен для mouse hit-test и должен совпадать с размерами, которыми считается HUD при отрисовке.
@@ -222,25 +269,8 @@ func (b *BattleContext) Update(screenW, screenH int) BattleOutcome {
 			return BattleOutcomeNone
 		}
 		// During player turn in special/target mode: Esc cancels to default attack. In default mode or other phases: retreat.
-		if b.Phase == PhaseAwaitAction {
-			if active := b.ActiveUnit(); active != nil && active.IsAlive() && active.Side == TeamPlayer {
-				b.ensurePlayerTurnInitialized(active)
-				pt := &b.PlayerTurn
-				inSpecialOrTarget := pt.Phase == PlayerChooseTarget ||
-					(pt.Phase == PlayerChooseAbility && HasBasicAttack(active) && pt.SelectedAbilityID != AbilityBasicAttack)
-				if inSpecialOrTarget {
-					pt.Phase = PlayerChooseAbility
-					if HasBasicAttack(active) {
-						pt.SelectedAbilityID = AbilityBasicAttack
-						pt.SelectedAbilityIndex = 0
-					}
-					pt.ValidTargets = nil
-					pt.SelectedTargetIdx = 0
-					pt.SelectedTarget = NoTarget()
-					pt.Pending = ActionRequest{}
-					return BattleOutcomeNone
-				}
-			}
+		if b.Phase == PhaseAwaitAction && b.cancelPlayerSpecialOrTargetToBasic() {
+			return BattleOutcomeNone
 		}
 		b.Result = ResultEscape
 		b.AddBattleLog("Отступление.")

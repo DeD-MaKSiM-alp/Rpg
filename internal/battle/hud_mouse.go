@@ -26,6 +26,10 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit, screenW, screen
 		return BattleAction{}, false
 	}
 	if b.BlockPlayerInput {
+		// Modal overlay (e.g. battle inspect): clear UX hover every frame — otherwise stale highlights linger.
+		b.PlayerTurn.HoverAbilityIndex = -1
+		b.PlayerTurn.HoverTargetUnitID = 0
+		b.PlayerTurn.HoverBackButton = false
 		return BattleAction{}, false
 	}
 
@@ -83,7 +87,7 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit, screenW, screen
 		}
 	}
 
-	// 1) Ability panel: only special abilities (list excludes basic attack).
+	// 1) Панель спец. способностей (все из loadout; недоступные подсвечены в отрисовке, клик — сообщение в лог).
 	specialAbs := SpecialAbilities(actor)
 	if len(specialAbs) > 0 && len(layout.AbilityItemRects) > 0 {
 		for i := 0; i < len(specialAbs) && i < len(layout.AbilityItemRects); i++ {
@@ -92,60 +96,10 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit, screenW, screen
 				pt.HoverAbilityIndex = i
 				if mb.LeftJustPressed && pt.Phase == PlayerChooseAbility {
 					abilID := specialAbs[i]
-					pt.SelectedAbilityID = abilID
-					// Keep SelectedAbilityIndex in sync with full ability list for keyboard.
-					if full := actor.Abilities(); len(full) > 0 {
-						for j := range full {
-							if full[j] == abilID {
-								pt.SelectedAbilityIndex = j
-								break
-							}
-						}
+					if act, ok := playerTurnTrySpecialAbilityClick(b, actor, abilID); ok {
+						return act, true
 					}
-
-					ability := GetAbility(abilID)
-					switch ability.TargetRule {
-					case TargetEnemySingle, TargetAllySingle:
-						targets, v := ListValidTargets(b, actor.ID, abilID)
-						if !v.OK {
-							b.AddBattleLog(v.Message)
-							return BattleAction{}, false
-						}
-						if len(targets) == 0 {
-							b.AddBattleLog("Нет валидных целей.")
-							return BattleAction{}, false
-						}
-						pt.ValidTargets = targets
-						pt.SelectedTargetIdx = 0
-						pt.SelectedTarget = targets[0]
-						pt.Pending = ActionRequest{}
-						pt.Phase = PlayerChooseTarget
-						return BattleAction{}, false
-
-					case TargetSelf:
-						pt.SelectedTarget = SelfTarget()
-						req := ActionRequest{Actor: actor.ID, Ability: abilID, Target: pt.SelectedTarget}
-						if ValidateAction(b, req).OK {
-							if act, v2 := ToBattleAction(b, req); v2.OK {
-								pt.Phase = PlayerResolveAction
-								return act, true
-							}
-						}
-						return BattleAction{}, false
-
-					case TargetAllyTeam:
-						fallthrough
-					default:
-						pt.SelectedTarget = NoTarget()
-						req := ActionRequest{Actor: actor.ID, Ability: abilID, Target: pt.SelectedTarget}
-						if ValidateAction(b, req).OK {
-							if act, v2 := ToBattleAction(b, req); v2.OK {
-								pt.Phase = PlayerResolveAction
-								return act, true
-							}
-						}
-						return BattleAction{}, false
-					}
+					return BattleAction{}, false
 				}
 				break
 			}
@@ -214,13 +168,13 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit, screenW, screen
 		if mb.LeftJustPressed && pointInRect(mxf, myf, backBtn) {
 			pt.Phase = PlayerChooseAbility
 			if HasBasicAttack(actor) {
-				pt.SelectedAbilityID = AbilityBasicAttack
-				pt.SelectedAbilityIndex = 0
+				playerTurnResetToBasicAttack(actor, pt)
+			} else {
+				pt.ValidTargets = nil
+				pt.SelectedTargetIdx = 0
+				pt.SelectedTarget = NoTarget()
+				pt.Pending = ActionRequest{}
 			}
-			pt.ValidTargets = nil
-			pt.SelectedTargetIdx = 0
-			pt.SelectedTarget = NoTarget()
-			pt.Pending = ActionRequest{}
 		}
 	}
 
@@ -230,13 +184,17 @@ func (b *BattleContext) updatePlayerTurnMouse(actor *BattleUnit, screenW, screen
 		case PlayerChooseTarget:
 			pt.Phase = PlayerChooseAbility
 			if HasBasicAttack(actor) {
-				pt.SelectedAbilityID = AbilityBasicAttack
-				pt.SelectedAbilityIndex = 0
+				playerTurnResetToBasicAttack(actor, pt)
+			} else {
+				pt.ValidTargets = nil
+				pt.SelectedTargetIdx = 0
+				pt.SelectedTarget = NoTarget()
+				pt.Pending = ActionRequest{}
 			}
-			pt.ValidTargets = nil
-			pt.SelectedTargetIdx = 0
-			pt.SelectedTarget = NoTarget()
-			pt.Pending = ActionRequest{}
+		case PlayerChooseAbility:
+			if HasBasicAttack(actor) && pt.SelectedAbilityID != AbilityBasicAttack {
+				playerTurnResetToBasicAttack(actor, pt)
+			}
 		default:
 			// no-op for other phases
 		}

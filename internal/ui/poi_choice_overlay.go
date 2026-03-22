@@ -11,27 +11,26 @@ import (
 	"mygame/world/entity"
 )
 
-// DrawPOIChoiceOverlay — два варианта risk/reward для руин или алтаря; sel 0/1 подсвечен.
-func DrawPOIChoiceOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, screenW, screenH int, kind entity.PickupKind, sel int, altarBoldHPLoss int) {
+// DrawPOIChoiceOverlay — руины / алтарь: два варианта-карточки, кнопка подтверждения, зона «уйти».
+// hoverOpt: -1 нет; 0/1 — наведение на вариант (визуально независимо от sel).
+// hoverConfirm / hoverCancel — наведение на кнопки нижнего ряда.
+func DrawPOIChoiceOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, screenW, screenH int, kind entity.PickupKind, sel int, altarBoldHPLoss int, hoverOpt int, hoverConfirm, hoverCancel bool) {
 	if hudFace == nil || screenW < 100 || screenH < 100 {
+		return
+	}
+	lay := LayoutPOIChoice(screenW, screenH, kind)
+	if lay.Panel.W <= 0 {
 		return
 	}
 	w := float32(screenW)
 	h := float32(screenH)
 	vector.FillRect(screen, 0, 0, w, h, Theme.OverlayDim, false)
 
-	panelW := float32(460)
-	if panelW > w-40 {
-		panelW = w - 40
-	}
-	lineH := float32(18)
-	rowBlock := lineH*2 + 20
-	panelH := lineH*2 + rowBlock*2 + 96
-	px := (w - panelW) / 2
-	py := (h - panelH) / 2
-
+	px, py := lay.Panel.X, lay.Panel.Y
+	panelW, panelH := lay.Panel.W, lay.Panel.H
 	drawUnifiedModalPanelChrome(screen, px, py, panelW, panelH)
 
+	lineH := float32(18)
 	metrics := battlepkg.HUDMetrics{LineH: lineH}
 	innerX := px + 16
 	y := py + 14
@@ -42,47 +41,66 @@ func DrawPOIChoiceOverlay(screen *ebiten.Image, hudFace *text.GoTextFace, screen
 		title = "Руины"
 	case entity.PickupKindPOIAltar:
 		title = "Алтарь"
+	default:
+		return
 	}
 	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH * 1.2}, title, metrics, Theme.TextPrimary)
 	DrawThinAccentLine(screen, innerX, y+lineH*1.1, panelW-32)
 	y += lineH + 12
 
+	var lineA, lineB string
 	switch kind {
 	case entity.PickupKindPOIRuins:
-		drawPOIChoiceTwoRows(screen, hudFace, innerX, y, panelW-32, lineH, metrics, sel, rowBlock,
-			"Осторожно: +1 боевого опыта каждому в строю.",
-			"Риск: 50% — +3 опыта каждому; иначе засада −2 ОЗ (не ниже 1).",
-		)
+		lineA = "Осторожно: +1 боевого опыта каждому в строю."
+		lineB = "Риск: 50% — +3 опыта каждому; иначе засада −2 ОЗ (не ниже 1)."
 	case entity.PickupKindPOIAltar:
 		boldExtra := "лидер теряет ОЗ"
 		if altarBoldHPLoss > 0 {
 			boldExtra = fmt.Sprintf("лидер −%d ОЗ", altarBoldHPLoss)
 		}
-		drawPOIChoiceTwoRows(screen, hudFace, innerX, y, panelW-32, lineH, metrics, sel, rowBlock,
-			"Скромная жертва: +1 знак обучения.",
-			"Смелая клятва: +2 знака; "+boldExtra+".",
-		)
-	default:
-		return
+		lineA = "Скромная жертва: +1 знак обучения."
+		lineB = "Смелая клятва: +2 знака; " + boldExtra + "."
 	}
+	drawPOIChoiceOptionRow(screen, hudFace, lay.Option0, lineA, 0, sel, hoverOpt, metrics, lineH)
+	drawPOIChoiceOptionRow(screen, hudFace, lay.Option1, lineB, 1, sel, hoverOpt, metrics, lineH)
 
-	y += rowBlock*2 + 28
-	drawSingleLineInRect(screen, hudFace, rect{X: innerX, Y: y, W: panelW - 32, H: lineH * 1.1}, "←/→/WASD или 1/2 · Tab — переключить · Enter — подтвердить · Esc — уйти без награды", metrics, Theme.TextMuted)
+	// Confirm — primary
+	confirmBg := Theme.PanelBGDeep
+	confirmBrd := Theme.AccentStrip
+	if hoverConfirm {
+		confirmBg = Theme.ButtonHoverBG
+		confirmBrd = Theme.ButtonHoverBorder
+	}
+	vector.FillRect(screen, lay.ConfirmBtn.X, lay.ConfirmBtn.Y, lay.ConfirmBtn.W, lay.ConfirmBtn.H, confirmBg, false)
+	vector.StrokeRect(screen, lay.ConfirmBtn.X, lay.ConfirmBtn.Y, lay.ConfirmBtn.W, lay.ConfirmBtn.H, 1.5, confirmBrd, false)
+	drawSingleLineInRect(screen, hudFace, rect{X: lay.ConfirmBtn.X + 10, Y: lay.ConfirmBtn.Y + 9, W: lay.ConfirmBtn.W - 20, H: lineH * 1.15}, "Подтвердить выбор", metrics, Theme.TextPrimary)
+
+	// Cancel line (secondary)
+	cancelCol := Theme.TextMuted
+	if hoverCancel {
+		cancelCol = Theme.TextPrimary
+	}
+	drawSingleLineInRect(screen, hudFace, rect{X: lay.CancelZone.X + 4, Y: lay.CancelZone.Y + 2, W: lay.CancelZone.W - 8, H: lineH * 1.1}, "Уйти без награды (Esc / клик по затемнению)", metrics, cancelCol)
 }
 
-func drawPOIChoiceTwoRows(screen *ebiten.Image, hudFace *text.GoTextFace, innerX, y, maxW, lineH float32, metrics battlepkg.HUDMetrics, sel int, rowH float32, lineA, lineB string) {
-	for i, txt := range []string{lineA, lineB} {
-		ry := y + float32(i)*(rowH+10)
-		bg := Theme.RosterCardContentWell
-		stroke := Theme.RosterCardInnerStroke
-		if sel == i {
-			bg = Theme.PanelBGDeep
-			stroke = Theme.AccentStrip
-		}
-		vector.FillRect(screen, innerX, ry, maxW, rowH, bg, false)
-		vector.StrokeRect(screen, innerX, ry, maxW, rowH, 1, stroke, false)
-		line := fmt.Sprintf("%d) %s", i+1, txt)
-		line = trimTextToWidth(hudFace, line, maxW-16)
-		drawSingleLineInRect(screen, hudFace, rect{X: innerX + 8, Y: ry + 10, W: maxW - 16, H: lineH * 1.2}, line, metrics, Theme.TextSecondary)
+func drawPOIChoiceOptionRow(screen *ebiten.Image, hudFace *text.GoTextFace, box FRect, txt string, idx, sel, hoverOpt int, metrics battlepkg.HUDMetrics, lineH float32) {
+	line := fmt.Sprintf("%d) %s", idx+1, txt)
+	line = trimTextToWidth(hudFace, line, box.W-16)
+
+	bg := Theme.RosterCardContentWell
+	stroke := Theme.RosterCardInnerStroke
+	if sel == idx {
+		bg = Theme.AbilitySelectedBG
+		stroke = Theme.AbilitySelectedBrd
 	}
+	if hoverOpt == idx && hoverOpt != sel {
+		bg = Theme.AbilityHoverBG
+		stroke = Theme.HoverTarget
+	}
+	if sel == idx && hoverOpt == idx {
+		stroke = Theme.ValidTarget
+	}
+	vector.FillRect(screen, box.X, box.Y, box.W, box.H, bg, false)
+	vector.StrokeRect(screen, box.X, box.Y, box.W, box.H, 1.5, stroke, false)
+	drawSingleLineInRect(screen, hudFace, rect{X: box.X + 8, Y: box.Y + 10, W: box.W - 16, H: lineH * 1.2}, line, metrics, Theme.TextSecondary)
 }

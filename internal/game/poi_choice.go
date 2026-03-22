@@ -5,6 +5,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 
 	"mygame/internal/party"
+	"mygame/internal/ui"
 	"mygame/world/entity"
 )
 
@@ -32,6 +33,37 @@ func (g *Game) updatePOIChoiceMode() {
 		g.mode = ModeExplore
 		g.advanceWorldTurn()
 		return
+	}
+
+	mx, my := ebiten.CursorPosition()
+	g.poiChoiceHoverOpt = -1
+	g.poiChoiceHoverConfirm = false
+	g.poiChoiceHoverCancel = false
+	switch ui.HitTestPOIChoice(mx, my, ScreenWidth, ScreenHeight, g.poiChoiceKind) {
+	case ui.POIHitOption0:
+		g.poiChoiceHoverOpt = 0
+	case ui.POIHitOption1:
+		g.poiChoiceHoverOpt = 1
+	case ui.POIHitConfirm:
+		g.poiChoiceHoverConfirm = true
+	case ui.POIHitCancel:
+		g.poiChoiceHoverCancel = true
+	}
+
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		switch ui.HitTestPOIChoice(mx, my, ScreenWidth, ScreenHeight, g.poiChoiceKind) {
+		case ui.POIHitOption0:
+			g.poiChoiceSel = 0
+		case ui.POIHitOption1:
+			g.poiChoiceSel = 1
+		case ui.POIHitConfirm:
+			g.resolvePOIChoice()
+			return
+		case ui.POIHitCancel, ui.POIHitBackdrop:
+			g.mode = ModeExplore
+			g.advanceWorldTurn()
+			return
+		}
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {

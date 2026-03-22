@@ -40,6 +40,8 @@ func TestBuildInspectBattleHighlightPlan_hoverOnly(t *testing.T) {
 }
 
 func TestBuildInspectBattleHighlightPlan_activeOnly(t *testing.T) {
+	// Contract for modal battle inspect: the game layer passes hoverID=0 while the overlay is open,
+	// so DrawBattleInspectHighlights shows only the opened unit (no "hover other unit" layer).
 	p := BuildInspectBattleHighlightPlan(0, 7, true)
 	if p.CombinedUnitID != 0 || p.ActiveUnitID != 7 || p.HoverUnitID != 0 || p.HoverStrength != 0 {
 		t.Fatalf("unexpected plan: %+v", p)

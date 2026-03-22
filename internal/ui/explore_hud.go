@@ -168,7 +168,7 @@ func DrawExploreFormationHintLines(screen *ebiten.Image, hudFace *text.GoTextFac
 	opR := &text.DrawOptions{}
 	opR.GeoM.Translate(14, float64(y))
 	opR.ColorScale.ScaleWithColor(Theme.HintLine)
-	text.Draw(screen, "R — отдых: +HP живым (¼ MaxHP), 0 HP не поднимает · затем ход мира", hudFace, opR)
+	text.Draw(screen, "R — отдых: ход мира без лечения ОЗ (лечение — бой, POI, предметы…)", hudFace, opR)
 	y += lineStep
 	op := &text.DrawOptions{}
 	op.GeoM.Translate(14, float64(y))

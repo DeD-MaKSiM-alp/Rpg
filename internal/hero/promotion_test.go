@@ -52,7 +52,7 @@ func TestTryPromoteHero_WarriorRecruitToSquire(t *testing.T) {
 	if h.CurrentHP != 7 {
 		t.Fatalf("CurrentHP=%d want 7", h.CurrentHP)
 	}
-	if len(h.Abilities) != 1 || h.Abilities[0] != battlepkg.AbilityBasicAttack {
+	if len(h.Abilities) != 2 || h.Abilities[0] != battlepkg.AbilityPowerStrike || h.Abilities[1] != battlepkg.AbilityBasicAttack {
 		t.Fatalf("abilities: %+v", h.Abilities)
 	}
 }

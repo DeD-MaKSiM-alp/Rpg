@@ -57,6 +57,9 @@ func buildFormationInspectCardModel(h *hero.Hero, globalIdx, na int, inReserve b
 	}
 	m.Badges = compactTierRangeBadgesFromHero(h)
 	m.ProfileLines = templateProfileShortLines(h)
+	if ln := heroResourceProfileInspectLine(h); ln != "" {
+		m.ProfileLines = append([]string{ln}, m.ProfileLines...)
+	}
 	healTotal := 2 + h.HealPower
 	m.StatsLine = fmt.Sprintf("Атака %d · Защита %d · Инициатива %d · Лечение +%d", h.Attack, h.Defense, h.Initiative, healTotal)
 	m.ExtraStatLine = ""

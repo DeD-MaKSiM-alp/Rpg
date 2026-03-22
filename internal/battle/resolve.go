@@ -4,6 +4,12 @@ import "fmt"
 
 const buffAttackBonus = 1
 
+// Бонусы к физическому урону (vertical slice: дальний выстрел / мощный удар).
+const (
+	rangedShotBonus  = 1
+	powerStrikeBonus = 4
+)
+
 // ResolveAbility применяет действие по способности и возвращает результат. Единственная точка изменения HP/статов.
 func ResolveAbility(ctx *BattleContext, action BattleAction) ActionResult {
 	if ctx == nil || ctx.Units == nil {
@@ -26,10 +32,11 @@ func ResolveAbility(ctx *BattleContext, action BattleAction) ActionResult {
 	if v := ValidateAction(ctx, req); !v.OK {
 		return ActionResult{}
 	}
+	applyAbilityCost(actor, action.Ability)
 	target := ctx.Units[action.Target]
 
 	switch ability.ID {
-	case AbilityBasicAttack, AbilityRangedAttack:
+	case AbilityBasicAttack, AbilityRangedAttack, AbilityPowerStrike:
 		if target == nil || !target.IsAlive() {
 			return ActionResult{}
 		}
@@ -37,6 +44,12 @@ func ResolveAbility(ctx *BattleContext, action BattleAction) ActionResult {
 		damage := atk - target.Defense()
 		if damage < 1 {
 			damage = 1
+		}
+		switch ability.ID {
+		case AbilityRangedAttack:
+			damage += rangedShotBonus
+		case AbilityPowerStrike:
+			damage += powerStrikeBonus
 		}
 		target.State.HP -= damage
 		killed := false

@@ -26,7 +26,7 @@ func PreviewAction(ctx *BattleContext, req ActionRequest) (ActionPreview, Valida
 
 	// For now we only preview unit-targeted abilities we already have.
 	switch ability.ID {
-	case AbilityBasicAttack, AbilityRangedAttack:
+	case AbilityBasicAttack, AbilityRangedAttack, AbilityPowerStrike:
 		if req.Target.Kind != TargetKindUnit {
 			return ActionPreview{}, okResult()
 		}
@@ -37,6 +37,12 @@ func PreviewAction(ctx *BattleContext, req ActionRequest) (ActionPreview, Valida
 		dmg := actor.Attack() - target.Defense()
 		if dmg < 1 {
 			dmg = 1
+		}
+		switch ability.ID {
+		case AbilityRangedAttack:
+			dmg += rangedShotBonus
+		case AbilityPowerStrike:
+			dmg += powerStrikeBonus
 		}
 		return ActionPreview{DamageMin: dmg, DamageMax: dmg}, okResult()
 

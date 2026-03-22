@@ -5,7 +5,7 @@ func BuildEnemyAction(ctx *BattleContext, actor *BattleUnit) (BattleAction, bool
 	if actor == nil || len(actor.Abilities()) == 0 {
 		return BattleAction{}, false
 	}
-	for _, abilityID := range actor.Abilities() {
+	for _, abilityID := range ctx.AvailableAbilities(actor) {
 		validTargets, _ := ListValidTargets(ctx, actor.ID, abilityID)
 		if len(validTargets) == 0 {
 			continue
@@ -28,10 +28,10 @@ func buildPlayerAction(ctx *BattleContext, actor *BattleUnit) (BattleAction, boo
 	if actor == nil || actor.Side != TeamPlayer {
 		return BattleAction{}, false
 	}
-	if len(actor.Abilities()) == 0 {
+	if len(ctx.AvailableAbilities(actor)) == 0 {
 		return BattleAction{}, false
 	}
-	for _, abilityID := range actor.Abilities() {
+	for _, abilityID := range ctx.AvailableAbilities(actor) {
 		validTargets, _ := ListValidTargets(ctx, actor.ID, abilityID)
 		if len(validTargets) == 0 {
 			continue
